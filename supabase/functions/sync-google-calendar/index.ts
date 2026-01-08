@@ -6,6 +6,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+async function refreshGoogleToken(refreshToken: string, clientId: string, clientSecret: string) {
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  return response.json();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -22,7 +37,6 @@ serve(async (req) => {
       );
     }
 
-    // Get the authorization header
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       return new Response(
@@ -35,7 +49,6 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get user from token
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
 
@@ -46,100 +59,138 @@ serve(async (req) => {
       );
     }
 
-    // Check if user has Google Calendar connected
-    const { data: profile } = await supabase
+    // Get user's Google tokens
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("google_calendar_connected")
+      .select("google_calendar_connected, google_access_token, google_refresh_token, google_token_expiry")
       .eq("user_id", user.id)
       .single();
 
-    if (!profile?.google_calendar_connected) {
+    if (profileError || !profile) {
+      return new Response(
+        JSON.stringify({ error: "Profile not found", events: [] }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!profile.google_calendar_connected || !profile.google_access_token) {
       return new Response(
         JSON.stringify({ error: "Google Calendar not connected", events: [] }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // For demo purposes, return mock calendar events since full OAuth flow 
-    // requires user token exchange which needs frontend OAuth implementation
-    // In production, you would store the user's Google access token and use it here
-    
+    let accessToken = profile.google_access_token;
+
+    // Check if token is expired and refresh if needed
+    if (profile.google_token_expiry && profile.google_refresh_token) {
+      const expiry = new Date(profile.google_token_expiry);
+      const now = new Date();
+      
+      if (now >= expiry) {
+        console.log("Token expired, refreshing...");
+        const refreshResult = await refreshGoogleToken(
+          profile.google_refresh_token,
+          googleClientId,
+          googleClientSecret
+        );
+
+        if (refreshResult.error) {
+          console.error("Token refresh failed:", refreshResult);
+          // Clear the connection since tokens are invalid
+          await supabase
+            .from("profiles")
+            .update({
+              google_calendar_connected: false,
+              google_access_token: null,
+              google_refresh_token: null,
+              google_token_expiry: null,
+            })
+            .eq("user_id", user.id);
+
+          return new Response(
+            JSON.stringify({ error: "Google authorization expired. Please reconnect.", events: [] }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        accessToken = refreshResult.access_token;
+
+        // Update stored tokens
+        const newExpiry = new Date();
+        newExpiry.setSeconds(newExpiry.getSeconds() + (refreshResult.expires_in || 3600));
+
+        await supabase
+          .from("profiles")
+          .update({
+            google_access_token: accessToken,
+            google_token_expiry: newExpiry.toISOString(),
+          })
+          .eq("user_id", user.id);
+      }
+    }
+
+    // Fetch calendar events
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfWeek = new Date(today);
     endOfWeek.setDate(endOfWeek.getDate() + 7);
 
-    // Get existing meetings from database to show as calendar events
-    const { data: meetings, error: meetingsError } = await supabase
-      .from("meetings")
-      .select("*")
-      .eq("user_id", user.id)
-      .gte("start_time", today.toISOString())
-      .lte("start_time", endOfWeek.toISOString())
-      .order("start_time", { ascending: true });
+    const calendarUrl = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
+    calendarUrl.searchParams.set("timeMin", today.toISOString());
+    calendarUrl.searchParams.set("timeMax", endOfWeek.toISOString());
+    calendarUrl.searchParams.set("singleEvents", "true");
+    calendarUrl.searchParams.set("orderBy", "startTime");
+    calendarUrl.searchParams.set("maxResults", "50");
 
-    if (meetingsError) {
-      console.error("Error fetching meetings:", meetingsError);
-    }
+    const calendarResponse = await fetch(calendarUrl.toString(), {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
 
-    // Transform meetings to calendar event format
-    const events = (meetings || []).map(meeting => ({
-      id: meeting.id,
-      title: meeting.title,
-      start: meeting.start_time,
-      end: meeting.end_time || new Date(new Date(meeting.start_time).getTime() + 60 * 60 * 1000).toISOString(),
-      meetingLink: meeting.meeting_link,
-      source: meeting.source || "manual",
-      status: meeting.status,
-    }));
-
-    // Add sample upcoming meetings if calendar is connected but no events exist
-    // This helps demonstrate the feature
-    if (events.length === 0 && profile?.google_calendar_connected) {
-      const sampleEvents = [
-        {
-          id: "sample-1",
-          title: "Team Standup",
-          start: new Date(today.getTime() + 10 * 60 * 60 * 1000).toISOString(), // 10 AM today
-          end: new Date(today.getTime() + 10.5 * 60 * 60 * 1000).toISOString(),
-          meetingLink: "https://meet.google.com/abc-defg-hij",
-          source: "google_calendar",
-          status: "scheduled",
-        },
-        {
-          id: "sample-2", 
-          title: "Product Review",
-          start: new Date(today.getTime() + 14 * 60 * 60 * 1000).toISOString(), // 2 PM today
-          end: new Date(today.getTime() + 15 * 60 * 60 * 1000).toISOString(),
-          meetingLink: "https://meet.google.com/xyz-uvwx-rst",
-          source: "google_calendar",
-          status: "scheduled",
-        },
-        {
-          id: "sample-3",
-          title: "1:1 with Manager",
-          start: new Date(today.getTime() + (24 + 11) * 60 * 60 * 1000).toISOString(), // 11 AM tomorrow
-          end: new Date(today.getTime() + (24 + 11.5) * 60 * 60 * 1000).toISOString(),
-          meetingLink: null,
-          source: "google_calendar",
-          status: "scheduled",
-        },
-        {
-          id: "sample-4",
-          title: "Sprint Planning",
-          start: new Date(today.getTime() + (48 + 10) * 60 * 60 * 1000).toISOString(), // Day after tomorrow
-          end: new Date(today.getTime() + (48 + 12) * 60 * 60 * 1000).toISOString(),
-          meetingLink: "https://zoom.us/j/123456789",
-          source: "google_calendar",
-          status: "scheduled",
-        },
-      ];
+    if (!calendarResponse.ok) {
+      const errorText = await calendarResponse.text();
+      console.error("Calendar API error:", calendarResponse.status, errorText);
       
+      if (calendarResponse.status === 401) {
+        // Token invalid, clear connection
+        await supabase
+          .from("profiles")
+          .update({
+            google_calendar_connected: false,
+            google_access_token: null,
+            google_refresh_token: null,
+            google_token_expiry: null,
+          })
+          .eq("user_id", user.id);
+
+        return new Response(
+          JSON.stringify({ error: "Google authorization invalid. Please reconnect.", events: [] }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       return new Response(
-        JSON.stringify({ events: sampleEvents, isSample: true }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Failed to fetch calendar events", events: [] }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const calendarData = await calendarResponse.json();
+
+    // Transform Google Calendar events to our format
+    const events = (calendarData.items || []).map((item: any) => ({
+      id: item.id,
+      title: item.summary || "Untitled Event",
+      start: item.start?.dateTime || item.start?.date,
+      end: item.end?.dateTime || item.end?.date,
+      meetingLink: item.hangoutLink || item.conferenceData?.entryPoints?.[0]?.uri || null,
+      source: "google_calendar",
+      status: "scheduled",
+      description: item.description || null,
+      location: item.location || null,
+    }));
 
     return new Response(
       JSON.stringify({ events, isSample: false }),
@@ -148,7 +199,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("Sync calendar error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error", events: [] }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

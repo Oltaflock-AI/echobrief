@@ -115,7 +115,10 @@ export type Database = {
           created_at: string
           email: string | null
           full_name: string | null
+          google_access_token: string | null
           google_calendar_connected: boolean | null
+          google_refresh_token: string | null
+          google_token_expiry: string | null
           id: string
           slack_channel_id: string | null
           slack_channel_name: string | null
@@ -128,7 +131,10 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name?: string | null
+          google_access_token?: string | null
           google_calendar_connected?: boolean | null
+          google_refresh_token?: string | null
+          google_token_expiry?: string | null
           id?: string
           slack_channel_id?: string | null
           slack_channel_name?: string | null
@@ -141,7 +147,10 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name?: string | null
+          google_access_token?: string | null
           google_calendar_connected?: boolean | null
+          google_refresh_token?: string | null
+          google_token_expiry?: string | null
           id?: string
           slack_channel_id?: string | null
           slack_channel_name?: string | null
