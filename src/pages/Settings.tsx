@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,6 +26,9 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+
 interface Profile {
   id: string;
   full_name: string | null;
@@ -37,7 +40,7 @@ interface Profile {
 }
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { toast } = useToast();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,9 +53,60 @@ export default function Settings() {
   const [slackChannelName, setSlackChannelName] = useState('');
   const [connectingSlack, setConnectingSlack] = useState(false);
 
-  // Google Calendar connection dialog
-  const [googleDialogOpen, setGoogleDialogOpen] = useState(false);
+  // Google Calendar connection
   const [connectingGoogle, setConnectingGoogle] = useState(false);
+
+  // Handle OAuth callback code from URL
+  const handleOAuthCallback = useCallback(async (code: string) => {
+    if (!session?.access_token) return;
+    
+    setConnectingGoogle(true);
+    try {
+      const redirectUri = `${window.location.origin}/settings`;
+      
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/google-oauth-callback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ code, redirectUri }),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to connect Google Calendar');
+      }
+
+      setProfile(prev => prev ? { ...prev, google_calendar_connected: true } : null);
+      toast({
+        title: 'Connected!',
+        description: 'Google Calendar is now syncing your events',
+      });
+      
+      // Clean up URL
+      window.history.replaceState({}, '', '/settings');
+    } catch (error: any) {
+      console.error('OAuth callback error:', error);
+      toast({
+        title: 'Connection Failed',
+        description: error.message || 'Failed to connect Google Calendar',
+        variant: 'destructive',
+      });
+    } finally {
+      setConnectingGoogle(false);
+    }
+  }, [session, toast]);
+
+  useEffect(() => {
+    // Check for OAuth callback code in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    if (code && session) {
+      handleOAuthCallback(code);
+    }
+  }, [session, handleOAuthCallback]);
 
   useEffect(() => {
     if (!user) return;
@@ -165,31 +219,28 @@ export default function Settings() {
     }
   };
 
-  const handleConnectGoogle = async () => {
-    if (!user) return;
-
-    setConnectingGoogle(true);
-    // For now, we just mark as connected - full OAuth would require additional setup
-    const { error } = await supabase
-      .from('profiles')
-      .update({ google_calendar_connected: true })
-      .eq('user_id', user.id);
-
-    if (error) {
+  const handleConnectGoogle = () => {
+    if (!GOOGLE_CLIENT_ID) {
       toast({
-        title: 'Error',
-        description: 'Failed to connect Google Calendar',
+        title: 'Configuration Error',
+        description: 'Google Client ID is not configured',
         variant: 'destructive',
       });
-    } else {
-      setProfile(prev => prev ? { ...prev, google_calendar_connected: true } : null);
-      toast({
-        title: 'Connected!',
-        description: 'Google Calendar integration is now active',
-      });
-      setGoogleDialogOpen(false);
+      return;
     }
-    setConnectingGoogle(false);
+
+    const redirectUri = `${window.location.origin}/settings`;
+    const scope = 'https://www.googleapis.com/auth/calendar.readonly';
+    
+    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+    authUrl.searchParams.set('redirect_uri', redirectUri);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('scope', scope);
+    authUrl.searchParams.set('access_type', 'offline');
+    authUrl.searchParams.set('prompt', 'consent');
+    
+    window.location.href = authUrl.toString();
   };
 
   const handleDisconnectGoogle = async () => {
@@ -197,7 +248,12 @@ export default function Settings() {
 
     const { error } = await supabase
       .from('profiles')
-      .update({ google_calendar_connected: false })
+      .update({ 
+        google_calendar_connected: false,
+        google_access_token: null,
+        google_refresh_token: null,
+        google_token_expiry: null,
+      })
       .eq('user_id', user.id);
 
     if (error) {
@@ -304,16 +360,21 @@ export default function Settings() {
                 <Button 
                   variant="outline" 
                   className="gap-2"
+                  disabled={connectingGoogle}
                   onClick={() => {
                     if (profile?.google_calendar_connected) {
                       handleDisconnectGoogle();
                     } else {
-                      setGoogleDialogOpen(true);
+                      handleConnectGoogle();
                     }
                   }}
                 >
-                  <ExternalLink className="w-4 h-4" />
-                  {profile?.google_calendar_connected ? 'Disconnect' : 'Connect'}
+                  {connectingGoogle ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ExternalLink className="w-4 h-4" />
+                  )}
+                  {connectingGoogle ? 'Connecting...' : profile?.google_calendar_connected ? 'Disconnect' : 'Connect'}
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground mt-4">
@@ -464,34 +525,6 @@ export default function Settings() {
         </DialogContent>
       </Dialog>
 
-      {/* Google Calendar Connection Dialog */}
-      <Dialog open={googleDialogOpen} onOpenChange={setGoogleDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
-              Connect Google Calendar
-            </DialogTitle>
-            <DialogDescription>
-              Your Google OAuth credentials have been configured. Click connect to enable calendar sync.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-muted-foreground">
-              Once connected, Echo Brief will automatically detect your upcoming meetings and remind you to start recording.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setGoogleDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleConnectGoogle} disabled={connectingGoogle}>
-              {connectingGoogle && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-              Connect
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </DashboardLayout>
   );
 }
