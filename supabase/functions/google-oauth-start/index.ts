@@ -12,7 +12,18 @@ serve(async (req) => {
   }
 
   try {
-    const { returnTo } = await req.json();
+    const body = await req.json().catch(() => ({} as any));
+    const returnTo = typeof body?.returnTo === "string" ? body.returnTo : undefined;
+    const origin = (
+      typeof body?.origin === "string" ? body.origin : req.headers.get("origin") || ""
+    ).trim();
+
+    if (!origin) {
+      return new Response(
+        JSON.stringify({ error: "Missing origin" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
     if (!googleClientId) {
@@ -55,6 +66,7 @@ serve(async (req) => {
         state,
         user_id: user.id,
         return_to: returnTo || "/settings",
+        origin,
       });
 
     if (insertError) {

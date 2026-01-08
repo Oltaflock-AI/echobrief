@@ -12,8 +12,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Default frontend URL - will be overridden by state lookup
-    let frontendUrl = "https://wpczgwxsriezaubncuom.lovableproject.com";
+    let frontendUrl: string | null = null;
     let returnTo = "/settings";
 
     // Look up the state to get user_id and return_to
@@ -26,13 +25,22 @@ serve(async (req) => {
 
       if (stateError || !stateData) {
         console.error("Invalid or expired state:", stateError);
-        return new Response(null, {
-          status: 302,
-          headers: { Location: `${frontendUrl}/settings?error=invalid_state` },
+        return new Response("Invalid or expired session. Please return to the app and try again.", {
+          status: 400,
+          headers: { "Content-Type": "text/plain" },
         });
       }
 
+      frontendUrl = stateData.origin || null;
       returnTo = stateData.return_to || "/settings";
+
+      if (!frontendUrl) {
+        await supabase.from("google_oauth_states").delete().eq("state", state);
+        return new Response("Missing origin. Please start the connection from the app again.", {
+          status: 400,
+          headers: { "Content-Type": "text/plain" },
+        });
+      }
 
       // Check if state is expired (older than 10 minutes)
       const createdAt = new Date(stateData.created_at);
@@ -135,16 +143,15 @@ serve(async (req) => {
       });
     }
 
-    // No state provided
-    return new Response(null, {
-      status: 302,
-      headers: { Location: `${frontendUrl}/settings?error=no_state` },
+    return new Response("Missing state. Please return to the app and try again.", {
+      status: 400,
+      headers: { "Content-Type": "text/plain" },
     });
   } catch (error) {
     console.error("Google OAuth redirect error:", error);
-    return new Response(null, {
-      status: 302,
-      headers: { Location: "https://wpczgwxsriezaubncuom.lovableproject.com/settings?error=server_error" },
+    return new Response("Server error. Please return to the app and try again.", {
+      status: 500,
+      headers: { "Content-Type": "text/plain" },
     });
   }
 });

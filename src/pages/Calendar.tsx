@@ -129,7 +129,7 @@ export default function CalendarPage() {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ returnTo: '/calendar' }),
+        body: JSON.stringify({ returnTo: '/calendar', origin: window.location.origin }),
       });
 
       const data = await response.json();

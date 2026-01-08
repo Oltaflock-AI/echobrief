@@ -227,7 +227,7 @@ export default function Settings() {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ returnTo: '/settings' }),
+        body: JSON.stringify({ returnTo: '/settings', origin: window.location.origin }),
       });
 
       const data = await response.json();
