@@ -34,6 +34,7 @@ export default function CalendarPage() {
   const [isConnected, setIsConnected] = useState(false);
   const [isSampleData, setIsSampleData] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
 
   const handleOAuthCallback = useCallback(async (code: string) => {
     if (!session?.access_token) return;
@@ -123,12 +124,10 @@ export default function CalendarPage() {
   };
 
   const initiateGoogleOAuth = () => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    
-    if (!clientId) {
+    if (!googleClientId) {
       toast({
         title: 'Configuration Error',
-        description: 'Google Client ID is not configured. Please add VITE_GOOGLE_CLIENT_ID to your environment.',
+        description: 'Google Client ID is not configured',
         variant: 'destructive',
       });
       return;
@@ -136,7 +135,7 @@ export default function CalendarPage() {
 
     const redirectUri = `${window.location.origin}/calendar`;
     const params = new URLSearchParams({
-      client_id: clientId,
+      client_id: googleClientId,
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: GOOGLE_CALENDAR_SCOPES,
@@ -146,6 +145,22 @@ export default function CalendarPage() {
 
     window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   };
+
+  // Fetch Google Client ID on mount
+  useEffect(() => {
+    const fetchGoogleClientId = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-google-client-id`);
+        const data = await response.json();
+        if (data.clientId) {
+          setGoogleClientId(data.clientId);
+        }
+      } catch (error) {
+        console.error('Failed to fetch Google Client ID:', error);
+      }
+    };
+    fetchGoogleClientId();
+  }, []);
 
   useEffect(() => {
     // Check for OAuth callback code

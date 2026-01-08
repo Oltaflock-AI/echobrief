@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.google-oauth-callback]
 verify_jwt = false
+
+[functions.get-google-client-id]
+verify_jwt = false
