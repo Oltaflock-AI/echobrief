@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 interface Profile {
@@ -55,6 +54,7 @@ export default function Settings() {
 
   // Google Calendar connection
   const [connectingGoogle, setConnectingGoogle] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
 
   // Handle OAuth callback code from URL
   const handleOAuthCallback = useCallback(async (code: string) => {
@@ -107,6 +107,22 @@ export default function Settings() {
       handleOAuthCallback(code);
     }
   }, [session, handleOAuthCallback]);
+
+  // Fetch Google Client ID on mount
+  useEffect(() => {
+    const fetchGoogleClientId = async () => {
+      try {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/get-google-client-id`);
+        const data = await response.json();
+        if (data.clientId) {
+          setGoogleClientId(data.clientId);
+        }
+      } catch (error) {
+        console.error('Failed to fetch Google Client ID:', error);
+      }
+    };
+    fetchGoogleClientId();
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -220,7 +236,7 @@ export default function Settings() {
   };
 
   const handleConnectGoogle = () => {
-    if (!GOOGLE_CLIENT_ID) {
+    if (!googleClientId) {
       toast({
         title: 'Configuration Error',
         description: 'Google Client ID is not configured',
@@ -233,7 +249,7 @@ export default function Settings() {
     const scope = 'https://www.googleapis.com/auth/calendar.readonly';
     
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-    authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+    authUrl.searchParams.set('client_id', googleClientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('scope', scope);
