@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { Mic } from 'lucide-react';
+import echoBriefLogo from '@/assets/echobrief-logo.png';
 
 export function Navbar() {
   return (
@@ -9,10 +9,8 @@ export function Navbar() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-              <Mic className="w-4 h-4 text-accent-foreground" />
-            </div>
-            <span className="text-lg font-bold text-white">Echo Brief</span>
+            <img src={echoBriefLogo} alt="EchoBrief" className="h-10 w-10 rounded-lg object-cover" />
+            <span className="text-lg font-bold text-white">EchoBrief</span>
           </Link>
 
           {/* CTA */}

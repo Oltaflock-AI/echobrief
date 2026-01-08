@@ -1,6 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
 import { 
-  Mic, 
   LayoutDashboard, 
   Video, 
   Settings, 
@@ -11,6 +10,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import echoBriefLogo from '@/assets/echobrief-logo.png';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
@@ -28,10 +28,8 @@ export function Sidebar() {
       {/* Logo */}
       <div className="p-6 border-b border-sidebar-border">
         <Link to="/dashboard" className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-sidebar-primary flex items-center justify-center">
-            <Mic className="w-5 h-5 text-sidebar-primary-foreground" />
-          </div>
-          <span className="text-xl font-bold text-sidebar-foreground">Echo Brief</span>
+          <img src={echoBriefLogo} alt="Echo Brief" className="w-10 h-10 rounded-xl object-cover" />
+          <span className="text-xl font-bold text-sidebar-foreground">EchoBrief</span>
         </Link>
       </div>
 

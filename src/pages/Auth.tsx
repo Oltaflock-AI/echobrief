@@ -4,8 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { Mic, Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import echoBriefLogo from '@/assets/echobrief-logo.png';
+
+const ALLOWED_EMAIL_DOMAIN = 'oltaflock.ai';
 
 export default function Auth() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -23,11 +26,17 @@ export default function Auth() {
 
     try {
       if (isSignUp) {
+        // Validate email domain for signup
+        const emailDomain = email.split('@')[1]?.toLowerCase();
+        if (emailDomain !== ALLOWED_EMAIL_DOMAIN) {
+          throw new Error(`Only @${ALLOWED_EMAIL_DOMAIN} email addresses are allowed to sign up.`);
+        }
+        
         const { error } = await signUp(email, password, fullName);
         if (error) throw error;
         toast({
           title: 'Account created!',
-          description: 'Welcome to Echo Brief. Let\'s get started.',
+          description: 'Welcome to EchoBrief. Let\'s get started.',
         });
       } else {
         const { error } = await signIn(email, password);
@@ -56,10 +65,8 @@ export default function Auth() {
         
         <div className="relative z-10 flex flex-col justify-center p-12">
           <Link to="/" className="flex items-center gap-3 mb-12">
-            <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center">
-              <Mic className="w-6 h-6 text-accent-foreground" />
-            </div>
-            <span className="text-2xl font-bold text-white">Echo Brief</span>
+            <img src={echoBriefLogo} alt="EchoBrief" className="w-12 h-12 rounded-xl object-cover" />
+            <span className="text-2xl font-bold text-white">EchoBrief</span>
           </Link>
 
           <h1 className="text-4xl font-bold text-white mb-4">
@@ -76,10 +83,8 @@ export default function Auth() {
         <div className="w-full max-w-md">
           {/* Mobile Logo */}
           <Link to="/" className="flex lg:hidden items-center gap-2 mb-8 justify-center">
-            <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center">
-              <Mic className="w-5 h-5 text-accent-foreground" />
-            </div>
-            <span className="text-xl font-bold text-foreground">Echo Brief</span>
+            <img src={echoBriefLogo} alt="EchoBrief" className="w-10 h-10 rounded-lg object-cover" />
+            <span className="text-xl font-bold text-foreground">EchoBrief</span>
           </Link>
 
           <div className="text-center mb-8">
