@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.get-google-client-id]
 verify_jwt = false
+
+[functions.google-oauth-start]
+verify_jwt = false
+
+[functions.google-oauth-redirect]
+verify_jwt = false

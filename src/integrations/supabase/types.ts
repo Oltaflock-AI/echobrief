@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      google_oauth_states: {
+        Row: {
+          created_at: string
+          id: string
+          return_to: string
+          state: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          return_to?: string
+          state: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          return_to?: string
+          state?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       meeting_insights: {
         Row: {
           action_items: Json | null

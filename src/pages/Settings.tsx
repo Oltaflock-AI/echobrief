@@ -54,75 +54,49 @@ export default function Settings() {
 
   // Google Calendar connection
   const [connectingGoogle, setConnectingGoogle] = useState(false);
-  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
 
-  // Handle OAuth callback code from URL
-  const handleOAuthCallback = useCallback(async (code: string) => {
-    if (!session?.access_token) return;
-    
-    setConnectingGoogle(true);
-    try {
-      const redirectUri = `${window.location.origin}/settings`;
-      
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/google-oauth-callback`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ code, redirectUri }),
-      });
+  // Handle success/error from backend OAuth redirect
+  const handleOAuthResult = useCallback(async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const googleConnected = urlParams.get('google_connected');
+    const error = urlParams.get('error');
 
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to connect Google Calendar');
-      }
-
+    if (googleConnected === 'true') {
       setProfile(prev => prev ? { ...prev, google_calendar_connected: true } : null);
       toast({
         title: 'Connected!',
         description: 'Google Calendar is now syncing your events',
       });
-      
-      // Clean up URL
       window.history.replaceState({}, '', '/settings');
-    } catch (error: any) {
-      console.error('OAuth callback error:', error);
+    } else if (error) {
+      const errorMessages: Record<string, string> = {
+        invalid_state: 'Session expired. Please try again.',
+        expired_state: 'Session expired. Please try again.',
+        access_denied: 'Access was denied. Please try again.',
+        no_code: 'Authorization failed. Please try again.',
+        server_config: 'Server configuration error. Please contact support.',
+        save_failed: 'Failed to save credentials. Please try again.',
+        server_error: 'Server error. Please try again.',
+      };
       toast({
         title: 'Connection Failed',
-        description: error.message || 'Failed to connect Google Calendar',
+        description: errorMessages[error] || `Failed to connect: ${error}`,
         variant: 'destructive',
       });
-    } finally {
-      setConnectingGoogle(false);
+      window.history.replaceState({}, '', '/settings');
     }
-  }, [session, toast]);
+    setConnectingGoogle(false);
+  }, [toast]);
 
   useEffect(() => {
-    // Check for OAuth callback code in URL
+    // Check for OAuth result from backend redirect
     const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    if (code && session) {
-      handleOAuthCallback(code);
+    const googleConnected = urlParams.get('google_connected');
+    const error = urlParams.get('error');
+    if (googleConnected || error) {
+      handleOAuthResult();
     }
-  }, [session, handleOAuthCallback]);
-
-  // Fetch Google Client ID on mount
-  useEffect(() => {
-    const fetchGoogleClientId = async () => {
-      try {
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/get-google-client-id`);
-        const data = await response.json();
-        if (data.clientId) {
-          setGoogleClientId(data.clientId);
-        }
-      } catch (error) {
-        console.error('Failed to fetch Google Client ID:', error);
-      }
-    };
-    fetchGoogleClientId();
-  }, []);
+  }, [handleOAuthResult]);
 
   useEffect(() => {
     if (!user) return;
@@ -235,28 +209,45 @@ export default function Settings() {
     }
   };
 
-  const handleConnectGoogle = () => {
-    if (!googleClientId) {
+  const handleConnectGoogle = async () => {
+    if (!session?.access_token) {
       toast({
-        title: 'Configuration Error',
-        description: 'Google Client ID is not configured',
+        title: 'Error',
+        description: 'Please sign in to connect Google Calendar',
         variant: 'destructive',
       });
       return;
     }
 
-    const redirectUri = `${window.location.origin}/settings`;
-    const scope = 'https://www.googleapis.com/auth/calendar.readonly';
-    
-    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-    authUrl.searchParams.set('client_id', googleClientId);
-    authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('scope', scope);
-    authUrl.searchParams.set('access_type', 'offline');
-    authUrl.searchParams.set('prompt', 'consent');
-    
-    window.location.href = authUrl.toString();
+    setConnectingGoogle(true);
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/google-oauth-start`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ returnTo: '/settings' }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    } catch (err) {
+      console.error('Failed to start OAuth:', err);
+      toast({
+        title: 'Connection Error',
+        description: err instanceof Error ? err.message : 'Failed to start Google connection',
+        variant: 'destructive',
+      });
+      setConnectingGoogle(false);
+    }
   };
 
   const handleDisconnectGoogle = async () => {
