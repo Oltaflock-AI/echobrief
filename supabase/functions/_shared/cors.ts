@@ -2,8 +2,12 @@
 // Only allows requests from the production app and local development
 
 const ALLOWED_ORIGINS = [
-  // Production
+  // Production - custom domain
+  "https://echobrief.lovable.app",
+  // Production - project URL
   "https://zuljmldniwynmnilnffu.lovableproject.com",
+  // Preview URLs (dynamic subdomains)
+  "https://a66dce5b-0d54-4748-a8dd-c5eb8e39a3f8.lovableproject.com",
   // Local development
   "http://localhost:5173",
   "http://localhost:3000",
