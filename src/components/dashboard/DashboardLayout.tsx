@@ -1,6 +1,7 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { PageTransition } from './PageTransition';
 import { cn } from '@/lib/utils';
 
 interface DashboardLayoutProps {
@@ -23,15 +24,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background page-gradient">
       <Sidebar onCollapsedChange={setSidebarCollapsed} />
       <div className={cn(
-        "min-h-screen transition-all duration-200",
+        "min-h-screen transition-all duration-200 relative z-10",
         sidebarCollapsed ? "ml-14" : "ml-56"
       )}>
         <Header />
-        <main className="animate-in">
-          {children}
+        <main>
+          <PageTransition>
+            {children}
+          </PageTransition>
         </main>
       </div>
     </div>

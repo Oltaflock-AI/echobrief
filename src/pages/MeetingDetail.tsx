@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
+import { SlackDeliverySelector } from '@/components/dashboard/SlackDeliverySelector';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Meeting, Transcript, MeetingInsights } from '@/types/meeting';
@@ -19,11 +21,18 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ArrowLeft, Calendar, Clock, Loader2, ChevronRight, Trash2, Users } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Loader2, ChevronRight, Trash2, Users, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+
+interface SpeakerSegment {
+  speaker: string;
+  text: string;
+  start?: number;
+  end?: number;
+}
 
 interface Attendee {
   email: string;
@@ -34,16 +43,22 @@ interface Attendee {
 
 export default function MeetingDetail() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
+  const [speakerSegments, setSpeakerSegments] = useState<SpeakerSegment[]>([]);
   const [insights, setInsights] = useState<MeetingInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [slackDialogOpen, setSlackDialogOpen] = useState(false);
+  const [slackChannelId, setSlackChannelId] = useState<string | undefined>();
+  const [slackChannelName, setSlackChannelName] = useState<string | undefined>();
+
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
   useEffect(() => {
     if (!user || !id) return;
@@ -76,6 +91,11 @@ export default function MeetingDetail() {
             speakers: (transcriptData.speakers as any) || [],
             word_timestamps: (transcriptData.word_timestamps as any) || [],
           } as Transcript);
+          
+          // Set speaker segments if available
+          if (transcriptData.speakers && Array.isArray(transcriptData.speakers)) {
+            setSpeakerSegments(transcriptData.speakers as unknown as SpeakerSegment[]);
+          }
         }
 
         const { data: insightsData } = await supabase
@@ -95,6 +115,18 @@ export default function MeetingDetail() {
             summary_short: insightsData.summary_short || '',
             summary_detailed: insightsData.summary_detailed || '',
           } as MeetingInsights);
+        }
+
+        // Get Slack settings
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('slack_channel_id, slack_channel_name')
+          .eq('user_id', user.id)
+          .single();
+
+        if (profile) {
+          setSlackChannelId(profile.slack_channel_id || undefined);
+          setSlackChannelName(profile.slack_channel_name || undefined);
         }
       }
 
@@ -155,6 +187,41 @@ export default function MeetingDetail() {
     return '??';
   };
 
+  const handleSendToSlack = async (destination: { type: 'dm' | 'channel'; channelId: string; channelName?: string }) => {
+    if (!meeting || !session?.access_token) return;
+
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/process-meeting`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          meetingId: meeting.id,
+          slackDestination: destination,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.slackSent) {
+        toast({
+          title: 'Sent to Slack',
+          description: `Summary sent to ${destination.channelName || destination.channelId}`,
+        });
+      } else {
+        throw new Error('Failed to send');
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to send summary to Slack',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (loading) {
     return (
       <DashboardLayout>
@@ -198,35 +265,55 @@ export default function MeetingDetail() {
             Back
           </Link>
           
-          {/* Delete button */}
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
-                <Trash2 className="w-4 h-4 mr-1" />
-                Delete
+          <div className="flex items-center gap-2">
+            {/* Send to Slack button */}
+            {insights && (
+              <Button variant="outline" size="sm" onClick={() => setSlackDialogOpen(true)}>
+                <Send className="w-4 h-4 mr-1" />
+                Send to Slack
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete Meeting</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently delete this meeting, including its transcript, insights, and audio recording. This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction 
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            )}
+            
+            {/* Delete button */}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
+                  <Trash2 className="w-4 h-4 mr-1" />
                   Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Meeting</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete this meeting, including its transcript, insights, and audio recording. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
+
+        {/* Slack Delivery Selector */}
+        <SlackDeliverySelector
+          open={slackDialogOpen}
+          onOpenChange={setSlackDialogOpen}
+          meetingTitle={meeting.title}
+          defaultChannel={slackChannelId}
+          defaultChannelName={slackChannelName}
+          onSend={handleSendToSlack}
+        />
 
         {/* Title */}
         <h1 className="text-2xl font-semibold text-foreground mb-2">{meeting.title}</h1>

@@ -4,6 +4,13 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+/* Subtle gradient overlays */
+:root {
+  --gradient-light: radial-gradient(ellipse at top left, rgba(76, 125, 255, 0.04), transparent 50%),
+                    radial-gradient(ellipse at bottom right, rgba(76, 125, 255, 0.02), transparent 50%);
+  --gradient-dark: radial-gradient(ellipse at top left, rgba(76, 125, 255, 0.08), transparent 50%),
+                   radial-gradient(ellipse at bottom right, rgba(0, 0, 0, 0), transparent 50%);
+}
 @layer base {
   :root {
     /* Light Mode - Clean, Notion-inspired */
@@ -414,5 +421,41 @@
   /* Theme transition */
   .theme-transition {
     transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+
+  /* Page gradient background - subtle and premium */
+  .page-gradient {
+    position: relative;
+  }
+
+  .page-gradient::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    background: var(--gradient-light);
+    z-index: 0;
+  }
+
+  .dark .page-gradient::before {
+    background: var(--gradient-dark);
+  }
+
+  /* Speaker label styling */
+  .speaker-label {
+    @apply inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full;
+    @apply bg-accent/10 text-accent mr-2;
+  }
+
+  /* Transcript segment */
+  .transcript-segment {
+    @apply py-3 border-b border-border/50 last:border-0;
+  }
+
+  .transcript-segment:hover {
+    @apply bg-secondary/30 -mx-3 px-3 rounded-md border-transparent;
   }
 }

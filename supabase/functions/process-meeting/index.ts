@@ -7,13 +7,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface SpeakerSegment {
+  speaker: string;
+  text: string;
+  start?: number;
+  end?: number;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { meetingId } = await req.json();
+    const { meetingId, slackDestination } = await req.json();
     
     if (!meetingId) {
       return new Response(
@@ -57,8 +64,10 @@ serve(async (req) => {
       .eq("id", meetingId);
 
     let transcript = "";
+    let speakerSegments: SpeakerSegment[] = [];
+    let wordTimestamps: any[] = [];
 
-    // If there's an audio file, transcribe it
+    // If there's an audio file, transcribe it with speaker detection
     if (meeting.audio_url) {
       try {
         // Download the audio file
@@ -74,7 +83,7 @@ serve(async (req) => {
         // Convert to File for OpenAI
         const audioFile = new File([audioData], "audio.webm", { type: "audio/webm" });
 
-        // Transcribe with Whisper
+        // Transcribe with Whisper - using verbose_json for timestamps
         const transcription = await openai.audio.transcriptions.create({
           file: audioFile,
           model: "whisper-1",
@@ -83,6 +92,75 @@ serve(async (req) => {
         });
 
         transcript = transcription.text;
+        wordTimestamps = (transcription as any).words || [];
+
+        // Extract segments for speaker attribution
+        const segments = (transcription as any).segments || [];
+        
+        // Format attendees for speaker matching
+        const attendeesList = (meeting.attendees || [])
+          .map((a: any) => a.displayName || a.email?.split('@')[0])
+          .filter(Boolean);
+
+        // Use AI to attribute speakers to segments
+        if (segments.length > 0 && attendeesList.length > 0) {
+          const speakerPrompt = `Given a meeting with these participants: ${attendeesList.join(', ')}
+
+Analyze these transcript segments and identify which participant is most likely speaking in each segment based on context, speaking style, and content. If you can't confidently identify a speaker, use "Speaker 1", "Speaker 2", etc.
+
+Segments:
+${segments.map((s: any, i: number) => `[${i}] "${s.text}"`).join('\n')}
+
+Respond with a JSON array where each element has:
+- "segment_index": the segment number
+- "speaker": the participant name or "Speaker N"
+- "confidence": "high", "medium", or "low"
+
+Only include segments where you can make a reasonable attribution.`;
+
+          try {
+            const speakerAttribution = await openai.chat.completions.create({
+              model: "gpt-4o-mini",
+              messages: [
+                {
+                  role: "system",
+                  content: "You are an expert at identifying speakers in meeting transcripts. Be conservative - only attribute speakers when you're reasonably confident."
+                },
+                { role: "user", content: speakerPrompt }
+              ],
+              response_format: { type: "json_object" },
+            });
+
+            const attributionText = speakerAttribution.choices[0]?.message?.content || "{}";
+            const attributions = JSON.parse(attributionText);
+            const attributionMap = new Map();
+            
+            if (Array.isArray(attributions.speakers)) {
+              attributions.speakers.forEach((a: any) => {
+                if (a.confidence !== "low") {
+                  attributionMap.set(a.segment_index, a.speaker);
+                }
+              });
+            }
+
+            // Build speaker segments with attribution
+            speakerSegments = segments.map((s: any, i: number) => ({
+              speaker: attributionMap.get(i) || `Speaker ${(i % 2) + 1}`,
+              text: s.text,
+              start: s.start,
+              end: s.end,
+            }));
+          } catch (speakerError) {
+            console.error("Speaker attribution error:", speakerError);
+            // Fallback to alternating speakers
+            speakerSegments = segments.map((s: any, i: number) => ({
+              speaker: `Speaker ${(i % 2) + 1}`,
+              text: s.text,
+              start: s.start,
+              end: s.end,
+            }));
+          }
+        }
 
         // Check if transcript already exists for this meeting
         const { data: existingTranscript } = await supabase
@@ -92,17 +170,16 @@ serve(async (req) => {
           .single();
 
         if (!existingTranscript) {
-          // Save transcript only if it doesn't exist
+          // Save transcript with speaker segments
           await supabase.from("transcripts").insert({
             meeting_id: meetingId,
             content: transcript,
-            speakers: [],
-            word_timestamps: (transcription as any).words || [],
+            speakers: speakerSegments,
+            word_timestamps: wordTimestamps,
           });
         }
       } catch (transcribeError) {
         console.error("Transcription error:", transcribeError);
-        // Continue with empty transcript if transcription fails
         transcript = "Transcription failed. Please check the audio file.";
       }
     }
@@ -115,31 +192,36 @@ serve(async (req) => {
       ? `\n\nMEETING PARTICIPANTS:\n${attendeesList.join(', ')}`
       : '';
 
-    // Generate AI insights
+    // Build transcript with speaker labels for better AI analysis
+    const speakerLabeledTranscript = speakerSegments.length > 0
+      ? speakerSegments.map(s => `${s.speaker}: ${s.text}`).join('\n')
+      : transcript;
+
+    // Generate AI insights with speaker awareness
     const insightsPrompt = `Analyze the following meeting transcript and extract structured insights.
 
 MEETING TITLE: ${meeting.title}${attendeesContext}
 
-TRANSCRIPT:
-${transcript || "No transcript available"}
+TRANSCRIPT (with speaker labels where available):
+${speakerLabeledTranscript || "No transcript available"}
 
 Please provide:
-1. A brief summary (2-3 sentences)
-2. A detailed summary (1-2 paragraphs)
-3. Key discussion points (bullet points)
-4. Action items with owners if identifiable (use participant names when possible: ${attendeesList.join(', ') || 'Unknown participants'})
-5. Decisions made
-6. Risks or blockers mentioned
+1. A brief summary (2-3 sentences) that references key speakers by name when discussing their contributions
+2. A detailed summary (1-2 paragraphs) with speaker attribution where relevant
+3. Key discussion points (bullet points) - attribute to speakers when clear
+4. Action items with owners - use actual participant names: ${attendeesList.join(', ') || 'Unknown participants'}. Only assign owners when explicitly mentioned or clearly implied.
+5. Decisions made - note who made or agreed to each decision
+6. Risks or blockers mentioned - attribute to who raised them
 7. Follow-up items with assignees if identifiable
 
 Format your response as JSON with the following structure:
 {
-  "summary_short": "Brief summary here",
-  "summary_detailed": "Detailed summary here",
-  "key_points": ["point 1", "point 2"],
+  "summary_short": "Brief summary referencing speakers",
+  "summary_detailed": "Detailed summary with speaker attribution",
+  "key_points": ["point 1 (noted by Speaker)", "point 2"],
   "action_items": [{"task": "task description", "owner": "person name or null", "priority": "high/medium/low"}],
-  "decisions": ["decision 1", "decision 2"],
-  "risks": ["risk 1", "risk 2"],
+  "decisions": ["Decision made by Speaker about X"],
+  "risks": ["Risk raised by Speaker about Y"],
   "follow_ups": [{"description": "follow up description", "assignee": "person or null"}]
 }`;
 
@@ -148,7 +230,7 @@ Format your response as JSON with the following structure:
       messages: [
         {
           role: "system",
-          content: "You are an expert meeting analyst. Extract actionable insights from meeting transcripts. Always respond with valid JSON.",
+          content: "You are an expert meeting analyst. Extract actionable insights from meeting transcripts. When attributing speakers, only do so when you're confident. If unsure, omit the speaker name. Always respond with valid JSON.",
         },
         { role: "user", content: insightsPrompt },
       ],
@@ -208,81 +290,97 @@ Format your response as JSON with the following structure:
       })
       .eq("id", meetingId);
 
-    // Check if user has Slack connected and send message
+    // Handle Slack delivery based on user choice
+    let slackSent = false;
+    const slackToken = Deno.env.get("SLACK_BOT_TOKEN");
+    
+    // Get user profile for Slack settings
     const { data: profile } = await supabase
       .from("profiles")
       .select("slack_connected, slack_channel_id")
       .eq("user_id", meeting.user_id)
       .single();
 
-    let slackSent = false;
-    console.log("Checking Slack connection:", { slack_connected: profile?.slack_connected, channel_id: profile?.slack_channel_id });
+    // Determine target channel
+    let targetChannelId = null;
+    if (slackDestination) {
+      // User chose where to send
+      if (slackDestination.type === 'dm') {
+        // For DM, we'd need the user's Slack ID - use default channel for now
+        targetChannelId = profile?.slack_channel_id;
+      } else {
+        targetChannelId = slackDestination.channelId;
+      }
+    } else if (profile?.slack_connected && profile?.slack_channel_id) {
+      // Default to saved channel
+      targetChannelId = profile.slack_channel_id;
+    }
+
+    console.log("Slack delivery:", { targetChannelId, slackDestination, hasToken: !!slackToken });
     
-    if (profile?.slack_connected && profile?.slack_channel_id) {
+    if (slackToken && targetChannelId) {
       try {
-        const slackToken = Deno.env.get("SLACK_BOT_TOKEN");
-        console.log("Slack token exists:", !!slackToken);
-        
-        if (slackToken) {
-          // Format and send Slack message directly
-          const actionItems = (insights.action_items || [])
-            .map((item: any) => `• ${item.task}${item.owner ? ` (@${item.owner})` : ""}`)
-            .join("\n") || "None identified";
+        // Format and send Slack message directly
+        const actionItems = (insights.action_items || [])
+          .map((item: any) => `• ${item.task}${item.owner ? ` (@${item.owner})` : ""}`)
+          .join("\n") || "None identified";
 
-          const decisions = (insights.decisions || [])
-            .map((d: string) => `• ${d}`)
-            .join("\n") || "None identified";
+        const decisions = (insights.decisions || [])
+          .map((d: string) => `• ${d}`)
+          .join("\n") || "None identified";
 
-          const keyPoints = (insights.key_points || [])
-            .slice(0, 5)
-            .map((p: string) => `• ${p}`)
-            .join("\n") || "None identified";
+        const keyPoints = (insights.key_points || [])
+          .slice(0, 5)
+          .map((p: string) => `• ${p}`)
+          .join("\n") || "None identified";
 
-          const durationMinutes = Math.round(durationSeconds / 60);
+        const durationMinutes = Math.round(durationSeconds / 60);
+        const participantsList = attendeesList.length > 0 
+          ? `*Participants:* ${attendeesList.join(', ')}\n` 
+          : '';
 
-          const blocks = [
-            {
-              type: "header",
-              text: { type: "plain_text", text: `📝 Meeting Summary: ${meeting.title}`, emoji: true },
-            },
-            {
-              type: "section",
-              text: { type: "mrkdwn", text: `*Duration:* ${durationMinutes} minutes\n*Date:* ${new Date(meeting.start_time).toLocaleDateString()}` },
-            },
-            { type: "divider" },
-            { type: "section", text: { type: "mrkdwn", text: `*Summary*\n${insights.summary_short || "No summary available"}` } },
-            { type: "section", text: { type: "mrkdwn", text: `*🎯 Key Points*\n${keyPoints}` } },
-            { type: "section", text: { type: "mrkdwn", text: `*✅ Action Items*\n${actionItems}` } },
-            { type: "section", text: { type: "mrkdwn", text: `*📋 Decisions*\n${decisions}` } },
-          ];
+        const blocks = [
+          {
+            type: "header",
+            text: { type: "plain_text", text: `📝 Meeting Summary: ${meeting.title}`, emoji: true },
+          },
+          {
+            type: "section",
+            text: { type: "mrkdwn", text: `*Duration:* ${durationMinutes} minutes\n*Date:* ${new Date(meeting.start_time).toLocaleDateString()}\n${participantsList}` },
+          },
+          { type: "divider" },
+          { type: "section", text: { type: "mrkdwn", text: `*Summary*\n${insights.summary_short || "No summary available"}` } },
+          { type: "section", text: { type: "mrkdwn", text: `*🎯 Key Points*\n${keyPoints}` } },
+          { type: "section", text: { type: "mrkdwn", text: `*✅ Action Items*\n${actionItems}` } },
+          { type: "section", text: { type: "mrkdwn", text: `*📋 Decisions*\n${decisions}` } },
+        ];
 
-          const slackResponse = await fetch("https://slack.com/api/chat.postMessage", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${slackToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              channel: profile.slack_channel_id,
-              blocks,
-              text: `Meeting Summary: ${meeting.title}`,
-            }),
-          });
+        const slackResponse = await fetch("https://slack.com/api/chat.postMessage", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${slackToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            channel: targetChannelId,
+            blocks,
+            text: `Meeting Summary: ${meeting.title}`,
+          }),
+        });
 
-          const slackResult = await slackResponse.json();
-          console.log("Slack API response:", JSON.stringify(slackResult));
-          slackSent = slackResult.ok;
+        const slackResult = await slackResponse.json();
+        console.log("Slack API response:", JSON.stringify(slackResult));
+        slackSent = slackResult.ok;
 
-          // Log Slack message
-          await supabase.from("slack_messages").insert({
-            meeting_id: meetingId,
-            channel_id: profile.slack_channel_id,
-            status: slackResult.ok ? "sent" : "failed",
-            message_ts: slackResult.ts || null,
-            sent_at: slackResult.ok ? new Date().toISOString() : null,
-            error_message: slackResult.ok ? null : slackResult.error,
-          });
-        }
+        // Log Slack message
+        await supabase.from("slack_messages").insert({
+          meeting_id: meetingId,
+          channel_id: targetChannelId,
+          status: slackResult.ok ? "sent" : "failed",
+          message_ts: slackResult.ts || null,
+          sent_at: slackResult.ok ? new Date().toISOString() : null,
+          error_message: slackResult.ok ? null : slackResult.error,
+        });
       } catch (slackError) {
         console.error("Slack notification error:", slackError);
       }
@@ -294,6 +392,7 @@ Format your response as JSON with the following structure:
         meetingId,
         hasTranscript: !!transcript,
         hasInsights: true,
+        hasSpeakerSegments: speakerSegments.length > 0,
         slackSent,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
