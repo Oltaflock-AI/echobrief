@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMITS } from "../_shared/rate-limit.ts";
 
 serve(async (req) => {
   const corsResponse = handleCorsPrelight(req);
@@ -8,6 +9,13 @@ serve(async (req) => {
 
   const origin = req.headers.get("origin");
   const corsHeaders = getCorsHeaders(origin);
+
+  // Rate limiting for disconnect endpoint
+  const clientId = getClientIdentifier(req);
+  const rateLimitResult = checkRateLimit(`disconnect:${clientId}`, RATE_LIMITS.AUTH);
+  if (!rateLimitResult.allowed) {
+    return createRateLimitResponse(rateLimitResult, corsHeaders);
+  }
 
   try {
     // Verify user authorization

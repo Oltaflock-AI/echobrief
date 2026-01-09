@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMITS } from "../_shared/rate-limit.ts";
 
 async function refreshGoogleToken(refreshToken: string, clientId: string, clientSecret: string) {
   const response = await fetch("https://oauth2.googleapis.com/token", {
@@ -23,6 +24,13 @@ serve(async (req) => {
 
   const origin = req.headers.get("origin");
   const corsHeaders = getCorsHeaders(origin);
+
+  // Rate limiting for calendar sync
+  const clientId = getClientIdentifier(req);
+  const rateLimitResult = checkRateLimit(`sync-calendar:${clientId}`, RATE_LIMITS.API);
+  if (!rateLimitResult.allowed) {
+    return createRateLimitResponse(rateLimitResult, corsHeaders);
+  }
 
   try {
     const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
