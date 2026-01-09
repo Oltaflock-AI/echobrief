@@ -81,21 +81,34 @@ serve(async (req) => {
     const expiryDate = new Date();
     expiryDate.setSeconds(expiryDate.getSeconds() + (tokenData.expires_in || 3600));
 
-    // Store tokens in profile
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({
-        google_calendar_connected: true,
+    // Store tokens in secure user_oauth_tokens table (service role only)
+    const { error: tokenError } = await supabase
+      .from("user_oauth_tokens")
+      .upsert({
+        user_id: user.id,
         google_access_token: tokenData.access_token,
         google_refresh_token: tokenData.refresh_token || null,
         google_token_expiry: expiryDate.toISOString(),
-      })
+      }, { onConflict: 'user_id' });
+
+    if (tokenError) {
+      console.error("Token storage error:", tokenError);
+      return new Response(
+        JSON.stringify({ error: "Failed to save Google credentials" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Update profile to mark calendar as connected (no tokens here)
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ google_calendar_connected: true })
       .eq("user_id", user.id);
 
     if (updateError) {
       console.error("Profile update error:", updateError);
       return new Response(
-        JSON.stringify({ error: "Failed to save Google credentials" }),
+        JSON.stringify({ error: "Failed to update profile" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

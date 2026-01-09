@@ -59,10 +59,10 @@ serve(async (req) => {
       );
     }
 
-    // Get user's Google tokens
+    // Get user's profile connection status
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("google_calendar_connected, google_access_token, google_refresh_token, google_token_expiry")
+      .select("google_calendar_connected")
       .eq("user_id", user.id)
       .single();
 
@@ -73,24 +73,44 @@ serve(async (req) => {
       );
     }
 
-    if (!profile.google_calendar_connected || !profile.google_access_token) {
+    if (!profile.google_calendar_connected) {
       return new Response(
         JSON.stringify({ error: "Google Calendar not connected", events: [] }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    let accessToken = profile.google_access_token;
+    // Get tokens from secure table (service role only)
+    const { data: tokens, error: tokensError } = await supabase
+      .from("user_oauth_tokens")
+      .select("google_access_token, google_refresh_token, google_token_expiry")
+      .eq("user_id", user.id)
+      .single();
+
+    if (tokensError || !tokens || !tokens.google_access_token) {
+      // Clear connection status if tokens are missing
+      await supabase
+        .from("profiles")
+        .update({ google_calendar_connected: false })
+        .eq("user_id", user.id);
+
+      return new Response(
+        JSON.stringify({ error: "Google Calendar not connected", events: [] }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    let accessToken = tokens.google_access_token;
 
     // Check if token is expired and refresh if needed
-    if (profile.google_token_expiry && profile.google_refresh_token) {
-      const expiry = new Date(profile.google_token_expiry);
+    if (tokens.google_token_expiry && tokens.google_refresh_token) {
+      const expiry = new Date(tokens.google_token_expiry);
       const now = new Date();
       
       if (now >= expiry) {
         console.log("Token expired, refreshing...");
         const refreshResult = await refreshGoogleToken(
-          profile.google_refresh_token,
+          tokens.google_refresh_token,
           googleClientId,
           googleClientSecret
         );
@@ -99,13 +119,13 @@ serve(async (req) => {
           console.error("Token refresh failed:", refreshResult);
           // Clear the connection since tokens are invalid
           await supabase
+            .from("user_oauth_tokens")
+            .delete()
+            .eq("user_id", user.id);
+          
+          await supabase
             .from("profiles")
-            .update({
-              google_calendar_connected: false,
-              google_access_token: null,
-              google_refresh_token: null,
-              google_token_expiry: null,
-            })
+            .update({ google_calendar_connected: false })
             .eq("user_id", user.id);
 
           return new Response(
@@ -121,7 +141,7 @@ serve(async (req) => {
         newExpiry.setSeconds(newExpiry.getSeconds() + (refreshResult.expires_in || 3600));
 
         await supabase
-          .from("profiles")
+          .from("user_oauth_tokens")
           .update({
             google_access_token: accessToken,
             google_token_expiry: newExpiry.toISOString(),
@@ -156,13 +176,13 @@ serve(async (req) => {
       if (calendarResponse.status === 401) {
         // Token invalid, clear connection
         await supabase
+          .from("user_oauth_tokens")
+          .delete()
+          .eq("user_id", user.id);
+        
+        await supabase
           .from("profiles")
-          .update({
-            google_calendar_connected: false,
-            google_access_token: null,
-            google_refresh_token: null,
-            google_token_expiry: null,
-          })
+          .update({ google_calendar_connected: false })
           .eq("user_id", user.id);
 
         return new Response(

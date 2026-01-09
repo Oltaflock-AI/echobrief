@@ -145,10 +145,7 @@ export type Database = {
           created_at: string
           email: string | null
           full_name: string | null
-          google_access_token: string | null
           google_calendar_connected: boolean | null
-          google_refresh_token: string | null
-          google_token_expiry: string | null
           id: string
           slack_channel_id: string | null
           slack_channel_name: string | null
@@ -161,10 +158,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name?: string | null
-          google_access_token?: string | null
           google_calendar_connected?: boolean | null
-          google_refresh_token?: string | null
-          google_token_expiry?: string | null
           id?: string
           slack_channel_id?: string | null
           slack_channel_name?: string | null
@@ -177,10 +171,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name?: string | null
-          google_access_token?: string | null
           google_calendar_connected?: boolean | null
-          google_refresh_token?: string | null
-          google_token_expiry?: string | null
           id?: string
           slack_channel_id?: string | null
           slack_channel_name?: string | null
@@ -265,6 +256,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_oauth_tokens: {
+        Row: {
+          created_at: string
+          google_access_token: string | null
+          google_refresh_token: string | null
+          google_token_expiry: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          google_access_token?: string | null
+          google_refresh_token?: string | null
+          google_token_expiry?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          google_access_token?: string | null
+          google_refresh_token?: string | null
+          google_token_expiry?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
