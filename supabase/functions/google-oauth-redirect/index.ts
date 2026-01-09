@@ -1,7 +1,18 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from "../_shared/rate-limit.ts";
 
 serve(async (req) => {
+  // Rate limiting for OAuth redirect (stricter - this is the callback)
+  const clientId = getClientIdentifier(req);
+  const rateLimitResult = checkRateLimit(`oauth-redirect:${clientId}`, RATE_LIMITS.AUTH);
+  if (!rateLimitResult.allowed) {
+    return new Response(
+      `Too many requests. Please wait ${rateLimitResult.resetIn} seconds and try again.`,
+      { status: 429, headers: { "Content-Type": "text/plain", "Retry-After": rateLimitResult.resetIn.toString() } }
+    );
+  }
+
   try {
     const url = new URL(req.url);
     const code = url.searchParams.get("code");
