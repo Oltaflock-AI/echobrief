@@ -212,7 +212,7 @@
 
   /* Inline action items with checkbox */
   .action-item {
-    @apply flex items-start gap-3 py-2 group;
+    @apply flex items-start gap-3 py-2;
   }
 
   .action-item-checkbox {
