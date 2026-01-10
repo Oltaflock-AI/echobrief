@@ -50,7 +50,10 @@ export type Database = {
           id: string
           key_points: Json | null
           meeting_id: string
+          open_questions: Json | null
           risks: Json | null
+          speaker_highlights: Json | null
+          strategic_insights: Json | null
           summary_detailed: string | null
           summary_short: string | null
         }
@@ -62,7 +65,10 @@ export type Database = {
           id?: string
           key_points?: Json | null
           meeting_id: string
+          open_questions?: Json | null
           risks?: Json | null
+          speaker_highlights?: Json | null
+          strategic_insights?: Json | null
           summary_detailed?: string | null
           summary_short?: string | null
         }
@@ -74,7 +80,10 @@ export type Database = {
           id?: string
           key_points?: Json | null
           meeting_id?: string
+          open_questions?: Json | null
           risks?: Json | null
+          speaker_highlights?: Json | null
+          strategic_insights?: Json | null
           summary_detailed?: string | null
           summary_short?: string | null
         }

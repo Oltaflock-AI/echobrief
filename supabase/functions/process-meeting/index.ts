@@ -195,32 +195,94 @@ Only include segments where you can make a reasonable attribution.`;
       ? speakerSegments.map(s => `${s.speaker}: ${s.text}`).join('\n')
       : transcript;
 
-    // Generate AI insights with speaker awareness
-    const insightsPrompt = `Analyze the following meeting transcript and extract structured insights.
+    // Generate decision-grade AI insights with enhanced prompt
+    const insightsPrompt = `You are an intelligent chief-of-staff analyzing a meeting transcript. Your goal is to produce a decision-grade insight report that provides clarity, ownership, risk awareness, and next steps — not just meeting notes.
 
 MEETING TITLE: ${meeting.title}${attendeesContext}
 
 TRANSCRIPT (with speaker labels where available):
 ${speakerLabeledTranscript || "No transcript available"}
 
-Please provide:
-1. A brief summary (2-3 sentences) that references key speakers by name when discussing their contributions
-2. A detailed summary (1-2 paragraphs) with speaker attribution where relevant
-3. Key discussion points (bullet points) - attribute to speakers when clear
-4. Action items with owners - use actual participant names: ${attendeesList.join(', ') || 'Unknown participants'}. Only assign owners when explicitly mentioned or clearly implied.
-5. Decisions made - note who made or agreed to each decision
-6. Risks or blockers mentioned - attribute to who raised them
-7. Follow-up items with assignees if identifiable
+---
 
-Format your response as JSON with the following structure:
+CRITICAL ACCURACY RULES:
+- Do NOT invent insights or add information not in the transcript
+- Do NOT assign ownership unless explicitly stated or strongly implied
+- Prefer "Open Question" over speculation
+- Accuracy > completeness
+- Only list EXPLICIT decisions where consensus was clearly stated
+
+---
+
+Provide a comprehensive analysis with the following structure:
+
+1. EXECUTIVE SUMMARY (3-5 sentences)
+   Focus on: Why the meeting happened, what materially changed, what happens next.
+   Do NOT repeat the agenda.
+
+2. STRATEGIC INSIGHTS
+   Key implications for the business, signals about market direction/risk/opportunity, non-obvious takeaways inferred from discussion.
+   This requires reasoning, not transcription.
+
+3. SPEAKER-ATTRIBUTED HIGHLIGHTS
+   Clean speaker-attributed insights with short context for why it matters.
+   Format: "Speaker Name: [What they said/emphasized] — [Why it matters]"
+
+4. ACTION ITEMS (Execution-Ready)
+   Each must have:
+   - Clear task description
+   - Owner (only if explicitly stated or strongly implied, otherwise null)
+   - Priority (high/medium/low)
+   - Confidence level (high/medium/low) - only assign when discussion was clear
+   - Outcome expected (what success looks like)
+   Avoid guessing deadlines.
+
+5. DECISIONS & COMMITMENTS (Strict)
+   Only list explicit decisions where consensus was clearly stated.
+   Include decision owner if applicable.
+
+6. RISKS, OPEN QUESTIONS & BLOCKERS
+   - Unresolved concerns
+   - Dependencies
+   - Areas needing clarification
+   This helps prevent false alignment.
+
+7. FOLLOW-UPS & NEXT TOUCHPOINTS
+   Only include if justified by the conversation:
+   - Follow-up meetings
+   - Research tasks
+   - Decisions that need validation
+
+---
+
+Format your response as JSON with this exact structure:
 {
-  "summary_short": "Brief summary referencing speakers",
-  "summary_detailed": "Detailed summary with speaker attribution",
-  "key_points": ["point 1 (noted by Speaker)", "point 2"],
-  "action_items": [{"task": "task description", "owner": "person name or null", "priority": "high/medium/low"}],
-  "decisions": ["Decision made by Speaker about X"],
-  "risks": ["Risk raised by Speaker about Y"],
-  "follow_ups": [{"description": "follow up description", "assignee": "person or null"}]
+  "summary_short": "3-5 sentence executive brief focusing on why the meeting happened, what changed, and what happens next",
+  "summary_detailed": "Detailed summary with speaker attribution where relevant",
+  "strategic_insights": [
+    {"insight": "Key business implication or non-obvious takeaway", "category": "market|risk|opportunity|process"}
+  ],
+  "speaker_highlights": [
+    {"speaker": "Name", "highlight": "What they said/emphasized", "context": "Why it matters"}
+  ],
+  "key_points": ["Main discussion points with speaker attribution where clear"],
+  "action_items": [
+    {
+      "task": "Clear task description with expected outcome",
+      "owner": "Person name or null",
+      "priority": "high|medium|low",
+      "confidence": "high|medium|low",
+      "outcome": "What success looks like"
+    }
+  ],
+  "decisions": [
+    {"decision": "Explicit decision made", "owner": "Who made/owns it or null", "context": "Brief context"}
+  ],
+  "risks": ["Risk/blocker with who raised it if known"],
+  "open_questions": ["Unresolved concerns, dependencies, areas needing clarification"],
+  "follow_ups": [
+    {"description": "Follow-up action", "assignee": "Person or null", "type": "meeting|research|validation"}
+  ]
 }`;
 
     const completion = await openai.chat.completions.create({
@@ -228,7 +290,7 @@ Format your response as JSON with the following structure:
       messages: [
         {
           role: "system",
-          content: "You are an expert meeting analyst. Extract actionable insights from meeting transcripts. When attributing speakers, only do so when you're confident. If unsure, omit the speaker name. Always respond with valid JSON.",
+          content: "You are an expert meeting analyst producing decision-grade insight reports. Extract actionable insights with precision. Be conservative with speaker attribution - only attribute when confident. Never invent information. Format decisions as objects with decision, owner, and context fields. Always respond with valid JSON.",
         },
         { role: "user", content: insightsPrompt },
       ],
@@ -240,14 +302,29 @@ Format your response as JSON with the following structure:
     
     try {
       insights = JSON.parse(insightsText);
+      
+      // Normalize decisions to string format for backward compatibility
+      if (insights.decisions && Array.isArray(insights.decisions)) {
+        insights.decisions = insights.decisions.map((d: any) => {
+          if (typeof d === 'object' && d.decision) {
+            const owner = d.owner ? ` (${d.owner})` : '';
+            const context = d.context ? ` — ${d.context}` : '';
+            return `${d.decision}${owner}${context}`;
+          }
+          return d;
+        });
+      }
     } catch {
       insights = {
         summary_short: "Unable to generate summary",
         summary_detailed: "",
+        strategic_insights: [],
+        speaker_highlights: [],
         key_points: [],
         action_items: [],
         decisions: [],
         risks: [],
+        open_questions: [],
         follow_ups: [],
       };
     }
@@ -270,6 +347,9 @@ Format your response as JSON with the following structure:
         decisions: insights.decisions || [],
         risks: insights.risks || [],
         follow_ups: insights.follow_ups || [],
+        strategic_insights: insights.strategic_insights || [],
+        open_questions: insights.open_questions || [],
+        speaker_highlights: insights.speaker_highlights || [],
       });
     }
 
@@ -318,19 +398,28 @@ Format your response as JSON with the following structure:
     
     if (slackToken && targetChannelId) {
       try {
-        // Format and send Slack message directly
+        // Format enhanced Slack message
         const actionItems = (insights.action_items || [])
-          .map((item: any) => `• ${item.task}${item.owner ? ` (@${item.owner})` : ""}`)
+          .map((item: any) => {
+            const owner = item.owner ? ` → ${item.owner}` : "";
+            const confidence = item.confidence ? ` [${item.confidence}]` : "";
+            return `• ${item.task}${owner}${confidence}`;
+          })
           .join("\n") || "None identified";
 
         const decisions = (insights.decisions || [])
           .map((d: string) => `• ${d}`)
           .join("\n") || "None identified";
 
-        const keyPoints = (insights.key_points || [])
-          .slice(0, 5)
-          .map((p: string) => `• ${p}`)
+        const strategicInsights = (insights.strategic_insights || [])
+          .slice(0, 3)
+          .map((s: any) => `• ${s.insight}`)
           .join("\n") || "None identified";
+
+        const risksAndQuestions = [
+          ...(insights.risks || []).map((r: string) => `⚠️ ${r}`),
+          ...(insights.open_questions || []).map((q: string) => `❓ ${q}`),
+        ].slice(0, 4).join("\n") || "None identified";
 
         const durationMinutes = Math.round(durationSeconds / 60);
         const participantsList = attendeesList.length > 0 
@@ -340,17 +429,35 @@ Format your response as JSON with the following structure:
         const blocks = [
           {
             type: "header",
-            text: { type: "plain_text", text: `📝 Meeting Summary: ${meeting.title}`, emoji: true },
+            text: { type: "plain_text", text: `📋 ${meeting.title}`, emoji: true },
+          },
+          {
+            type: "context",
+            elements: [
+              { type: "mrkdwn", text: `📅 ${new Date(meeting.start_time).toLocaleDateString()} • ⏱️ ${durationMinutes} min${participantsList ? ` • 👥 ${attendeesList.length} participants` : ''}` }
+            ],
+          },
+          { type: "divider" },
+          {
+            type: "section",
+            text: { type: "mrkdwn", text: `*📝 Executive Summary*\n${insights.summary_short || "No summary available"}` }
           },
           {
             type: "section",
-            text: { type: "mrkdwn", text: `*Duration:* ${durationMinutes} minutes\n*Date:* ${new Date(meeting.start_time).toLocaleDateString()}\n${participantsList}` },
+            text: { type: "mrkdwn", text: `*🧠 Strategic Insights*\n${strategicInsights}` }
           },
-          { type: "divider" },
-          { type: "section", text: { type: "mrkdwn", text: `*Summary*\n${insights.summary_short || "No summary available"}` } },
-          { type: "section", text: { type: "mrkdwn", text: `*🎯 Key Points*\n${keyPoints}` } },
-          { type: "section", text: { type: "mrkdwn", text: `*✅ Action Items*\n${actionItems}` } },
-          { type: "section", text: { type: "mrkdwn", text: `*📋 Decisions*\n${decisions}` } },
+          {
+            type: "section",
+            text: { type: "mrkdwn", text: `*✅ Action Items*\n${actionItems}` }
+          },
+          {
+            type: "section",
+            text: { type: "mrkdwn", text: `*📋 Decisions*\n${decisions}` }
+          },
+          {
+            type: "section",
+            text: { type: "mrkdwn", text: `*⚠️ Risks & Open Questions*\n${risksAndQuestions}` }
+          },
         ];
 
         const slackResponse = await fetch("https://slack.com/api/chat.postMessage", {

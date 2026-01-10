@@ -36,6 +36,33 @@ export interface WordTimestamp {
   speaker_id?: string;
 }
 
+export interface StrategicInsight {
+  insight: string;
+  category: 'market' | 'risk' | 'opportunity' | 'process';
+}
+
+export interface SpeakerHighlight {
+  speaker: string;
+  highlight: string;
+  context: string;
+}
+
+export interface ActionItem {
+  task: string;
+  owner?: string;
+  due_date?: string;
+  priority?: 'low' | 'medium' | 'high';
+  confidence?: 'low' | 'medium' | 'high';
+  outcome?: string;
+}
+
+export interface FollowUp {
+  description: string;
+  assignee?: string;
+  deadline?: string;
+  type?: 'meeting' | 'research' | 'validation';
+}
+
 export interface MeetingInsights {
   id: string;
   meeting_id: string;
@@ -46,20 +73,10 @@ export interface MeetingInsights {
   decisions: string[];
   risks: string[];
   follow_ups: FollowUp[];
+  strategic_insights: StrategicInsight[];
+  speaker_highlights: SpeakerHighlight[];
+  open_questions: string[];
   created_at: string;
-}
-
-export interface ActionItem {
-  task: string;
-  owner?: string;
-  due_date?: string;
-  priority?: 'low' | 'medium' | 'high';
-}
-
-export interface FollowUp {
-  description: string;
-  assignee?: string;
-  deadline?: string;
 }
 
 export interface Profile {
