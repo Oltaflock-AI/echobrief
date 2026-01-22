@@ -18,7 +18,7 @@ serve(async (req) => {
   const corsHeaders = getCorsHeaders(origin);
 
   try {
-    const { meetingId, slackDestination } = await req.json();
+    const { meetingId, slackDestination, sendEmail } = await req.json();
     
     if (!meetingId) {
       return new Response(
@@ -519,6 +519,28 @@ Format your response as JSON with this exact structure:
       }
     }
 
+    // Send email summary if requested or by default for chrome-extension recordings
+    let emailSent = false;
+    if (sendEmail || meeting.source === 'chrome-extension') {
+      try {
+        const emailUrl = `${supabaseUrl}/functions/v1/send-meeting-email`;
+        const emailResponse = await fetch(emailUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`
+          },
+          body: JSON.stringify({ meetingId })
+        });
+        
+        const emailResult = await emailResponse.json();
+        emailSent = emailResult.success === true;
+        console.log("Email result:", emailResult);
+      } catch (emailError) {
+        console.error("Email notification error:", emailError);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -527,6 +549,7 @@ Format your response as JSON with this exact structure:
         hasInsights: true,
         hasSpeakerSegments: speakerSegments.length > 0,
         slackSent,
+        emailSent,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

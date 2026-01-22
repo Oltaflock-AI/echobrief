@@ -35,3 +35,9 @@ verify_jwt = false
 
 [functions.sync-notion]
 verify_jwt = false
+
+[functions.upload-recording]
+verify_jwt = false
+
+[functions.send-meeting-email]
+verify_jwt = false
