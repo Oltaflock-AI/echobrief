@@ -1,10 +1,14 @@
-// EchoBrief Offscreen Document - Records tab audio via getMediaStreamId
+// EchoBrief Offscreen Document - Records tab audio (+ microphone when available)
 // Runs in extension context, can use getUserMedia with chromeMediaSourceId
+// Sends periodic heartbeat to keep the background service worker alive
 
 const ECHOBRIEF_API_URL = 'https://qjhysesjocanowmdkeme.supabase.co/functions/v1';
+const HEARTBEAT_INTERVAL_MS = 20000;
 
 let recorderState = {
   stream: null,
+  micStream: null,
+  audioContext: null,
   mediaRecorder: null,
   audioChunks: [],
   startTime: null,
@@ -12,6 +16,22 @@ let recorderState = {
   meetingUrl: '',
   authToken: null
 };
+
+let heartbeatInterval = null;
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatInterval = setInterval(() => {
+    chrome.runtime.sendMessage({ type: 'OFFSCREEN_HEARTBEAT' }).catch(() => {});
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.target !== 'offscreen') return;
@@ -32,7 +52,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function startRecording({ streamId, meetingTitle, meetingUrl, authToken }) {
-  const stream = await navigator.mediaDevices.getUserMedia({
+  // Capture tab audio (required — this is the meeting's incoming audio)
+  const tabStream = await navigator.mediaDevices.getUserMedia({
     audio: {
       mandatory: {
         chromeMediaSource: 'tab',
@@ -42,8 +63,30 @@ async function startRecording({ streamId, meetingTitle, meetingUrl, authToken })
     video: false
   });
 
+  let recordingStream = tabStream;
+  let micStream = null;
+  let audioContext = null;
+
+  // Try to also capture microphone so the user's own voice is in the recording
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false
+    });
+
+    audioContext = new AudioContext();
+    const dest = audioContext.createMediaStreamDestination();
+    audioContext.createMediaStreamSource(tabStream).connect(dest);
+    audioContext.createMediaStreamSource(micStream).connect(dest);
+    recordingStream = dest.stream;
+  } catch (err) {
+    console.warn('Microphone not available, recording tab audio only:', err.message);
+  }
+
   recorderState = {
-    stream,
+    stream: tabStream,
+    micStream,
+    audioContext,
     mediaRecorder: null,
     audioChunks: [],
     startTime: Date.now(),
@@ -52,7 +95,7 @@ async function startRecording({ streamId, meetingTitle, meetingUrl, authToken })
     authToken
   };
 
-  const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+  const mediaRecorder = new MediaRecorder(recordingStream, { mimeType: 'audio/webm;codecs=opus' });
   recorderState.mediaRecorder = mediaRecorder;
 
   mediaRecorder.ondataavailable = (e) => {
@@ -61,15 +104,45 @@ async function startRecording({ streamId, meetingTitle, meetingUrl, authToken })
 
   mediaRecorder.onstop = () => handleRecordingStopped();
 
+  mediaRecorder.onerror = (event) => {
+    console.error('MediaRecorder error:', event.error);
+    stopHeartbeat();
+    cleanupStreams();
+    chrome.runtime.sendMessage({ type: 'RECORDING_FAILED' }).catch(() => {});
+    requestClose();
+  };
+
+  // If the tab's audio track ends (e.g. tab navigated away), stop gracefully
+  tabStream.getTracks().forEach((track) => {
+    track.addEventListener('ended', () => {
+      console.warn('Tab audio track ended unexpectedly');
+      if (recorderState.mediaRecorder && recorderState.mediaRecorder.state === 'recording') {
+        recorderState.mediaRecorder.stop();
+      }
+    });
+  });
+
   mediaRecorder.start(1000);
+  startHeartbeat();
 }
 
 function stopRecording() {
+  stopHeartbeat();
   if (recorderState.mediaRecorder && recorderState.mediaRecorder.state !== 'inactive') {
     recorderState.mediaRecorder.stop();
   }
+  // Stream cleanup happens in handleRecordingStopped after final data is captured
+}
+
+function cleanupStreams() {
   if (recorderState.stream) {
     recorderState.stream.getTracks().forEach((t) => t.stop());
+  }
+  if (recorderState.micStream) {
+    recorderState.micStream.getTracks().forEach((t) => t.stop());
+  }
+  if (recorderState.audioContext) {
+    recorderState.audioContext.close().catch(() => {});
   }
 }
 
@@ -78,6 +151,9 @@ function requestClose() {
 }
 
 async function handleRecordingStopped() {
+  stopHeartbeat();
+  cleanupStreams();
+
   const authToken = recorderState.authToken;
   if (!authToken) {
     chrome.runtime.sendMessage({ type: 'RECORDING_FAILED' }).catch(() => {});

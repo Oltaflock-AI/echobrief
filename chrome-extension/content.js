@@ -5,7 +5,6 @@
 let statusIndicator = null;
 let notificationBanner = null;
 
-// Create floating status indicator
 function createStatusIndicator() {
   if (statusIndicator) return;
   
@@ -75,7 +74,6 @@ function createStatusIndicator() {
   document.body.appendChild(statusIndicator);
 }
 
-// Update status indicator
 function updateStatus(status, text, duration = null) {
   if (!statusIndicator) createStatusIndicator();
   
@@ -96,7 +94,6 @@ function updateStatus(status, text, duration = null) {
   }
 }
 
-// Show pre-meeting notification
 function showNotification(title) {
   if (notificationBanner) return;
   
@@ -153,7 +150,6 @@ function showNotification(title) {
   
   document.body.appendChild(notificationBanner);
   
-  // Auto-dismiss after 5 seconds
   setTimeout(() => {
     if (notificationBanner) {
       notificationBanner.remove();
@@ -161,7 +157,6 @@ function showNotification(title) {
     }
   }, 5000);
   
-  // Dismiss on click
   document.getElementById('echobrief-dismiss')?.addEventListener('click', () => {
     if (notificationBanner) {
       notificationBanner.remove();
@@ -170,14 +165,12 @@ function showNotification(title) {
   });
 }
 
-// Format duration as MM:SS
 function formatDuration(seconds) {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
-// Hide status indicator
 function hideStatus() {
   if (statusIndicator) {
     statusIndicator.remove();
@@ -185,7 +178,72 @@ function hideStatus() {
   }
 }
 
-// Listen for messages from background script
+// --- Recording state tracking ---
+
+let durationInterval = null;
+let recordingStartTime = null;
+let stateCheckInterval = null;
+
+function startDurationTimer() {
+  recordingStartTime = Date.now();
+  stopDurationTimer();
+  
+  durationInterval = setInterval(() => {
+    const duration = Math.floor((Date.now() - recordingStartTime) / 1000);
+    updateStatus('recording', '', duration);
+  }, 1000);
+
+  startStateCheck();
+}
+
+function stopDurationTimer() {
+  if (durationInterval) {
+    clearInterval(durationInterval);
+    durationInterval = null;
+  }
+  recordingStartTime = null;
+  stopStateCheck();
+}
+
+function startStateCheck() {
+  stopStateCheck();
+  stateCheckInterval = setInterval(() => {
+    if (!isExtensionContextValid()) {
+      stopDurationTimer();
+      hideStatus();
+      return;
+    }
+
+    try {
+      chrome.runtime.sendMessage({ type: 'GET_RECORDING_STATUS' }, (response) => {
+        if (chrome.runtime.lastError || !response?.isRecording) {
+          if (durationInterval) {
+            stopDurationTimer();
+            updateStatus('error', '⚠️ Recording stopped unexpectedly');
+            setTimeout(hideStatus, 5000);
+          }
+        }
+      });
+    } catch {
+      stopDurationTimer();
+      hideStatus();
+    }
+  }, 15000);
+}
+
+function stopStateCheck() {
+  if (stateCheckInterval) {
+    clearInterval(stateCheckInterval);
+    stateCheckInterval = null;
+  }
+}
+
+function cleanupRecordingUI() {
+  stopDurationTimer();
+}
+
+// --- Message Handling ---
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Content script received:', message.type);
 
@@ -206,16 +264,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
 
     case 'RECORDING_STOPPED':
+      cleanupRecordingUI();
       updateStatus('success', '✓ Recording saved');
       setTimeout(hideStatus, 3000);
       break;
 
     case 'RECORDING_UPLOADED':
+      cleanupRecordingUI();
       updateStatus('success', '✓ Sent for processing');
       setTimeout(hideStatus, 3000);
       break;
 
     case 'RECORDING_ERROR':
+      cleanupRecordingUI();
       updateStatus('error', `⚠️ ${message.error}`);
       setTimeout(hideStatus, 5000);
       break;
@@ -225,31 +286,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// Duration timer
-let durationInterval = null;
-let recordingStartTime = null;
-
-function startDurationTimer() {
-  recordingStartTime = Date.now();
-  
-  if (durationInterval) clearInterval(durationInterval);
-  
-  durationInterval = setInterval(() => {
-    const duration = Math.floor((Date.now() - recordingStartTime) / 1000);
-    updateStatus('recording', '', duration);
-  }, 1000);
-}
-
-function stopDurationTimer() {
-  if (durationInterval) {
-    clearInterval(durationInterval);
-    durationInterval = null;
-  }
-}
-
-// Cleanup on unload
 window.addEventListener('beforeunload', () => {
-  stopDurationTimer();
+  cleanupRecordingUI();
 });
 
 function isExtensionContextValid() {
@@ -295,7 +333,6 @@ window.addEventListener('message', (event) => {
   }
 });
 
-// Inject a marker element so the web app can detect the extension
 if (isExtensionContextValid()) {
   const marker = document.createElement('div');
   marker.id = 'echobrief-extension-marker';
