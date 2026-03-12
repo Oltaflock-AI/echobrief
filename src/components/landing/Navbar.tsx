@@ -21,6 +21,18 @@ export function Navbar() {
 
           {/* CTA */}
           <div className="flex items-center gap-3">
+            <a
+              href="https://chromewebstore.google.com/detail/echobrief-meeting-recorde/feilmpoccaneccgbkankibcfkamacbag"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button
+                variant="ghost"
+                className="text-slate-300 hover:text-white hover:bg-white/5"
+              >
+                Add to Chrome
+              </Button>
+            </a>
             <Link to="/auth">
               <Button
                 variant="ghost"

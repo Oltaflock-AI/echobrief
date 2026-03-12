@@ -40,27 +40,31 @@ export function Hero() {
           {/* Subheadline */}
           <p className="text-lg md:text-xl text-slate-400 mb-12 max-w-2xl mx-auto leading-relaxed">
             Automatically record any meeting, transcribe with AI, and get instant
-            summaries delivered to Slack. Stop taking notes—start taking action.
+            summaries delivered to Slack. Stop taking notes and start taking action.
           </p>
 
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-20">
-            <Link to="/auth">
+            <a
+              href="https://chromewebstore.google.com/detail/echobrief-meeting-recorde/feilmpoccaneccgbkankibcfkamacbag"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <Button
                 size="xl"
                 className="bg-[#4C7DFF] hover:bg-[#3d6ae6] text-white gap-2 h-12 px-8 text-base font-semibold shadow-lg shadow-[#4C7DFF]/25"
               >
-                Start Recording Free
+                Add to Chrome (Free)
                 <ArrowRight className="w-5 h-5" />
               </Button>
-            </Link>
+            </a>
             <Link to="/auth">
               <Button
                 variant="outline"
                 size="xl"
                 className="border-white/20 text-white hover:bg-white/10 hover:text-white h-12 px-8 text-base font-medium"
               >
-                Watch Demo
+                Sign In to Dashboard
               </Button>
             </Link>
           </div>

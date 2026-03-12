@@ -63,7 +63,7 @@ async function startRecording({ streamId, meetingTitle, meetingUrl, authToken })
     video: false
   });
 
-  // tabCapture mutes the tab by default — pipe audio back to speakers
+  // tabCapture mutes the tab by default; pipe audio back to speakers
   // so the user can still hear the meeting while recording.
   const tabPlayback = new Audio();
   tabPlayback.srcObject = tabStream;
@@ -84,7 +84,7 @@ async function startRecording({ streamId, meetingTitle, meetingUrl, authToken })
     audioContext.createMediaStreamSource(tabStream).connect(dest);
     audioContext.createMediaStreamSource(micStream).connect(dest);
     recordingStream = dest.stream;
-    console.log('[EchoBrief] Microphone captured successfully — recording tab + mic audio');
+    console.log('[EchoBrief] Microphone captured successfully; recording tab + mic audio');
   } catch (err) {
     console.warn('[EchoBrief] Microphone NOT available, recording tab audio only:', err.name, err.message);
     chrome.runtime.sendMessage({ type: 'MIC_PERMISSION_FAILED', error: err.name }).catch(() => {});

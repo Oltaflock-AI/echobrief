@@ -1,6 +1,6 @@
 # EchoBrief
 
-**AI-powered meeting intelligence platform that records, transcribes, and generates decision-grade insights from your meetings — delivered instantly to Slack, email, or your dashboard.**
+**AI-powered meeting intelligence platform that records, transcribes, and generates decision-grade insights from your meetings, delivered instantly to Slack, email, or your dashboard.**
 
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
@@ -32,13 +32,13 @@
 
 ## Overview
 
-EchoBrief solves the problem of meeting fatigue and lost context. Instead of scrambling to take notes, EchoBrief sits in the background — capturing audio from Google Meet or Zoom via a Chrome extension, transcribing it with OpenAI Whisper, and running it through a custom GPT-4o-mini pipeline that produces executive summaries, action items with ownership, risk flags, strategic insights, and timestamped timelines. Summaries are automatically delivered to Slack channels or email, and everything is searchable from a polished React dashboard.
+EchoBrief solves the problem of meeting fatigue and lost context. Instead of scrambling to take notes, EchoBrief sits in the background, capturing audio from Google Meet or Zoom via a Chrome extension, transcribing it with OpenAI Whisper, and running it through a custom GPT-4o-mini pipeline that produces executive summaries, action items with ownership, risk flags, strategic insights, and timestamped timelines. Summaries are automatically delivered to Slack channels or email, and everything is searchable from a polished React dashboard.
 
 ### What makes this different from Otter.ai / Fireflies?
 
-- **No bot joins your call** — EchoBrief uses Chrome's Tab Capture API to record audio natively from the browser tab, so there's no awkward "Notetaker Bot has joined" moment.
-- **Decision-grade insights, not just transcripts** — The AI pipeline acts as a "chief of staff," producing structured reports with strategic insights, risk flags, confidence-scored action items, and speaker attribution.
-- **Full-stack, self-hosted architecture** — Built on Supabase (Postgres, Edge Functions, Auth, Storage, Realtime), giving you complete ownership of your data.
+- **No bot joins your call.** EchoBrief uses Chrome's Tab Capture API to record audio natively from the browser tab, so there's no awkward "Notetaker Bot has joined" moment.
+- **Decision-grade insights, not just transcripts.** The AI pipeline acts as a "chief of staff," producing structured reports with strategic insights, risk flags, confidence-scored action items, and speaker attribution.
+- **Full-stack, self-hosted architecture.** Built on Supabase (Postgres, Edge Functions, Auth, Storage, Realtime), giving you complete ownership of your data.
 
 ---
 
@@ -169,19 +169,19 @@ EchoBrief solves the problem of meeting fatigue and lost context. Instead of scr
 
 **Detailed flow:**
 
-1. **Detection** — The Chrome extension monitors browser tabs for Google Meet (`meet.google.com`) and Zoom (`*.zoom.us`) URLs, displaying a notification banner when a meeting is detected.
+1. **Detection**. The Chrome extension monitors browser tabs for Google Meet (`meet.google.com`) and Zoom (`*.zoom.us`) URLs, displaying a notification banner when a meeting is detected.
 
-2. **Recording** — User clicks "Start Recording" in the extension popup. The extension requests `tabCapture` permission, creates an Offscreen Document, and begins recording via `MediaRecorder` API — capturing all tab audio without any bot joining the call.
+2. **Recording**. User clicks "Start Recording" in the extension popup. The extension requests `tabCapture` permission, creates an Offscreen Document, and begins recording via `MediaRecorder` API, capturing all tab audio without any bot joining the call.
 
-3. **Upload** — When recording stops, the audio (WebM) is uploaded to Supabase Storage via the `upload-recording` Edge Function, which creates a meeting record and triggers processing.
+3. **Upload**. When recording stops, the audio (WebM) is uploaded to Supabase Storage via the `upload-recording` Edge Function, which creates a meeting record and triggers processing.
 
-4. **Transcription** — The `process-meeting` Edge Function downloads the audio, sends it to OpenAI Whisper (`whisper-1`) with `verbose_json` response format, yielding a full transcript with word-level timestamps and segments.
+4. **Transcription**. The `process-meeting` Edge Function downloads the audio, sends it to OpenAI Whisper (`whisper-1`) with `verbose_json` response format, yielding a full transcript with word-level timestamps and segments.
 
-5. **Speaker Attribution** — If meeting attendees are known (via calendar sync), GPT-4o-mini analyzes transcript segments against the participant list to attribute speakers with confidence levels.
+5. **Speaker Attribution**. If meeting attendees are known (via calendar sync), GPT-4o-mini analyzes transcript segments against the participant list to attribute speakers with confidence levels.
 
-6. **Insight Generation** — The speaker-labeled transcript is fed into a carefully engineered GPT-4o-mini prompt that produces a structured JSON report: executive summary, strategic insights, action items (with owner, priority, confidence, expected outcome), decisions, risks, timeline entries, and meeting metrics.
+6. **Insight Generation**. The speaker-labeled transcript is fed into a carefully engineered GPT-4o-mini prompt that produces a structured JSON report: executive summary, strategic insights, action items (with owner, priority, confidence, expected outcome), decisions, risks, timeline entries, and meeting metrics.
 
-7. **Delivery** — Insights are saved to the database and optionally delivered to a Slack channel (using Block Kit for rich formatting) and/or emailed via Resend. The dashboard updates in real-time via Supabase Realtime subscriptions.
+7. **Delivery**. Insights are saved to the database and optionally delivered to a Slack channel (using Block Kit for rich formatting) and/or emailed via Resend. The dashboard updates in real-time via Supabase Realtime subscriptions.
 
 ---
 
@@ -366,10 +366,10 @@ All tables have **Row Level Security** enabled, restricting access so users can 
 
 **Key implementation details:**
 
-- **Tab Capture API** — Records tab audio without joining the meeting as a bot participant. No meeting attendee sees any notification of recording.
-- **Offscreen Document** — Required by Manifest V3 since service workers can't access DOM APIs. The offscreen document runs `MediaRecorder` to encode the captured audio stream as WebM.
-- **Token Sync** — The web app writes the Supabase auth token to `chrome.storage.local`. The extension reads this token to authenticate uploads, avoiding a separate login flow.
-- **Auto-detection** — The background service worker listens for tab updates and injects `content.js` when Meet/Zoom URLs are detected.
+- **Tab Capture API**. Records tab audio without joining the meeting as a bot participant. No meeting attendee sees any notification of recording.
+- **Offscreen Document**. Required by Manifest V3 since service workers can't access DOM APIs. The offscreen document runs `MediaRecorder` to encode the captured audio stream as WebM.
+- **Token Sync**. The web app writes the Supabase auth token to `chrome.storage.local`. The extension reads this token to authenticate uploads, avoiding a separate login flow.
+- **Auto-detection**. The background service worker listens for tab updates and injects `content.js` when Meet/Zoom URLs are detected.
 
 ---
 
@@ -424,7 +424,7 @@ The app starts at `http://localhost:8080`.
 2. Enable **Developer mode** (top right)
 3. Click **Load unpacked**
 4. Select the `chrome-extension/` directory
-5. Log in on the web app — the extension automatically syncs your session
+5. Log in on the web app; the extension automatically syncs your session
 
 ### 5. Run Supabase Locally (Optional)
 
@@ -468,7 +468,7 @@ npm run functions:serve
 
 ## Bugs Encountered and Fixed
 
-Building a Chrome extension that records live meetings surfaced several non-trivial bugs — most rooted in Chrome's Manifest V3 service worker lifecycle and the coordination between four separate execution contexts (popup, content script, service worker, offscreen document).
+Building a Chrome extension that records live meetings surfaced several non-trivial bugs, most rooted in Chrome's Manifest V3 service worker lifecycle and the coordination between four separate execution contexts (popup, content script, service worker, offscreen document).
 
 ### 1. Recording dies after ~3 minutes
 
@@ -476,7 +476,7 @@ Building a Chrome extension that records live meetings surfaced several non-triv
 
 **Root cause:** Chrome MV3 kills background service workers after ~30s of inactivity. All recording state (`isRecording`, `tabId`) was stored in-memory, so when the worker restarted, everything reset to `false`. The offscreen document kept recording, but nothing knew about it.
 
-**Fix:** Persisted all recording state to `chrome.storage.local` and restored it on worker restart. Added `chrome.alarms` keepalive (fires every 25s) and offscreen heartbeat messages (every 20s) to prevent the worker from being killed. On restore, validates the offscreen document still exists — if gone, cleans up stale state.
+**Fix:** Persisted all recording state to `chrome.storage.local` and restored it on worker restart. Added `chrome.alarms` keepalive (fires every 25s) and offscreen heartbeat messages (every 20s) to prevent the worker from being killed. On restore, validates the offscreen document still exists; if gone, cleans up stale state.
 
 ---
 
@@ -494,7 +494,7 @@ Building a Chrome extension that records live meetings surfaced several non-triv
 
 **Problem:** The popup showed "Ready to record" even though the offscreen document was actively recording.
 
-**Root cause:** After the service worker died and restarted with a blank slate, the popup queried `GET_RECORDING_STATUS` and got `isRecording: false` — even though the offscreen document was still recording audio.
+**Root cause:** After the service worker died and restarted with a blank slate, the popup queried `GET_RECORDING_STATUS` and got `isRecording: false` even though the offscreen document was still recording audio.
 
 **Fix:** The content script now runs a periodic state check (every 15s) that queries the background for recording status. If there's a mismatch (background says stopped, content still showing recording UI), it surfaces "Recording stopped unexpectedly." Combined with Bug 1's storage persistence fix, the background now returns correct status after restarts.
 
@@ -502,7 +502,7 @@ Building a Chrome extension that records live meetings surfaced several non-triv
 
 ### 4. Race condition losing the tab ID on stop
 
-**Problem:** After stopping a recording, the audio upload would succeed but the content script never received confirmation — the recording banner just hung.
+**Problem:** After stopping a recording, the audio upload would succeed but the content script never received confirmation; the recording banner just hung.
 
 **Root cause:** `stopRecording()` called `resetState()` immediately, which set `tabId = null`. When the offscreen document later sent `RECORDING_COMPLETED`, the background couldn't forward the result to the content script because it no longer knew which tab to message.
 
@@ -514,7 +514,7 @@ Building a Chrome extension that records live meetings surfaced several non-triv
 
 **Problem:** Testing by playing a YouTube video in another tab during a solo Google Meet produced a nonsensical transcript.
 
-**Root cause:** `tabCapture` only captures the Meet tab's audio output — other participants' voices arriving via WebRTC. In a solo meeting there are no participants, so the tab outputs near-silence. The YouTube audio plays in a different tab entirely. Additionally, the user's own microphone was never captured — only remote audio was.
+**Root cause:** `tabCapture` only captures the Meet tab's audio output; other participants' voices arriving via WebRTC. In a solo meeting there are no participants, so the tab outputs near-silence. The YouTube audio plays in a different tab entirely. Additionally, the user's own microphone was never captured; only remote audio was.
 
 **Fix:** The offscreen document now requests microphone access in addition to tab audio. If granted, both streams are mixed using the Web Audio API (`AudioContext` + `MediaStreamDestination`). If microphone permission is denied, it falls back gracefully to tab-only audio.
 
@@ -526,7 +526,7 @@ Building a Chrome extension that records live meetings surfaced several non-triv
 
 **Root cause:** Chrome's `tabCapture` API mutes the captured tab's audio output by default to prevent feedback loops. The audio was being recorded correctly (transcripts confirmed this), but playback to speakers was suppressed.
 
-**Fix:** This is Chrome's intentional behavior and not a code bug. Documented as a known behavior. The audio is fully captured in the recording — users just need to be aware that tab audio is muted during capture.
+**Fix:** This is Chrome's intentional behavior and not a code bug. Documented as a known behavior. The audio is fully captured in the recording; users just need to be aware that tab audio is muted during capture.
 
 ---
 
@@ -536,9 +536,9 @@ Building a Chrome extension that records live meetings surfaced several non-triv
 
 The `process-meeting` Edge Function implements a multi-stage AI pipeline:
 
-1. **Transcription** — Whisper API with `verbose_json` response format returns segment-level and word-level timestamps, enabling timeline reconstruction.
-2. **Speaker Attribution** — A separate GPT-4o-mini call analyzes transcript segments against known attendees, returning attributions with confidence levels (`high` / `medium` / `low`). Low-confidence attributions are discarded.
-3. **Insight Generation** — A carefully engineered system prompt instructs GPT-4o-mini to act as an "intelligent chief of staff," producing a structured JSON report with strict accuracy rules (no invented insights, no speculative ownership, prefer "Open Question" over guessing). The prompt enforces JSON schema compliance via `response_format: { type: "json_object" }`.
+1. **Transcription**. Whisper API with `verbose_json` response format returns segment-level and word-level timestamps, enabling timeline reconstruction.
+2. **Speaker Attribution**. A separate GPT-4o-mini call analyzes transcript segments against known attendees, returning attributions with confidence levels (`high` / `medium` / `low`). Low-confidence attributions are discarded.
+3. **Insight Generation**. A carefully engineered system prompt instructs GPT-4o-mini to act as an "intelligent chief of staff," producing a structured JSON report with strict accuracy rules (no invented insights, no speculative ownership, prefer "Open Question" over guessing). The prompt enforces JSON schema compliance via `response_format: { type: "json_object" }`.
 
 ### Real-Time Architecture
 
@@ -555,10 +555,10 @@ Manifest V3 service workers can't access DOM APIs like `MediaRecorder`. EchoBrie
 
 ### Security Model
 
-- **Row Level Security** — Every database table has RLS policies ensuring users can only access their own meetings, transcripts, insights, and integration data.
-- **OAuth State Validation** — Google Calendar OAuth uses server-generated state tokens stored in the database, validated on callback to prevent CSRF attacks.
-- **Token Isolation** — OAuth tokens are stored server-side and accessed only via service role key in Edge Functions. The frontend never handles refresh tokens.
-- **Rate Limiting** — Calendar sync includes rate limiting to prevent abuse of the Google Calendar API.
+- **Row Level Security**. Every database table has RLS policies ensuring users can only access their own meetings, transcripts, insights, and integration data.
+- **OAuth State Validation**. Google Calendar OAuth uses server-generated state tokens stored in the database, validated on callback to prevent CSRF attacks.
+- **Token Isolation**. OAuth tokens are stored server-side and accessed only via service role key in Edge Functions. The frontend never handles refresh tokens.
+- **Rate Limiting**. Calendar sync includes rate limiting to prevent abuse of the Google Calendar API.
 
 ### State Management
 

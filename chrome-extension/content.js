@@ -222,7 +222,7 @@ function showMicWarningBanner() {
       .echobrief-mic-banner button:hover { background: rgba(0,0,0,0.25); }
     </style>
     <div class="echobrief-mic-banner">
-      <span>⚠️ Mic unavailable — recording tab audio only. Your voice won't be captured.</span>
+      <span>⚠️ Mic unavailable: recording tab audio only. Your voice won't be captured.</span>
       <button id="echobrief-mic-dismiss">Dismiss</button>
     </div>
   `;

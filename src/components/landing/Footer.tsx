@@ -15,7 +15,15 @@ export function Footer() {
             <span className="text-lg font-bold text-foreground">EchoBrief</span>
           </Link>
 
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-6">
+            <a
+              href="https://chromewebstore.google.com/detail/echobrief-meeting-recorde/feilmpoccaneccgbkankibcfkamacbag"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Chrome Web Store
+            </a>
             <Link
               to="/privacy-policy"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"

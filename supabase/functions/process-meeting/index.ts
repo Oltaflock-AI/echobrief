@@ -234,7 +234,7 @@ Only include segments where you can make a reasonable attribution.`;
     const noUsableTranscript = !transcript || transcript.trim().length < 20;
 
     if (noUsableTranscript) {
-      // No usable audio — skip the expensive AI call entirely
+      // No usable audio; skip the expensive AI call entirely
       insights = {
         summary_short: "No clear speech was detected in this recording. This usually means the meeting audio was too quiet, the microphone was muted, or the recording only captured silence. Try ensuring your microphone is unmuted and meeting participants are audible.",
         summary_detailed: "",

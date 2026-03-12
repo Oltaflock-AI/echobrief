@@ -14,7 +14,7 @@ const features = [
     icon: Mic,
     title: 'Universal Recording',
     description:
-      'Capture audio from any source—Zoom, Google Meet, Teams, or in-person meetings. Works even with headphones.',
+      'Capture audio from any source: Zoom, Google Meet, Teams, or in-person meetings. Works even with headphones.',
   },
   {
     icon: Brain,

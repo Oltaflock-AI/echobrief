@@ -80,7 +80,7 @@ async function showMeetingReadyStatus(container, tab) {
   const { micPermissionGranted } = await chrome.storage.local.get('micPermissionGranted');
   const micWarning = micPermissionGranted ? '' : `
     <div class="mic-warning" style="background:#2a2000;border:1px solid #554400;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:#ffcc00;">
-      ⚠️ Microphone not set up — <a href="#" id="setup-mic" style="color:#7c9cff;text-decoration:underline;cursor:pointer;">Set up now</a>
+      ⚠️ Microphone not set up. <a href="#" id="setup-mic" style="color:#7c9cff;text-decoration:underline;cursor:pointer;">Set up now</a>
     </div>
   `;
 
@@ -111,7 +111,7 @@ async function showMeetingReadyStatus(container, tab) {
     btn.disabled = true;
     btn.textContent = 'Starting...';
 
-    // Re-check mic permission — if still not granted, redirect to setup page
+    // Re-check mic permission; if still not granted, redirect to setup page
     const { micPermissionGranted: micReady } = await chrome.storage.local.get('micPermissionGranted');
     if (!micReady) {
       chrome.tabs.create({ url: chrome.runtime.getURL('mic-permission.html') });

@@ -40,11 +40,11 @@ async function restoreState() {
         recordingState = _recordingState;
         startKeepalive();
       } else {
-        // Offscreen doc is gone — recording is dead, clean up stale state
+        // Offscreen doc is gone; recording is dead, clean up stale state
         await chrome.storage.local.remove('_recordingState');
       }
     } else if (_recordingState && _recordingState.tabId) {
-      // Stopped but waiting for upload completion — restore so we can relay the result
+      // Stopped but waiting for upload completion; restore so we can relay the result
       recordingState = _recordingState;
     }
   } catch (e) {
@@ -72,7 +72,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     }
   }
   if (alarm.name === STOP_TIMEOUT_ALARM) {
-    // Offscreen didn't respond after stop — force cleanup
+    // Offscreen didn't respond after stop; force cleanup
     await stateReady;
     if (recordingState.tabId) {
       console.warn('Stop timeout: forcing state reset');
@@ -287,7 +287,7 @@ function stopRecording() {
   const tabId = recordingState.tabId;
 
   chrome.runtime.sendMessage({ target: 'offscreen', type: 'stop-recording' }).catch(() => {
-    // Offscreen document is already gone — force cleanup
+    // Offscreen document is already gone; force cleanup
     stopKeepalive();
     resetState();
     chrome.alarms.clear(STOP_TIMEOUT_ALARM);

@@ -19,7 +19,7 @@ btn.addEventListener('click', async () => {
 
     statusEl.className = 'status success';
     statusEl.textContent = '✓ Microphone access granted! Go back to your meeting tab and click Start Recording.';
-    btn.textContent = 'Done — Permission Granted';
+    btn.textContent = 'Done. Permission Granted';
   } catch (err) {
     await chrome.storage.local.set({ micPermissionGranted: false });
 
@@ -46,6 +46,6 @@ btn.addEventListener('click', async () => {
       btn.disabled = true;
     }
   } catch {
-    // permissions.query not available — user needs to click the button
+    // permissions.query not available; user needs to click the button
   }
 })();
