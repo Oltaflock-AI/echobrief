@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "EchoBrief - Meeting Recorder",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Automatically record Google Meet and Zoom Web meetings with AI summaries",
   "permissions": ["activeTab", "tabCapture", "storage", "tabs", "offscreen", "alarms"],
   "host_permissions": [
