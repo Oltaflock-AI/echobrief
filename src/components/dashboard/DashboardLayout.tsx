@@ -12,7 +12,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
-    <div className="min-h-screen" style={{ background: "#0C0A09", color: "#FAFAF9" }}>
+    <div className="min-h-screen bg-background text-foreground">
       <Sidebar onCollapsedChange={setSidebarCollapsed} />
       <div className={cn(
         "min-h-screen transition-all duration-200 relative z-10",
