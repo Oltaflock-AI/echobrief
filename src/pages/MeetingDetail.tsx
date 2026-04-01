@@ -2,13 +2,11 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { SlackDeliverySelector } from '@/components/dashboard/SlackDeliverySelector';
+import { StatusBadge, SourceBadge, LanguageBadge, Card, GradientBar } from '@/components/dashboard/PrototypeBadges';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Meeting, Transcript, MeetingInsights, StrategicInsight, SpeakerHighlight, ActionItem, FollowUp } from '@/types/meeting';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -20,12 +18,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ArrowLeft, Calendar, Clock, Loader2, ChevronRight, Trash2, Users, Send, Lightbulb, AlertTriangle, HelpCircle, RefreshCw } from 'lucide-react';
+import { 
+  ChevronRight, Trash2, Users, Send, Zap, AlertTriangle, 
+  CheckCircle2, FileText, Loader2, MessageCircle, Mail, Languages
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { T, SUPPORTED_LANGUAGES } from '@/lib/theme';
 
 interface SpeakerSegment {
   speaker: string;
@@ -41,11 +42,14 @@ interface Attendee {
   organizer?: boolean;
 }
 
+type TabId = 'summary' | 'actions' | 'transcript';
+
 export default function MeetingDetail() {
   const { id } = useParams<{ id: string }>();
   const { user, session } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
@@ -53,10 +57,13 @@ export default function MeetingDetail() {
   const [insights, setInsights] = useState<MeetingInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
-  const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [slackDialogOpen, setSlackDialogOpen] = useState(false);
   const [slackChannelId, setSlackChannelId] = useState<string | undefined>();
   const [slackChannelName, setSlackChannelName] = useState<string | undefined>();
+  
+  // Prototype-style state
+  const [activeTab, setActiveTab] = useState<TabId>('summary');
+  const [summaryLang, setSummaryLang] = useState('English');
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -74,7 +81,6 @@ export default function MeetingDetail() {
       if (meetingData) {
         setMeeting(meetingData as Meeting);
         
-        // Parse attendees from meeting data
         if (meetingData.attendees && Array.isArray(meetingData.attendees)) {
           setAttendees(meetingData.attendees as unknown as Attendee[]);
         }
@@ -92,7 +98,6 @@ export default function MeetingDetail() {
             word_timestamps: (transcriptData.word_timestamps as any) || [],
           } as Transcript);
           
-          // Set speaker segments if available
           if (transcriptData.speakers && Array.isArray(transcriptData.speakers)) {
             setSpeakerSegments(transcriptData.speakers as unknown as SpeakerSegment[]);
           }
@@ -122,7 +127,6 @@ export default function MeetingDetail() {
           } as MeetingInsights);
         }
 
-        // Get Slack settings
         const { data: profile } = await supabase
           .from('profiles')
           .select('slack_channel_id, slack_channel_name')
@@ -146,17 +150,14 @@ export default function MeetingDetail() {
     
     setDeleting(true);
     try {
-      // Delete related data first
       await supabase.from('meeting_insights').delete().eq('meeting_id', meeting.id);
       await supabase.from('transcripts').delete().eq('meeting_id', meeting.id);
       await supabase.from('slack_messages').delete().eq('meeting_id', meeting.id);
       
-      // Delete audio file from storage if exists
       if (meeting.audio_url) {
         await supabase.storage.from('recordings').remove([meeting.audio_url]);
       }
       
-      // Delete the meeting
       const { error } = await supabase
         .from('meetings')
         .delete()
@@ -180,16 +181,6 @@ export default function MeetingDetail() {
     } finally {
       setDeleting(false);
     }
-  };
-
-  const getInitials = (name?: string | null, email?: string) => {
-    if (name) {
-      return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-    }
-    if (email) {
-      return email.slice(0, 2).toUpperCase();
-    }
-    return '??';
   };
 
   const handleSendToSlack = async (destination: { type: 'dm' | 'channel'; channelId: string; channelName?: string }) => {
@@ -227,38 +218,17 @@ export default function MeetingDetail() {
     }
   };
 
-  const getPriorityColor = (priority?: string) => {
-    switch (priority) {
-      case 'high': return 'bg-destructive/10 text-destructive border-destructive/20';
-      case 'medium': return 'bg-warning/10 text-warning border-warning/20';
-      case 'low': return 'bg-muted text-muted-foreground border-border';
-      default: return 'bg-muted text-muted-foreground border-border';
-    }
+  const formatDuration = (seconds?: number) => {
+    if (!seconds) return '';
+    const mins = Math.floor(seconds / 60);
+    return `${mins} min`;
   };
 
-  const getConfidenceBadge = (confidence?: string) => {
-    if (!confidence) return null;
-    // Confidence badges are AI-specific → keep purple per brand spec
-    const colors = {
-      high: 'bg-purple-500/10 text-purple-500',
-      medium: 'bg-warning/10 text-warning',
-      low: 'bg-muted text-muted-foreground',
-    };
-    return (
-      <Badge variant="outline" className={cn('text-xs', colors[confidence as keyof typeof colors])}>
-        {confidence} confidence
-      </Badge>
-    );
-  };
-
-  const getCategoryIcon = (category?: string) => {
-    switch (category) {
-      case 'risk': return <AlertTriangle className="w-4 h-4 text-destructive" />;
-      case 'opportunity': return <Lightbulb className="w-4 h-4 text-orange-500" />;
-      case 'market': return <RefreshCw className="w-4 h-4 text-primary" />;
-      default: return <Lightbulb className="w-4 h-4 text-muted-foreground" />;
-    }
-  };
+  const tabs = [
+    { id: 'summary' as TabId, label: 'Summary', icon: <Zap size={14} /> },
+    { id: 'actions' as TabId, label: `Actions (${insights?.action_items?.length || 0})`, icon: <CheckCircle2 size={14} /> },
+    { id: 'transcript' as TabId, label: 'Transcript', icon: <FileText size={14} /> },
+  ];
 
   if (loading) {
     return (
@@ -287,63 +257,99 @@ export default function MeetingDetail() {
     );
   }
 
-  const formatDuration = (seconds?: number) => {
-    if (!seconds) return '';
-    const mins = Math.floor(seconds / 60);
-    return `${mins} min`;
-  };
+  const actionItems = insights?.action_items as ActionItem[] || [];
+  const decisions = insights?.decisions || [];
+  const risks = insights?.risks || [];
 
   return (
     <DashboardLayout>
       <div className="max-w-3xl mx-auto px-6 py-8">
-        {/* Back button */}
-        <div className="flex items-center justify-between mb-6">
-          <Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-orange-400">
-            <ArrowLeft className="w-4 h-4" />
-            Back
+        {/* Header */}
+        <div className="mb-6">
+          <Link 
+            to="/dashboard" 
+            className="inline-flex items-center gap-1 text-sm mb-4 transition-colors"
+            style={{ color: T.textS }}
+          >
+            <ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> Back to meetings
           </Link>
           
-          <div className="flex items-center gap-2">
-            {/* Send to Slack button */}
-            {insights && (
-              <Button variant="outline" size="sm" onClick={() => setSlackDialogOpen(true)}>
-                <Send className="w-4 h-4 mr-1" />
-                Send to Slack
-              </Button>
-            )}
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <h1 
+                className="text-2xl font-semibold text-foreground mb-2"
+                style={{ fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.02em' }}
+              >
+                {meeting.title}
+              </h1>
+              <div className="flex gap-2 items-center flex-wrap">
+                <StatusBadge status={meeting.status || 'scheduled'} />
+                <SourceBadge source={meeting.source === 'bot' ? 'Bot' : 'Extension'} />
+                <LanguageBadge language="EN" />
+                <span className="text-sm" style={{ color: T.textM }}>
+                  {format(new Date(meeting.start_time), 'MMM d')} at {format(new Date(meeting.start_time), 'h:mm a')} · {formatDuration(meeting.duration_seconds)}
+                </span>
+              </div>
+            </div>
             
-            {/* Delete button */}
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
-                  <Trash2 className="w-4 h-4 mr-1" />
-                  Delete
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Meeting</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently delete this meeting, including its transcript, insights, and audio recording. This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction 
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            <div className="flex gap-2">
+              {insights && (
+                <>
+                  <button
+                    onClick={() => setSlackDialogOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+                    style={{ 
+                      background: 'rgba(249, 115, 22, 0.08)',
+                      border: '1px solid rgba(249, 115, 22, 0.15)',
+                      color: T.orangeL,
+                    }}
                   >
-                    {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                    <MessageCircle size={14} /> Send to WhatsApp
+                  </button>
+                  <button
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+                    style={{ 
+                      background: 'rgba(249, 115, 22, 0.08)',
+                      border: '1px solid rgba(249, 115, 22, 0.15)',
+                      color: T.orangeL,
+                    }}
+                  >
+                    <Mail size={14} /> Email
+                  </button>
+                </>
+              )}
+              
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
+                    <Trash2 className="w-4 h-4 mr-1" />
                     Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Meeting</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete this meeting, including its transcript, insights, and audio recording. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
         </div>
 
-        {/* Slack Delivery Selector */}
         <SlackDeliverySelector
           open={slackDialogOpen}
           onOpenChange={setSlackDialogOpen}
@@ -353,264 +359,270 @@ export default function MeetingDetail() {
           onSend={handleSendToSlack}
         />
 
-        {/* Title */}
-        <h1 className="text-2xl font-semibold text-foreground mb-2">{meeting.title}</h1>
-        
-        {/* Metadata */}
-        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-6">
-          <span className="flex items-center gap-1.5">
-            <Calendar className="w-4 h-4" />
-            {format(new Date(meeting.start_time), 'MMMM d, yyyy · h:mm a')}
-          </span>
-          {meeting.duration_seconds && (
-            <span className="flex items-center gap-1.5">
-              <Clock className="w-4 h-4" />
-              {formatDuration(meeting.duration_seconds)}
-            </span>
-          )}
-          <span className={cn(
-            'status-dot',
-            meeting.status
-          )} />
-          <span className="capitalize">{meeting.status}</span>
-        </div>
-
-        {/* Attendees */}
-        {attendees.length > 0 && (
-          <div className="mb-8 p-4 rounded-lg bg-card border border-border overflow-hidden relative">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
-            <div className="flex items-center gap-2 mb-3 mt-1">
-              <Users className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">
-                {attendees.length} Participant{attendees.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {attendees.map((attendee, i) => (
-                <div 
-                  key={i}
-                  className="flex items-center gap-2 px-2 py-1 rounded-full bg-secondary border border-border"
-                >
-                  <Avatar className="w-6 h-6">
-                    <AvatarFallback className="text-xs bg-orange-500/10 text-orange-500">
-                      {getInitials(attendee.displayName, attendee.email)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm text-foreground">
-                    {attendee.displayName || attendee.email}
-                  </span>
-                  {attendee.organizer && (
-                    <span className="text-xs text-muted-foreground">(organizer)</span>
-                  )}
+        {/* Stats Row - Prototype Style */}
+        {insights && (
+          <div className="grid grid-cols-4 gap-3 mb-6">
+            {[
+              { label: 'Speakers', value: attendees.length, icon: <Users size={16} color={T.blue} /> },
+              { label: 'Action Items', value: actionItems.length, icon: <CheckCircle2 size={16} color={T.green} /> },
+              { label: 'Decisions', value: decisions.length, icon: <Zap size={16} color={T.orangeL} /> },
+              { label: 'Risks', value: risks.length, icon: <AlertTriangle size={16} color={risks.length > 0 ? T.red : T.textM} /> },
+            ].map((s, i) => (
+              <Card key={i} style={{ textAlign: 'center', padding: 16 }}>
+                <div className="mb-1.5">{s.icon}</div>
+                <div className="text-xl font-bold text-foreground" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                  {s.value}
                 </div>
-              ))}
-            </div>
+                <div className="text-xs" style={{ color: T.textM }}>{s.label}</div>
+              </Card>
+            ))}
           </div>
         )}
 
-        {/* Content */}
-        {insights ? (
-          <div className="space-y-8">
-            {/* Executive Summary */}
-            <section className="doc-section">
-              <h2 className="doc-section-title">📝 Executive Summary</h2>
-              <p className="doc-content">{insights.summary_short}</p>
-              {insights.summary_detailed && (
-                <p className="doc-content mt-3 text-muted-foreground text-sm">{insights.summary_detailed}</p>
-              )}
-            </section>
+        {/* Tabs */}
+        {insights && (
+          <div 
+            className="flex gap-1 mb-5 pb-0"
+            style={{ borderBottom: `1px solid hsl(var(--border))` }}
+          >
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-all"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: activeTab === tab.id ? T.orangeL : T.textM,
+                  borderBottom: `2px solid ${activeTab === tab.id ? T.orange : 'transparent'}`,
+                }}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
 
-            {/* Strategic Insights */}
-            {insights.strategic_insights && insights.strategic_insights.length > 0 && (
-              <section className="doc-section">
-                <h2 className="doc-section-title">🧠 Strategic Insights</h2>
-                <div className="space-y-3">
-                  {(insights.strategic_insights as StrategicInsight[]).map((item, i) => (
-                    <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-secondary/50 border border-border">
-                      {getCategoryIcon(item.category)}
-                      <p className="doc-content flex-1">{item.insight}</p>
-                      <Badge variant="outline" className="text-xs capitalize">
-                        {item.category || 'insight'}
-                      </Badge>
-                    </div>
+            {/* Language selector */}
+            {activeTab === 'summary' && (
+              <div className="ml-auto flex items-center gap-1.5 py-2">
+                <Languages size={14} style={{ color: T.textM }} />
+                <select
+                  value={summaryLang}
+                  onChange={e => setSummaryLang(e.target.value)}
+                  className="text-xs font-medium rounded-lg px-2 py-1"
+                  style={{ 
+                    background: 'hsl(var(--card))',
+                    border: `1px solid hsl(var(--border))`,
+                    color: 'hsl(var(--foreground))',
+                  }}
+                >
+                  {SUPPORTED_LANGUAGES.map(l => (
+                    <option key={l} value={l}>{l}</option>
                   ))}
-                </div>
-              </section>
-            )}
-
-            {/* Speaker Highlights */}
-            {insights.speaker_highlights && insights.speaker_highlights.length > 0 && (
-              <section className="doc-section">
-                <h2 className="doc-section-title">💬 Speaker Highlights</h2>
-                <div className="space-y-3">
-                  {(insights.speaker_highlights as SpeakerHighlight[]).map((item, i) => (
-                    <div key={i} className="p-3 rounded-lg bg-card border border-border">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-foreground">{item.speaker}</span>
-                      </div>
-                      <p className="doc-content text-foreground">{item.highlight}</p>
-                      <p className="text-sm text-muted-foreground mt-1">→ {item.context}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Key Points */}
-            {insights.key_points && insights.key_points.length > 0 && (
-              <section className="doc-section">
-                <h2 className="doc-section-title">🎯 Key Points</h2>
-                <ul className="space-y-2">
-                  {insights.key_points.map((point: string, i: number) => (
-                    <li key={i} className="flex items-start gap-2 doc-content">
-                      <span className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-2 flex-shrink-0" />
-                      {point}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            {/* Action Items */}
-            {insights.action_items && insights.action_items.length > 0 && (
-              <section className="doc-section">
-                <h2 className="doc-section-title">✅ Action Items</h2>
-                <div className="space-y-3">
-                  {(insights.action_items as ActionItem[]).map((item, i) => (
-                    <div key={i} className="action-item p-3 rounded-lg bg-card border border-border">
-                      <div className="flex items-start gap-3">
-                        <Checkbox id={`action-${i}`} className="action-item-checkbox mt-1" />
-                        <div className="flex-1">
-                          <label htmlFor={`action-${i}`} className="action-item-text cursor-pointer block font-medium">
-                            {typeof item === 'string' ? item : item.task}
-                          </label>
-                          <div className="flex flex-wrap items-center gap-2 mt-2">
-                            {item.owner && (
-                              <Badge variant="secondary" className="text-xs">
-                                → {item.owner}
-                              </Badge>
-                            )}
-                            {item.priority && (
-                              <Badge variant="outline" className={cn('text-xs', getPriorityColor(item.priority))}>
-                                {item.priority}
-                              </Badge>
-                            )}
-                            {getConfidenceBadge(item.confidence)}
-                          </div>
-                          {item.outcome && (
-                            <p className="text-sm text-muted-foreground mt-2">
-                              Expected outcome: {item.outcome}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Decisions */}
-            {insights.decisions && insights.decisions.length > 0 && (
-              <section className="doc-section">
-                <h2 className="doc-section-title">📋 Decisions & Commitments</h2>
-                <ul className="space-y-2">
-                  {insights.decisions.map((decision: string, i: number) => (
-                    <li key={i} className="flex items-start gap-2 doc-content">
-                      <span className="w-1.5 h-1.5 rounded-full bg-warning mt-2 flex-shrink-0" />
-                      {decision}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            {/* Risks & Open Questions */}
-            {((insights.risks && insights.risks.length > 0) || (insights.open_questions && insights.open_questions.length > 0)) && (
-              <section className="doc-section">
-                <h2 className="doc-section-title">⚠️ Risks & Open Questions</h2>
-                <div className="space-y-3">
-                  {insights.risks?.map((risk: string, i: number) => (
-                    <div key={`risk-${i}`} className="flex items-start gap-3 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
-                      <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 flex-shrink-0" />
-                      <p className="doc-content">{risk}</p>
-                    </div>
-                  ))}
-                  {insights.open_questions?.map((question: string, i: number) => (
-                    <div key={`question-${i}`} className="flex items-start gap-3 p-3 rounded-lg bg-warning/5 border border-warning/20">
-                      <HelpCircle className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
-                      <p className="doc-content">{question}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Follow-Ups */}
-            {insights.follow_ups && insights.follow_ups.length > 0 && (
-              <section className="doc-section">
-                <h2 className="doc-section-title">🔁 Follow-Ups & Next Touchpoints</h2>
-                <div className="space-y-2">
-                  {(insights.follow_ups as FollowUp[]).map((item, i) => (
-                    <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-card border border-border">
-                      <RefreshCw className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="doc-content">{item.description}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          {item.assignee && (
-                            <Badge variant="secondary" className="text-xs">
-                              → {item.assignee}
-                            </Badge>
-                          )}
-                          {item.type && (
-                            <Badge variant="outline" className="text-xs capitalize">
-                              {item.type}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Transcript (collapsible) */}
-            {transcript && (
-              <Collapsible open={transcriptOpen} onOpenChange={setTranscriptOpen}>
-                <CollapsibleTrigger className="collapsible-trigger">
-                  <ChevronRight className="w-4 h-4" />
-                  <span className="text-xs font-semibold uppercase tracking-wider">Full Transcript</span>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-4">
-                  {speakerSegments.length > 0 ? (
-                    <div className="space-y-3">
-                      {speakerSegments.map((seg, i) => {
-                        const prevSpeaker = i > 0 ? speakerSegments[i - 1].speaker : null;
-                        const isNewSpeaker = seg.speaker !== prevSpeaker;
-                        return (
-                          <div key={i} className={cn(isNewSpeaker && i > 0 && "pt-2")}>
-                            {isNewSpeaker && (
-                              <span className="text-xs font-semibold text-orange-400 uppercase tracking-wide">
-                                {seg.speaker}
-                              </span>
-                            )}
-                            <p className="doc-content text-muted-foreground mt-0.5">
-                              {seg.text}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="doc-content whitespace-pre-wrap text-muted-foreground">
-                      {transcript.content}
-                    </p>
-                  )}
-                </CollapsibleContent>
-              </Collapsible>
+                </select>
+              </div>
             )}
           </div>
+        )}
+
+        {/* Tab Content */}
+        {insights ? (
+          <>
+            {/* Summary Tab */}
+            {activeTab === 'summary' && (
+              <div className="space-y-4">
+                {/* Executive Summary */}
+                <Card>
+                  <GradientBar />
+                  <h3 
+                    className="text-sm font-semibold mb-2"
+                    style={{ fontFamily: 'Outfit, sans-serif', color: T.text }}
+                  >
+                    Executive Summary
+                  </h3>
+                  <p className="text-sm leading-relaxed" style={{ color: T.textS }}>
+                    {insights.summary_short || insights.summary_detailed}
+                  </p>
+                </Card>
+
+                {/* Decisions */}
+                {decisions.length > 0 && (
+                  <Card>
+                    <h3 
+                      className="text-sm font-semibold mb-3 flex items-center gap-2"
+                      style={{ fontFamily: 'Outfit, sans-serif', color: T.text }}
+                    >
+                      <Zap size={16} color={T.orangeL} /> Key Decisions
+                    </h3>
+                    {decisions.map((d: string, i: number) => (
+                      <div 
+                        key={i} 
+                        className="py-2 text-sm flex gap-2"
+                        style={{ 
+                          borderTop: i > 0 ? `1px solid hsl(var(--border))` : 'none',
+                          color: T.textS,
+                        }}
+                      >
+                        <span className="font-semibold text-xs min-w-5" style={{ color: T.orangeL }}>
+                          {i + 1}.
+                        </span>
+                        {d}
+                      </div>
+                    ))}
+                  </Card>
+                )}
+
+                {/* Risks */}
+                {risks.length > 0 && (
+                  <Card style={{ borderColor: 'rgba(239, 68, 68, 0.2)' }}>
+                    <h3 
+                      className="text-sm font-semibold mb-3 flex items-center gap-2"
+                      style={{ fontFamily: 'Outfit, sans-serif', color: T.red }}
+                    >
+                      <AlertTriangle size={16} /> Risk Flags
+                    </h3>
+                    {risks.map((r: string, i: number) => (
+                      <div key={i} className="text-sm leading-relaxed" style={{ color: T.textS }}>
+                        {r}
+                      </div>
+                    ))}
+                  </Card>
+                )}
+
+                {/* Speakers */}
+                {attendees.length > 0 && (
+                  <Card>
+                    <h3 
+                      className="text-sm font-semibold mb-3 flex items-center gap-2"
+                      style={{ fontFamily: 'Outfit, sans-serif', color: T.text }}
+                    >
+                      <Users size={16} color={T.blue} /> Speakers
+                    </h3>
+                    <div className="flex gap-2 flex-wrap">
+                      {attendees.map((a, i) => (
+                        <div 
+                          key={i}
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm"
+                          style={{ 
+                            background: 'rgba(59, 130, 246, 0.08)',
+                            color: T.text,
+                          }}
+                        >
+                          <div 
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
+                            style={{ background: T.gradient, color: '#fff' }}
+                          >
+                            {(a.displayName || a.email)?.[0]?.toUpperCase() || '?'}
+                          </div>
+                          {a.displayName || a.email}
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+              </div>
+            )}
+
+            {/* Actions Tab */}
+            {activeTab === 'actions' && (
+              <div className="space-y-2">
+                {actionItems.length > 0 ? (
+                  actionItems.map((item, i) => (
+                    <Card key={i} style={{ padding: 16 }}>
+                      <div className="flex items-start gap-3">
+                        <div 
+                          className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5"
+                          style={{ 
+                            border: `2px solid ${item.done ? T.green : 'hsl(var(--border))'}`,
+                            background: item.done ? T.green : 'transparent',
+                          }}
+                        >
+                          {item.done && <CheckCircle2 size={12} color="#fff" />}
+                        </div>
+                        <div className="flex-1">
+                          <div 
+                            className="text-sm font-medium"
+                            style={{ 
+                              color: item.done ? T.textM : T.text,
+                              textDecoration: item.done ? 'line-through' : 'none',
+                            }}
+                          >
+                            {typeof item === 'string' ? item : item.task}
+                          </div>
+                          {item.owner && (
+                            <div className="text-xs mt-1" style={{ color: T.textM }}>
+                              Assigned to {item.owner}
+                            </div>
+                          )}
+                        </div>
+                        {item.owner && (
+                          <span 
+                            className="text-xs px-2.5 py-1 rounded-full"
+                            style={{ background: 'rgba(168, 168, 168, 0.1)', color: T.textS }}
+                          >
+                            {item.owner}
+                          </span>
+                        )}
+                      </div>
+                    </Card>
+                  ))
+                ) : (
+                  <Card style={{ textAlign: 'center', padding: 40 }}>
+                    <CheckCircle2 size={32} style={{ color: T.textM, marginBottom: 12, marginInline: 'auto' }} />
+                    <p className="text-sm" style={{ color: T.textM }}>No action items from this meeting</p>
+                  </Card>
+                )}
+              </div>
+            )}
+
+            {/* Transcript Tab */}
+            {activeTab === 'transcript' && (
+              <div>
+                {speakerSegments.length > 0 ? (
+                  speakerSegments.map((t, i) => (
+                    <div 
+                      key={i}
+                      className="flex gap-3 py-3"
+                      style={{ borderBottom: `1px solid hsl(var(--border))` }}
+                    >
+                      <div 
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+                        style={{ background: T.gradient, color: '#fff' }}
+                      >
+                        {t.speaker?.[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div>
+                        <div className="flex gap-2 items-center mb-1">
+                          <span className="text-sm font-medium" style={{ color: T.text }}>{t.speaker}</span>
+                          {t.start !== undefined && (
+                            <span 
+                              className="text-xs font-mono"
+                              style={{ color: T.textM }}
+                            >
+                              {Math.floor((t.start || 0) / 60)}:{String(Math.floor((t.start || 0) % 60)).padStart(2, '0')}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm leading-relaxed" style={{ color: T.textS }}>
+                          {t.text}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : transcript?.content ? (
+                  <Card>
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: T.textS }}>
+                      {transcript.content}
+                    </p>
+                  </Card>
+                ) : (
+                  <Card style={{ textAlign: 'center', padding: 40 }}>
+                    <FileText size={32} style={{ color: T.textM, marginBottom: 12, marginInline: 'auto' }} />
+                    <p className="text-sm" style={{ color: T.textM }}>Transcript will appear here after processing</p>
+                  </Card>
+                )}
+              </div>
+            )}
+          </>
         ) : meeting.status === 'processing' ? (
           <div className="empty-state">
             <Loader2 className="empty-state-icon animate-spin" />
