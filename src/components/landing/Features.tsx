@@ -1,98 +1,107 @@
-import {
-  Mic,
-  Brain,
-  FileText,
-  Slack,
-  Calendar,
-  Shield,
-  Zap,
-  Users,
-} from 'lucide-react';
-
-const features = [
-  {
-    icon: Mic,
-    title: 'Universal Recording',
-    description:
-      'Capture audio from any source: Zoom, Google Meet, Teams, or in-person meetings. Works even with headphones.',
-  },
-  {
-    icon: Brain,
-    title: 'AI-Powered Insights',
-    description:
-      'Get automatic summaries, action items, key decisions, and risks identified from every conversation.',
-  },
-  {
-    icon: FileText,
-    title: 'Smart Transcription',
-    description:
-      'High-accuracy transcription with speaker detection. Search and reference any moment instantly.',
-  },
-  {
-    icon: Slack,
-    title: 'Slack Integration',
-    description:
-      'Receive beautifully formatted meeting summaries directly in your preferred Slack channel.',
-  },
-  {
-    icon: Calendar,
-    title: 'Calendar Sync',
-    description:
-      'Connect Google Calendar to automatically detect and prepare for upcoming meetings.',
-  },
-  {
-    icon: Shield,
-    title: 'Secure & Private',
-    description:
-      'Enterprise-grade security with encrypted storage. Your conversations stay confidential.',
-  },
-  {
-    icon: Zap,
-    title: 'Instant Processing',
-    description:
-      'Get your meeting insights within minutes of ending a call. No waiting around.',
-  },
-  {
-    icon: Users,
-    title: 'Team Collaboration',
-    description:
-      'Share insights across your team. Keep everyone aligned without extra meetings.',
-  },
-];
-
 export function Features() {
   return (
-    <section className="py-24 bg-background">
-      <div className="container mx-auto px-6">
-        <div className="max-w-3xl mx-auto text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-4 tracking-tight">
-            Everything you need for
-            <span className="gradient-text"> smarter meetings</span>
-          </h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Stop taking notes. Start taking action. Our AI handles the busy work
-            so you can focus on what matters.
-          </p>
-        </div>
+    <section id="features" className="py-20">
+      <div className="max-w-[1100px] mx-auto px-6">
+        <div className="text-[11px] font-bold tracking-[0.12em] uppercase text-orange-400 mb-3 text-center">Features</div>
+        <h2 className="font-['Outfit'] text-[36px] font-semibold tracking-[-0.03em] text-center text-stone-50 mb-2">
+          Not just transcripts. Decisions.
+        </h2>
+        <p className="text-[16px] text-stone-400 text-center max-w-[520px] mx-auto mb-12 font-['DM_Sans']">
+          EchoBrief acts as your chief of staff — extracting what matters from every meeting.
+        </p>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
-          {features.map((feature, index) => (
-            <div
-              key={feature.title}
-              className="group p-6 rounded-2xl bg-card border border-border hover:border-accent/30 hover:shadow-glow transition-all duration-300 animate-fade-in"
-              style={{ animationDelay: `${index * 0.05}s` }}
-            >
-              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-4 group-hover:bg-accent/20 transition-colors">
-                <feature.icon className="w-6 h-6 text-accent" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">
-                {feature.title}
-              </h3>
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                {feature.description}
-              </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Card 1 */}
+          <div className="p-7 rounded-2xl border border-stone-800 bg-stone-900 hover:border-stone-700 hover:bg-[#292524] hover:-translate-y-0.5 transition-all duration-200">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4 bg-[rgba(249,115,22,0.1)]">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FB923C" strokeWidth="2" strokeLinecap="round">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="22"/>
+              </svg>
             </div>
-          ))}
+            <h3 className="font-['Outfit'] text-[16px] font-semibold mb-1.5 tracking-[-0.01em] text-stone-50">Auto-join and record</h3>
+            <p className="text-[13px] leading-relaxed text-stone-400 font-['DM_Sans']">
+              Connect your calendar. EchoBrief's bot joins your meetings automatically — Google Meet, Zoom, or Teams. No extensions, no manual triggers.
+            </p>
+          </div>
+
+          {/* Card 2 */}
+          <div className="p-7 rounded-2xl border border-stone-800 bg-stone-900 hover:border-stone-700 hover:bg-[#292524] hover:-translate-y-0.5 transition-all duration-200">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4 bg-[rgba(168,85,247,0.1)]">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#A855F7" strokeWidth="2" strokeLinecap="round">
+                <path d="m5 8 6 6"/>
+                <path d="m4 14 6-6 2-3"/>
+                <path d="M2 5h12"/>
+                <path d="M7 2h1"/>
+                <path d="m22 22-5-10-5 10"/>
+                <path d="M14 18h6"/>
+              </svg>
+            </div>
+            <h3 className="font-['Outfit'] text-[16px] font-semibold mb-1.5 tracking-[-0.01em] text-stone-50">22 Indian languages</h3>
+            <p className="text-[13px] leading-relaxed text-stone-400 font-['DM_Sans']">
+              Powered by Sarvam Saaras v3 — the best STT for Indian languages. Handles Hinglish, Tanglish, and code-mixing natively. Summaries in your language.
+            </p>
+          </div>
+
+          {/* Card 3 */}
+          <div className="p-7 rounded-2xl border border-stone-800 bg-stone-900 hover:border-stone-700 hover:bg-[#292524] hover:-translate-y-0.5 transition-all duration-200">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4 bg-[rgba(34,197,94,0.1)]">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2" strokeLinecap="round">
+                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="8" y1="13" x2="16" y2="13"/>
+                <line x1="8" y1="17" x2="16" y2="17"/>
+              </svg>
+            </div>
+            <h3 className="font-['Outfit'] text-[16px] font-semibold mb-1.5 tracking-[-0.01em] text-stone-50">Decision-grade insights</h3>
+            <p className="text-[13px] leading-relaxed text-stone-400 font-['DM_Sans']">
+              Executive summary, action items with owners, risk flags, strategic insights, and a timestamped timeline. Not just a transcript dump.
+            </p>
+          </div>
+
+          {/* Card 4 */}
+          <div className="p-7 rounded-2xl border border-stone-800 bg-stone-900 hover:border-stone-700 hover:bg-[#292524] hover:-translate-y-0.5 transition-all duration-200">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4 bg-[rgba(59,130,246,0.1)]">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            </div>
+            <h3 className="font-['Outfit'] text-[16px] font-semibold mb-1.5 tracking-[-0.01em] text-stone-50">Speaker attribution</h3>
+            <p className="text-[13px] leading-relaxed text-stone-400 font-['DM_Sans']">
+              Knows who said what. Diarization maps speakers to names from your calendar invite. Action items get assigned to the right person.
+            </p>
+          </div>
+
+          {/* Card 5 */}
+          <div className="p-7 rounded-2xl border border-stone-800 bg-stone-900 hover:border-stone-700 hover:bg-[#292524] hover:-translate-y-0.5 transition-all duration-200">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4 bg-[rgba(249,115,22,0.1)]">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FB923C" strokeWidth="2" strokeLinecap="round">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+            </div>
+            <h3 className="font-['Outfit'] text-[16px] font-semibold mb-1.5 tracking-[-0.01em] text-stone-50">WhatsApp delivery</h3>
+            <p className="text-[13px] leading-relaxed text-stone-400 font-['DM_Sans']">
+              Summaries go where your team already is. Get meeting briefs on WhatsApp in your preferred language — Hindi summary to the Delhi team, Tamil to Chennai.
+            </p>
+          </div>
+
+          {/* Card 6 */}
+          <div className="p-7 rounded-2xl border border-stone-800 bg-stone-900 hover:border-stone-700 hover:bg-[#292524] hover:-translate-y-0.5 transition-all duration-200">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4 bg-[rgba(34,197,94,0.1)]">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2" strokeLinecap="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <h3 className="font-['Outfit'] text-[16px] font-semibold mb-1.5 tracking-[-0.01em] text-stone-50">Data stays in India</h3>
+            <p className="text-[13px] leading-relaxed text-stone-400 font-['DM_Sans']">
+              Audio processed via Sarvam's sovereign Indian cloud. DPDP Act compliant. Your meeting data never leaves the country.
+            </p>
+          </div>
         </div>
       </div>
     </section>
