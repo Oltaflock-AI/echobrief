@@ -6,12 +6,11 @@ import { ExtensionStatus } from '@/components/dashboard/ExtensionStatus';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Meeting } from '@/types/meeting';
-import { Clock, ChevronRight, Mic, Users, CheckCircle2, Globe, Bot, FileText } from 'lucide-react';
+import { Clock, ChevronRight, Mic, Users, CheckCircle2, Globe, Bot, FileText, Chrome, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MeetingStatusBadge } from '@/components/dashboard/MeetingStatusBadge';
+import { T } from '@/lib/theme';
 
 interface CalendarAttendee {
   email: string;
@@ -27,7 +26,20 @@ interface PrefillMeeting {
   attendees?: CalendarAttendee[];
 }
 
-// Status badge component matching the prototype
+// ─── Badge (prototype exact) ───
+function Badge({ children, color, bg }: { children: React.ReactNode; color: string; bg: string }) {
+  return (
+    <span style={{
+      padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600,
+      color, background: bg, letterSpacing: '0.02em',
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+// ─── StatusBadge (prototype exact) ───
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string; label: string }> = {
     completed: { bg: '#FFF7ED', color: '#C2410C', label: 'Completed' },
@@ -38,16 +50,33 @@ function StatusBadge({ status }: { status: string }) {
   };
   const s = map[status] || map.scheduled;
   return (
-    <span
-      className="inline-flex items-center gap-1.5"
-      style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, color: s.color, background: s.bg, letterSpacing: '0.02em' }}
-    >
+    <Badge color={s.color} bg={s.bg}>
       {status === 'recording' && (
-        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.green, animation: 'pulse 1.5s infinite' }} />
       )}
       {s.label}
-    </span>
+    </Badge>
   );
+}
+
+// ─── SourceBadge (prototype exact) ───
+function SourceBadge({ source }: { source: string }) {
+  const isBot = source === 'bot' || source === 'recall_bot';
+  const label = isBot ? 'Bot' : 'Extension';
+  return (
+    <Badge
+      color={isBot ? T.purple : T.orangeL}
+      bg={isBot ? 'rgba(168,85,247,0.12)' : 'rgba(249,115,22,0.1)'}
+    >
+      {isBot ? <Bot size={11} /> : <Chrome size={11} />}
+      {label}
+    </Badge>
+  );
+}
+
+// ─── GradientBar (prototype exact) ───
+function GradientBar() {
+  return <div style={{ height: 3, background: T.gradient, borderRadius: 2 }} />;
 }
 
 export default function Dashboard() {
@@ -122,8 +151,9 @@ export default function Dashboard() {
     const totalDuration = meetings.reduce((sum, m) => sum + (m.duration_seconds || 0), 0);
     const transcriptCount = Object.keys(insightCounts).length;
     const completedCount = meetings.filter(m => m.status === 'completed').length;
+    const languages = new Set(meetings.map(m => (m as any).language || 'en').filter(Boolean));
     
-    return { totalMeetings, totalDuration, transcriptCount, completedCount };
+    return { totalMeetings, totalDuration, transcriptCount, completedCount, languageCount: Math.max(languages.size, 1) };
   }, [meetings, insightCounts]);
 
   const formatDuration = (seconds?: number) => {
@@ -139,19 +169,28 @@ export default function Dashboard() {
     return `${mins}m`;
   };
 
+  const getSourceLabel = (source: string) => {
+    switch (source) {
+      case 'google_meet': return 'Google Meet';
+      case 'zoom': return 'Zoom';
+      case 'teams': return 'Teams';
+      default: return 'Recording';
+    }
+  };
+
   return (
     <DashboardLayout>
-      <div className="max-w-4xl mx-auto px-8 py-8">
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 32px' }}>
         {/* Header */}
-        <div className="flex items-start justify-between mb-7">
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
           <div>
-            <h1 
-              className="text-[26px] font-semibold text-foreground"
-              style={{ fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.02em' }}
-            >
+            <h1 style={{
+              fontFamily: 'Outfit, sans-serif', fontSize: 26, fontWeight: 600,
+              color: T.text, marginBottom: 4, letterSpacing: '-0.02em',
+            }}>
               Your Meetings
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p style={{ color: T.textS, fontSize: 14 }}>
               {meetings.length} meetings · {Object.keys(insightCounts).length} summaries generated
             </p>
           </div>
@@ -166,31 +205,33 @@ export default function Dashboard() {
         {/* Extension Status Banner */}
         <ExtensionStatus className="mb-6" />
 
-        {/* Quick Stats - 4 column grid matching prototype */}
+        {/* Quick Stats — 4 column grid, icon top-left, big number, label below (prototype exact) */}
         {!loading && meetings.length > 0 && (
-          <div className="grid grid-cols-4 gap-3 mb-7">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 28 }}>
             {[
-              { label: 'Total Meetings', value: stats.totalMeetings.toString(), sub: 'All time', icon: <Mic size={18} style={{ color: '#FB923C' }} /> },
-              { label: 'Summaries', value: stats.transcriptCount.toString(), sub: `${stats.completedCount} completed`, icon: <CheckCircle2 size={18} style={{ color: '#22C55E' }} /> },
-              { label: 'Recorded', value: formatTotalDuration(stats.totalDuration), sub: 'Total duration', icon: <Globe size={18} style={{ color: '#A855F7' }} /> },
-              { label: 'Completed', value: stats.completedCount.toString(), sub: 'With insights', icon: <Bot size={18} style={{ color: '#3B82F6' }} /> },
+              { label: 'Total Meetings', value: stats.totalMeetings.toString(), sub: 'All time', icon: <Mic size={18} color={T.orangeL} /> },
+              { label: 'Action Items', value: stats.transcriptCount.toString(), sub: `${stats.completedCount} completed`, icon: <CheckCircle2 size={18} color={T.green} /> },
+              { label: 'Languages Used', value: stats.languageCount.toString(), sub: 'Auto-detected', icon: <Globe size={18} color={T.purple} /> },
+              { label: 'Active Bots', value: meetings.filter(m => m.status === 'recording').length.toString(), sub: meetings.filter(m => m.status === 'recording').length > 0 ? 'Recording now' : 'Idle', icon: <Bot size={18} color={T.blue} /> },
             ].map((stat, i) => (
               <div
                 key={i}
-                className="rounded-2xl p-[18px] transition-all duration-200"
-                style={{ background: '#1C1917', border: '1px solid #292524' }}
+                style={{
+                  background: T.bgCard, border: `1px solid ${T.border}`,
+                  borderRadius: 16, padding: 18, transition: 'all 0.2s',
+                }}
               >
-                <div className="flex justify-between items-start mb-3">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                   {stat.icon}
                 </div>
-                <div 
-                  className="text-[26px] font-bold text-foreground mb-0.5"
-                  style={{ fontFamily: 'Outfit, sans-serif' }}
-                >
+                <div style={{
+                  fontFamily: 'Outfit, sans-serif', fontSize: 26, fontWeight: 700,
+                  color: T.text, marginBottom: 2,
+                }}>
                   {stat.value}
                 </div>
-                <div className="text-xs" style={{ color: '#78716C' }}>{stat.label}</div>
-                <div className="text-[11px] mt-0.5" style={{ color: '#A8A29E' }}>{stat.sub}</div>
+                <div style={{ color: T.textM, fontSize: 12 }}>{stat.label}</div>
+                <div style={{ color: T.textS, fontSize: 11, marginTop: 2 }}>{stat.sub}</div>
               </div>
             ))}
           </div>
@@ -204,74 +245,78 @@ export default function Dashboard() {
             ))}
           </div>
         ) : meetings.length === 0 ? (
-          <div className="text-center py-16">
-            <Mic className="w-12 h-12 mx-auto mb-4" style={{ color: '#78716C' }} />
-            <p className="text-base font-medium text-foreground mb-1">No meetings yet</p>
-            <p className="text-sm max-w-sm mx-auto" style={{ color: '#A8A29E' }}>
+          <div style={{ textAlign: 'center', padding: '64px 0' }}>
+            <Mic style={{ width: 48, height: 48, margin: '0 auto 16px', color: T.textM }} />
+            <p style={{ fontSize: 16, fontWeight: 500, color: T.text, marginBottom: 4 }}>No meetings yet</p>
+            <p style={{ fontSize: 14, maxWidth: 320, margin: '0 auto', color: T.textS }}>
               Click Record to capture your first meeting. Your AI-powered summaries will appear here.
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {meetings.map((meeting) => (
               <Link
                 key={meeting.id}
                 to={`/meeting/${meeting.id}`}
-                className="block group"
+                className="block"
+                style={{ textDecoration: 'none' }}
               >
                 <div
-                  className="rounded-2xl p-5 transition-all duration-200 cursor-pointer"
-                  style={{ background: '#1C1917', border: '1px solid #292524' }}
+                  style={{
+                    background: T.bgCard,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 16,
+                    padding: 20,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#292524';
-                    e.currentTarget.style.borderColor = '#44403C';
+                    e.currentTarget.style.background = T.bgCardH;
+                    e.currentTarget.style.borderColor = T.borderL;
                     e.currentTarget.style.transform = 'translateY(-1px)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#1C1917';
-                    e.currentTarget.style.borderColor = '#292524';
+                    e.currentTarget.style.background = T.bgCard;
+                    e.currentTarget.style.borderColor = T.border;
                     e.currentTarget.style.transform = 'translateY(0)';
                   }}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
                       {/* Meeting icon */}
-                      <div 
-                        className="w-[42px] h-[42px] rounded-xl flex items-center justify-center flex-shrink-0"
-                        style={{ 
-                          background: meeting.status === 'processing' 
-                            ? 'rgba(59,130,246,0.1)' 
-                            : 'rgba(249,115,22,0.08)' 
-                        }}
-                      >
+                      <div style={{
+                        width: 42, height: 42, borderRadius: 12,
+                        background: meeting.status === 'processing'
+                          ? 'rgba(59,130,246,0.1)'
+                          : 'rgba(249,115,22,0.08)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}>
                         {meeting.status === 'processing' ? (
-                          <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: '#3B82F6' }} />
+                          <div style={{ width: 10, height: 10, borderRadius: '50%', background: T.blue, animation: 'pulse 1.5s infinite' }} />
                         ) : (
-                          <FileText size={18} style={{ color: '#FB923C' }} />
+                          <FileText size={18} color={T.orangeL} />
                         )}
                       </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span 
-                            className="text-[15px] font-semibold text-foreground truncate"
-                            style={{ fontFamily: 'Outfit, sans-serif' }}
-                          >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{
+                            fontFamily: 'Outfit, sans-serif', fontSize: 15, fontWeight: 600,
+                            color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const,
+                          }}>
                             {meeting.title}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' as const }}>
                           <StatusBadge status={meeting.status || 'scheduled'} />
-                          {insightCounts[meeting.id] && (
-                            <span
-                              className="inline-flex items-center"
-                              style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, color: '#A855F7', background: 'rgba(168,85,247,0.12)' }}
-                            >
-                              Summary
-                            </span>
+                          <SourceBadge source={meeting.source || 'manual'} />
+                          {(meeting as any).language && (
+                            <Badge color={T.textS} bg="rgba(168,168,168,0.08)">
+                              <Globe size={10} /> {(meeting as any).language}
+                            </Badge>
                           )}
-                          <span className="text-xs" style={{ color: '#78716C' }}>
-                            {meeting.source === 'google_meet' ? 'Google Meet' : meeting.source === 'zoom' ? 'Zoom' : meeting.source === 'teams' ? 'Teams' : 'Recording'} · {format(new Date(meeting.start_time), 'MMM d')} {format(new Date(meeting.start_time), 'h:mm a')}
+                          <span style={{ color: T.textM, fontSize: 12 }}>
+                            {getSourceLabel(meeting.source)} · {format(new Date(meeting.start_time), 'MMM d')} {format(new Date(meeting.start_time), 'h:mm a')}
                             {meeting.duration_seconds ? ` · ${formatDuration(meeting.duration_seconds)}` : ''}
                           </span>
                         </div>
@@ -279,16 +324,22 @@ export default function Dashboard() {
                     </div>
 
                     {/* Right side stats + chevron */}
-                    <div className="flex items-center gap-4 flex-shrink-0">
-                      {meeting.status === 'completed' && meeting.duration_seconds && (
-                        <div className="flex gap-3 text-xs" style={{ color: '#78716C' }}>
-                          <span className="flex items-center gap-1">
-                            <Clock size={12} />
-                            {formatDuration(meeting.duration_seconds)}
-                          </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+                      {meeting.status === 'completed' && (
+                        <div style={{ display: 'flex', gap: 12, color: T.textM, fontSize: 12 }}>
+                          {meeting.duration_seconds && (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <Clock size={12} /> {formatDuration(meeting.duration_seconds)}
+                            </span>
+                          )}
+                          {insightCounts[meeting.id] && (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <Zap size={12} /> Summary
+                            </span>
+                          )}
                         </div>
                       )}
-                      <ChevronRight size={16} style={{ color: '#78716C' }} />
+                      <ChevronRight size={16} color={T.textM} />
                     </div>
                   </div>
                 </div>
