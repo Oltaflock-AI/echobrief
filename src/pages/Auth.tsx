@@ -13,6 +13,7 @@ export default function Auth() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [isResetPassword, setIsResetPassword] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -93,10 +94,8 @@ export default function Auth() {
       if (isSignUp) {
         const { error } = await signUp(email, password, fullName);
         if (error) throw error;
-        toast({
-          title: 'Account created!',
-          description: 'Welcome to EchoBrief. Let\'s get started.',
-        });
+        setEmailSent(true);
+        return;
       } else {
         const { error } = await signIn(email, password);
         if (error) throw error;
@@ -146,7 +145,31 @@ export default function Auth() {
             <span className="text-xl font-bold text-foreground">EchoBrief</span>
           </Link>
 
-          <div className="text-center mb-8">
+          {emailSent ? (
+            /* Email Verification Sent Screen */
+            <div className="text-center py-8">
+              <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Mail className="w-8 h-8 text-accent" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Check your email</h2>
+              <p className="text-muted-foreground mb-6">
+                We sent a verification link to <span className="font-medium text-foreground">{email}</span>. Click the link to activate your account.
+              </p>
+              <p className="text-sm text-muted-foreground mb-6">
+                Didn't receive it? Check your spam folder or try again.
+              </p>
+              <Button
+                variant="outline"
+                onClick={() => { setEmailSent(false); setIsSignUp(false); }}
+                className="inline-flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to sign in
+              </Button>
+            </div>
+          )}
+
+          {!emailSent && <div className="text-center mb-8">
             <h2 className="text-2xl font-bold text-foreground mb-2">
               {isResetPassword ? 'Set new password' : isForgotPassword ? 'Reset your password' : isSignUp ? 'Create your account' : 'Welcome back'}
             </h2>
@@ -359,6 +382,8 @@ export default function Auth() {
               </div>
             </>
           )}
+          {/* close !emailSent */}
+          </div>}
         </div>
       </div>
     </div>
