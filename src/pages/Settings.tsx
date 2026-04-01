@@ -25,7 +25,10 @@ import {
   ExternalLink,
   Send,
   Sparkles,
-  Lock
+  Lock,
+  Bot,
+  Video,
+  Monitor
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -49,6 +52,14 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [fullName, setFullName] = useState('');
   
+  // Auto-join settings
+  const [autoRecord, setAutoRecord] = useState(true);
+  const [notetakerName, setNotetakerName] = useState('EchoBrief Notetaker');
+  const [joinMinutesBefore, setJoinMinutesBefore] = useState('2');
+  const [preferredLanguage, setPreferredLanguage] = useState('en');
+  const [savingAutoJoin, setSavingAutoJoin] = useState(false);
+  const [autoJoinLoaded, setAutoJoinLoaded] = useState(false);
+
   // Change password
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -152,7 +163,50 @@ export default function Settings() {
     };
 
     fetchProfile();
+
+    // Fetch auto-join preferences
+    const fetchAutoJoinPrefs = async () => {
+      const { data, error } = await supabase
+        .from('notification_preferences')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!error && data) {
+        setAutoRecord(data.auto_record ?? true);
+        setNotetakerName(data.notetaker_name || 'EchoBrief Notetaker');
+        setJoinMinutesBefore(String(data.join_minutes_before ?? 2));
+        setPreferredLanguage(data.preferred_language || 'en');
+      }
+      setAutoJoinLoaded(true);
+    };
+
+    fetchAutoJoinPrefs();
   }, [user]);
+
+  const handleSaveAutoJoin = async () => {
+    if (!user) return;
+    setSavingAutoJoin(true);
+    try {
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert({
+          user_id: user.id,
+          auto_record: autoRecord,
+          notetaker_name: notetakerName,
+          join_minutes_before: parseInt(joinMinutesBefore),
+          preferred_language: preferredLanguage,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+
+      if (error) throw error;
+      toast({ title: 'Settings saved', description: 'Your auto-join preferences have been updated.' });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to save settings', variant: 'destructive' });
+    } finally {
+      setSavingAutoJoin(false);
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!user) return;
@@ -530,6 +584,118 @@ export default function Settings() {
               <p className="text-sm text-muted-foreground mt-4">
                 When connected, we'll automatically detect upcoming meetings and remind you to start recording.
               </p>
+            </CardContent>
+          </Card>
+
+          {/* Auto-Join Settings */}
+          <Card className="glass-card-liquid overflow-hidden">
+            <CardHeader className="relative">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-orange-500/10">
+                  <Bot className="w-5 h-5 text-orange-500" />
+                </div>
+                Auto-Join Settings
+              </CardTitle>
+              <CardDescription>
+                Configure how the EchoBrief bot joins and records your meetings
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* Auto-join toggle */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                <div>
+                  <p className="font-medium text-foreground">Auto-join meetings</p>
+                  <p className="text-sm text-muted-foreground">
+                    Automatically join meetings from your calendar
+                  </p>
+                </div>
+                <Switch
+                  checked={autoRecord}
+                  onCheckedChange={setAutoRecord}
+                />
+              </div>
+
+              {/* Notetaker display name */}
+              <div className="space-y-2">
+                <Label htmlFor="notetaker-name">Notetaker display name</Label>
+                <Input
+                  id="notetaker-name"
+                  value={notetakerName}
+                  onChange={(e) => setNotetakerName(e.target.value)}
+                  placeholder="EchoBrief Notetaker"
+                  className="bg-card"
+                />
+                <p className="text-xs text-muted-foreground">This name appears when the bot joins your meeting</p>
+              </div>
+
+              {/* Minutes before meeting */}
+              <div className="space-y-2">
+                <Label htmlFor="join-minutes">Join before meeting starts</Label>
+                <select
+                  id="join-minutes"
+                  value={joinMinutesBefore}
+                  onChange={(e) => setJoinMinutesBefore(e.target.value)}
+                  className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="1">1 minute before</option>
+                  <option value="2">2 minutes before</option>
+                  <option value="3">3 minutes before</option>
+                  <option value="5">5 minutes before</option>
+                </select>
+              </div>
+
+              {/* Preferred language */}
+              <div className="space-y-2">
+                <Label htmlFor="pref-language">Preferred transcription language</Label>
+                <select
+                  id="pref-language"
+                  value={preferredLanguage}
+                  onChange={(e) => setPreferredLanguage(e.target.value)}
+                  className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="en">English</option>
+                  <option value="hi">Hindi</option>
+                  <option value="ta">Tamil</option>
+                  <option value="te">Telugu</option>
+                  <option value="kn">Kannada</option>
+                  <option value="ml">Malayalam</option>
+                  <option value="bn">Bengali</option>
+                  <option value="mr">Marathi</option>
+                  <option value="gu">Gujarati</option>
+                  <option value="pa">Punjabi</option>
+                  <option value="auto">Auto-detect</option>
+                </select>
+              </div>
+
+              {/* Supported platforms */}
+              <div className="space-y-2">
+                <Label>Supported platforms</Label>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30">
+                    <Video className="w-4 h-4 text-green-500" />
+                    <span className="text-sm text-foreground">Google Meet</span>
+                    <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30">
+                    <Video className="w-4 h-4 text-blue-500" />
+                    <span className="text-sm text-foreground">Zoom</span>
+                    <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30">
+                    <Monitor className="w-4 h-4 text-purple-500" />
+                    <span className="text-sm text-foreground">Teams</span>
+                    <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                  </div>
+                </div>
+              </div>
+
+              <Button onClick={handleSaveAutoJoin} disabled={savingAutoJoin} variant="accent">
+                {savingAutoJoin ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : null}
+                Save Settings
+              </Button>
             </CardContent>
           </Card>
 
