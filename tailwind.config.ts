@@ -14,7 +14,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+        sans: ['DM Sans', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+        heading: ['Outfit', 'Inter', '-apple-system', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       fontSize: {
         'xs': ['0.75rem', { lineHeight: '1rem' }],
@@ -26,6 +28,13 @@ export default {
         '3xl': ['1.5rem', { lineHeight: '2rem' }],
       },
       colors: {
+        // Warm Ember brand palette
+        brand: {
+          orange: '#F97316',
+          amber: '#F59E0B',
+          'orange-light': '#FB923C',
+          'orange-dark': '#7C2D12',
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

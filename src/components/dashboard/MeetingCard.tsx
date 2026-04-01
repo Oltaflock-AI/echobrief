@@ -27,10 +27,14 @@ const sourceIcons: Record<string, typeof Video> = {
 
 const statusConfig: Record<string, { label: string; className: string; icon?: typeof Loader2 }> = {
   scheduled: { label: 'Scheduled', className: 'bg-muted text-muted-foreground' },
-  recording: { label: 'Recording', className: 'bg-recording text-recording-foreground animate-pulse' },
-  processing: { label: 'Processing', className: 'bg-warning text-warning-foreground', icon: Loader2 },
-  completed: { label: 'Completed', className: 'bg-success text-success-foreground' },
-  failed: { label: 'Failed', className: 'bg-destructive text-destructive-foreground' },
+  // Recording = green (#22C55E) per brand spec
+  recording: { label: 'Recording', className: 'bg-green-500/10 text-green-500 border border-green-500/20 animate-pulse' },
+  // Processing = blue (#3B82F6) per brand spec
+  processing: { label: 'Processing', className: 'bg-blue-500/10 text-blue-500 border border-blue-500/20', icon: Loader2 },
+  // Completed = orange-500 per brand spec
+  completed: { label: 'Completed', className: 'bg-orange-500/10 text-orange-500 border border-orange-500/20' },
+  // Failed = red (#EF4444) per brand spec
+  failed: { label: 'Failed', className: 'bg-red-500/10 text-red-500 border border-red-500/20' },
 };
 
 export function MeetingCard({ meeting }: MeetingCardProps) {
@@ -62,7 +66,7 @@ export function MeetingCard({ meeting }: MeetingCardProps) {
 
               {/* Content */}
               <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-foreground truncate group-hover:text-accent transition-colors">
+                <h3 className="font-semibold text-foreground truncate group-hover:text-orange-400 transition-colors">
                   {meeting.title}
                 </h3>
                 
@@ -91,7 +95,7 @@ export function MeetingCard({ meeting }: MeetingCardProps) {
                 {StatusIcon && <StatusIcon className="w-3 h-3 animate-spin" />}
                 {status.label}
               </Badge>
-              <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-accent transition-colors" />
+              <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-orange-400 transition-colors" />
             </div>
           </div>
         </CardContent>

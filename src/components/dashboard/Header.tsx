@@ -32,7 +32,13 @@ export function Header() {
 
   return (
     <>
-      <header className="h-12 border-b border-border bg-background flex items-center justify-end gap-2 px-4 sticky top-0 z-40">
+      <header className="h-12 border-b border-border bg-background flex items-center justify-between gap-2 px-4 sticky top-0 z-40">
+        {/* Logo text for narrow/collapsed sidebar contexts */}
+        <div className="flex items-center">
+          <span className="text-sm font-semibold font-heading" style={{ fontFamily: 'Outfit, sans-serif' }}>
+            <span className="text-foreground">echo</span><span className="text-orange-400">brief</span>
+          </span>
+        </div>
         {/* Search trigger */}
         <Button
           variant="ghost"

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@400&family=Inter:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,10 +6,11 @@
 
 /* Subtle gradient overlays */
 :root {
-  --gradient-light: radial-gradient(ellipse at top left, rgba(76, 125, 255, 0.04), transparent 50%),
-                    radial-gradient(ellipse at bottom right, rgba(76, 125, 255, 0.02), transparent 50%);
-  --gradient-dark: radial-gradient(ellipse at top left, rgba(76, 125, 255, 0.08), transparent 50%),
+  --gradient-light: radial-gradient(ellipse at top left, rgba(249, 115, 22, 0.04), transparent 50%),
+                    radial-gradient(ellipse at bottom right, rgba(245, 158, 11, 0.02), transparent 50%);
+  --gradient-dark: radial-gradient(ellipse at top left, rgba(249, 115, 22, 0.08), transparent 50%),
                    radial-gradient(ellipse at bottom right, rgba(0, 0, 0, 0), transparent 50%);
+  --warm-ember-gradient: linear-gradient(135deg, #F97316, #F59E0B);
 }
 @layer base {
   :root {
@@ -38,8 +39,8 @@
     --muted: 220 14% 96%;
     --muted-foreground: 220 10% 50%;
 
-    /* Accent - EchoBrief Blue (#4C7DFF) */
-    --accent: 224 100% 65%;
+    /* Accent - Warm Ember Orange (#F97316) */
+    --accent: 24 95% 53%;
     --accent-foreground: 0 0% 100%;
 
     /* Recording state - Red indicator */
@@ -60,19 +61,19 @@
     /* Borders - Very subtle */
     --border: 220 14% 92%;
     --input: 220 14% 92%;
-    --ring: 224 100% 65%;
+    --ring: 24 95% 53%;
 
     --radius: 0.5rem;
 
     /* Sidebar - Clean white with subtle border */
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 220 20% 14%;
-    --sidebar-primary: 224 100% 65%;
+    --sidebar-primary: 24 95% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 220 14% 96%;
     --sidebar-accent-foreground: 220 20% 14%;
     --sidebar-border: 220 14% 92%;
-    --sidebar-ring: 224 100% 65%;
+    --sidebar-ring: 24 95% 53%;
   }
 
   .dark {
@@ -103,8 +104,8 @@
     /* Secondary Text: #9BA4AE -> hsl(212, 10%, 64%) */
     --muted-foreground: 212 10% 64%;
 
-    /* Accent - EchoBrief Blue (#4C7DFF) */
-    --accent: 224 100% 65%;
+    /* Accent - Warm Ember Orange (#F97316) */
+    --accent: 24 95% 53%;
     --accent-foreground: 0 0% 100%;
 
     --recording: 0 65% 50%;
@@ -122,17 +123,17 @@
     /* Borders / Dividers: #2A2F36 -> hsl(215, 13%, 19%) */
     --border: 215 13% 19%;
     --input: 215 13% 19%;
-    --ring: 224 100% 65%;
+    --ring: 24 95% 53%;
 
     /* Sidebar - Same as app background for cohesion */
     --sidebar-background: 215 28% 7%;
     --sidebar-foreground: 210 25% 93%;
-    --sidebar-primary: 224 100% 65%;
+    --sidebar-primary: 24 95% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 215 20% 15%;
     --sidebar-accent-foreground: 210 25% 93%;
     --sidebar-border: 215 13% 19%;
-    --sidebar-ring: 224 100% 65%;
+    --sidebar-ring: 24 95% 53%;
   }
 }
 
@@ -147,26 +148,36 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-weight: 400;
     font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-semibold tracking-tight text-foreground;
+    @apply tracking-tight text-foreground;
+    font-family: 'Outfit', 'Inter', -apple-system, sans-serif;
   }
 
   h1 {
     @apply text-2xl;
+    font-weight: 600;
   }
 
   h2 {
     @apply text-xl;
+    font-weight: 500;
   }
 
   h3 {
     @apply text-lg;
+    font-weight: 500;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    font-weight: 400;
   }
 }
 
@@ -195,7 +206,7 @@
   }
 
   .list-row.active {
-    background-color: hsl(var(--accent) / 0.08);
+    background-color: rgba(249, 115, 22, 0.08);
   }
 
   /* Status indicators - small, subtle dots */
@@ -234,7 +245,12 @@
   }
 
   .nav-item.active {
-    @apply text-foreground bg-secondary;
+    @apply text-white;
+    background-color: #F97316;
+  }
+
+  .nav-item.active:hover {
+    background-color: #EA6C0A;
   }
 
   /* Document section - Notion blocks style */
@@ -261,7 +277,8 @@
   }
 
   .action-item-checkbox.checked {
-    @apply bg-accent border-accent;
+    background-color: #F97316;
+    border-color: #F97316;
   }
 
   .action-item-text {
@@ -372,7 +389,9 @@
   }
 
   .tag-accent {
-    @apply bg-accent/10 text-accent;
+    /* AI/insights badge → purple per brand spec */
+    background-color: rgba(168, 85, 247, 0.1);
+    color: #A855F7;
   }
 
   .tag-success {
@@ -403,14 +422,41 @@
   }
 
   .gradient-text {
-    background: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(224 100% 75%) 100%);
+    background: linear-gradient(135deg, #F97316 0%, #F59E0B 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
 
   .shadow-glow {
-    box-shadow: 0 0 20px -5px hsl(var(--accent) / 0.2);
+    box-shadow: 0 0 20px -5px rgba(249, 115, 22, 0.3);
+  }
+
+  /* Warm Ember signature gradient bar - 4px top border on card headers */
+  .ember-bar {
+    position: relative;
+  }
+
+  .ember-bar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(135deg, #F97316, #F59E0B);
+    border-radius: inherit;
+  }
+
+  /* Primary button - gradient (from-orange-500 to-amber-500) */
+  .btn-primary-ember {
+    background: linear-gradient(135deg, #F97316, #F59E0B);
+    @apply text-white font-medium rounded-xl;
+    transition: opacity 0.15s ease;
+  }
+
+  .btn-primary-ember:hover {
+    opacity: 0.9;
   }
 
   .animate-fade-in {
@@ -471,10 +517,12 @@
     background: var(--gradient-dark);
   }
 
-  /* Speaker label styling */
+  /* Speaker label styling - AI/transcript = purple per brand spec */
   .speaker-label {
     @apply inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full;
-    @apply bg-accent/10 text-accent mr-2;
+    background-color: rgba(168, 85, 247, 0.1);
+    color: #A855F7;
+    @apply mr-2;
   }
 
   /* Transcript segment */

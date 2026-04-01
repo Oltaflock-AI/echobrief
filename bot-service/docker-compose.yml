@@ -1,0 +1,69 @@
+version: '3.9'
+
+services:
+  # ── Redis (BullMQ backend) ──────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: echobrief-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Bot Service ─────────────────────────────────────────────────────────────
+  bot-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: echobrief-bot-service
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      LOG_LEVEL: info
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # Supabase (EchoBrief project: qjhysesjocanowmdkeme)
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+
+      # Transcription
+      SARVAM_API_KEY: ${SARVAM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+      # Bot config
+      BOT_CONCURRENCY: ${BOT_CONCURRENCY:-5}
+      AUDIO_OUTPUT_DIR: /tmp/echobrief-audio
+      CHROMIUM_PATH: /usr/bin/chromium
+
+      # CORS
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+
+    volumes:
+      - audio_data:/tmp/echobrief-audio
+    # Allow Chromium to use shared memory
+    shm_size: '2gb'
+    # Required for PulseAudio
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+
+volumes:
+  redis_data:
+  audio_data:

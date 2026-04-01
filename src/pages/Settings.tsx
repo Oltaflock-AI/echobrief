@@ -341,7 +341,7 @@ export default function Settings() {
       <div className="p-8 max-w-4xl">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <Sparkles className="w-8 h-8 text-accent" />
+            <Sparkles className="w-8 h-8 text-orange-500" />
             Settings
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -352,10 +352,11 @@ export default function Settings() {
         <div className="space-y-6">
           {/* Profile Settings */}
           <Card className="glass-card-liquid overflow-hidden">
-            <CardHeader>
+            <CardHeader className="relative">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
               <CardTitle className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-accent/10">
-                  <User className="w-5 h-5 text-accent" />
+                <div className="p-2 rounded-lg bg-orange-500/10">
+                  <User className="w-5 h-5 text-orange-500" />
                 </div>
                 Profile
               </CardTitle>
@@ -394,10 +395,11 @@ export default function Settings() {
 
           {/* Google Calendar Integration */}
           <Card className="glass-card-liquid overflow-hidden">
-            <CardHeader>
+            <CardHeader className="relative">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
               <CardTitle className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-accent/10">
-                  <Calendar className="w-5 h-5 text-accent" />
+                <div className="p-2 rounded-lg bg-orange-500/10">
+                  <Calendar className="w-5 h-5 text-orange-500" />
                 </div>
                 Google Calendar
               </CardTitle>
@@ -452,10 +454,11 @@ export default function Settings() {
 
           {/* Slack Integration */}
           <Card className="glass-card-liquid overflow-hidden">
-            <CardHeader>
+            <CardHeader className="relative">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
               <CardTitle className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-accent/10">
-                  <Slack className="w-5 h-5 text-accent" />
+                <div className="p-2 rounded-lg bg-orange-500/10">
+                  <Slack className="w-5 h-5 text-orange-500" />
                 </div>
                 Slack
               </CardTitle>
@@ -529,10 +532,11 @@ export default function Settings() {
 
           {/* Notification Preferences */}
           <Card className="glass-card-liquid overflow-hidden">
-            <CardHeader>
+            <CardHeader className="relative">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
               <CardTitle className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-accent/10">
-                  <Sparkles className="w-5 h-5 text-accent" />
+                <div className="p-2 rounded-lg bg-purple-500/10">
+                  <Sparkles className="w-5 h-5 text-purple-500" />
                 </div>
                 Notifications
               </CardTitle>
@@ -578,8 +582,8 @@ export default function Settings() {
         <DialogContent className="glass-card-liquid">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-accent/10">
-                <Slack className="w-5 h-5 text-accent" />
+              <div className="p-2 rounded-lg bg-orange-500/10">
+                <Slack className="w-5 h-5 text-orange-500" />
               </div>
               Connect Slack
             </DialogTitle>

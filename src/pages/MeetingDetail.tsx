@@ -238,8 +238,9 @@ export default function MeetingDetail() {
 
   const getConfidenceBadge = (confidence?: string) => {
     if (!confidence) return null;
+    // Confidence badges are AI-specific → keep purple per brand spec
     const colors = {
-      high: 'bg-accent/10 text-accent',
+      high: 'bg-purple-500/10 text-purple-500',
       medium: 'bg-warning/10 text-warning',
       low: 'bg-muted text-muted-foreground',
     };
@@ -253,7 +254,7 @@ export default function MeetingDetail() {
   const getCategoryIcon = (category?: string) => {
     switch (category) {
       case 'risk': return <AlertTriangle className="w-4 h-4 text-destructive" />;
-      case 'opportunity': return <Lightbulb className="w-4 h-4 text-accent" />;
+      case 'opportunity': return <Lightbulb className="w-4 h-4 text-orange-500" />;
       case 'market': return <RefreshCw className="w-4 h-4 text-primary" />;
       default: return <Lightbulb className="w-4 h-4 text-muted-foreground" />;
     }
@@ -297,7 +298,7 @@ export default function MeetingDetail() {
       <div className="max-w-3xl mx-auto px-6 py-8">
         {/* Back button */}
         <div className="flex items-center justify-between mb-6">
-          <Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-orange-400">
             <ArrowLeft className="w-4 h-4" />
             Back
           </Link>
@@ -376,8 +377,9 @@ export default function MeetingDetail() {
 
         {/* Attendees */}
         {attendees.length > 0 && (
-          <div className="mb-8 p-4 rounded-lg bg-card border border-border">
-            <div className="flex items-center gap-2 mb-3">
+          <div className="mb-8 p-4 rounded-lg bg-card border border-border overflow-hidden relative">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
+            <div className="flex items-center gap-2 mb-3 mt-1">
               <Users className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm font-medium text-foreground">
                 {attendees.length} Participant{attendees.length !== 1 ? 's' : ''}
@@ -390,7 +392,7 @@ export default function MeetingDetail() {
                   className="flex items-center gap-2 px-2 py-1 rounded-full bg-secondary border border-border"
                 >
                   <Avatar className="w-6 h-6">
-                    <AvatarFallback className="text-xs bg-accent/10 text-accent">
+                    <AvatarFallback className="text-xs bg-orange-500/10 text-orange-500">
                       {getInitials(attendee.displayName, attendee.email)}
                     </AvatarFallback>
                   </Avatar>
@@ -461,7 +463,7 @@ export default function MeetingDetail() {
                 <ul className="space-y-2">
                   {insights.key_points.map((point: string, i: number) => (
                     <li key={i} className="flex items-start gap-2 doc-content">
-                      <span className="w-1.5 h-1.5 rounded-full bg-accent mt-2 flex-shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-2 flex-shrink-0" />
                       {point}
                     </li>
                   ))}
@@ -589,7 +591,7 @@ export default function MeetingDetail() {
                         return (
                           <div key={i} className={cn(isNewSpeaker && i > 0 && "pt-2")}>
                             {isNewSpeaker && (
-                              <span className="text-xs font-semibold text-accent uppercase tracking-wide">
+                              <span className="text-xs font-semibold text-orange-400 uppercase tracking-wide">
                                 {seg.speaker}
                               </span>
                             )}

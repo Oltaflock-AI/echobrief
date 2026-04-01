@@ -145,16 +145,19 @@ export default function Dashboard() {
         {/* Stats Row - Compact */}
         {!loading && meetings.length > 0 && (
           <div className="grid grid-cols-3 gap-4 mb-8">
-            <div className="p-4 rounded-lg bg-card border border-border">
-              <p className="text-2xl font-semibold text-foreground">{stats.totalMeetings}</p>
+            <div className="p-4 rounded-lg bg-card border border-border overflow-hidden relative">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
+              <p className="text-2xl font-semibold text-foreground" style={{ fontFamily: 'Outfit, sans-serif' }}>{stats.totalMeetings}</p>
               <p className="text-xs text-muted-foreground">Meetings</p>
             </div>
-            <div className="p-4 rounded-lg bg-card border border-border">
-              <p className="text-2xl font-semibold text-foreground">{formatTotalDuration(stats.totalDuration)}</p>
+            <div className="p-4 rounded-lg bg-card border border-border overflow-hidden relative">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
+              <p className="text-2xl font-semibold text-foreground" style={{ fontFamily: 'Outfit, sans-serif' }}>{formatTotalDuration(stats.totalDuration)}</p>
               <p className="text-xs text-muted-foreground">Recorded</p>
             </div>
-            <div className="p-4 rounded-lg bg-card border border-border">
-              <p className="text-2xl font-semibold text-foreground">{stats.transcriptCount}</p>
+            <div className="p-4 rounded-lg bg-card border border-border overflow-hidden relative">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
+              <p className="text-2xl font-semibold text-foreground" style={{ fontFamily: 'Outfit, sans-serif' }}>{stats.transcriptCount}</p>
               <p className="text-xs text-muted-foreground">Summaries</p>
             </div>
           </div>
@@ -162,9 +165,9 @@ export default function Dashboard() {
 
         {/* Time Saved Banner */}
         {!loading && timeSavedMinutes > 0 && (
-          <div className="mb-8 p-4 rounded-lg bg-success/5 border border-success/20 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-success/10 flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-5 h-5 text-success" />
+          <div className="mb-8 p-4 rounded-lg bg-orange-500/5 border border-orange-500/20 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-5 h-5 text-orange-500" />
             </div>
             <div>
               <p className="text-sm font-medium text-foreground">
@@ -213,9 +216,9 @@ export default function Dashboard() {
                   </span>
                 </div>
 
-                {/* Insights badge */}
+                {/* Insights badge - AI/insights → purple-500 per brand spec */}
                 {insightCounts[meeting.id] && (
-                  <span className="tag tag-accent">Summary</span>
+                  <span className="tag" style={{ backgroundColor: 'rgba(168,85,247,0.1)', color: '#A855F7' }}>Summary</span>
                 )}
 
                 {/* Metadata */}

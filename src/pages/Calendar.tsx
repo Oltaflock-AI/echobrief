@@ -288,7 +288,7 @@ export default function CalendarPage() {
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
-            <Loader2 className="w-10 h-10 animate-spin text-accent mx-auto mb-4" />
+            <Loader2 className="w-10 h-10 animate-spin text-orange-500 mx-auto mb-4" />
             <p className="text-muted-foreground">Loading your calendar...</p>
           </div>
         </div>
@@ -302,7 +302,7 @@ export default function CalendarPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-              <Sparkles className="w-8 h-8 text-accent" />
+              <Sparkles className="w-8 h-8 text-orange-500" />
               Calendar
             </h1>
             <p className="text-muted-foreground mt-1">
@@ -332,8 +332,8 @@ export default function CalendarPage() {
         {!isConnected ? (
           <Card className="glass-card-liquid lg:col-span-2">
             <CardContent className="py-16 text-center">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/10 mx-auto mb-6 flex items-center justify-center">
-                <CalendarIcon className="w-10 h-10 text-accent" />
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-orange-500/20 to-orange-500/10 mx-auto mb-6 flex items-center justify-center">
+                <CalendarIcon className="w-10 h-10 text-orange-500" />
               </div>
               <h3 className="text-2xl font-bold text-foreground mb-3">
                 Connect Your Calendar
@@ -354,8 +354,8 @@ export default function CalendarPage() {
         ) : (
           <>
             {isSampleData && (
-              <div className="mb-6 p-4 bg-accent/10 rounded-lg border border-accent/20">
-                <p className="text-sm text-accent-foreground">
+              <div className="mb-6 p-4 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                <p className="text-sm text-orange-500">
                   📅 Showing sample calendar events. Your actual Google Calendar events will appear once OAuth is configured.
                 </p>
               </div>
@@ -364,7 +364,8 @@ export default function CalendarPage() {
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Today's Meetings */}
               <Card className="glass-card-liquid overflow-hidden">
-                <CardHeader>
+                <CardHeader className="relative">
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
                   <CardTitle className="flex items-center gap-2">
                     <div className="p-2 rounded-lg bg-recording/10">
                       <Video className="w-5 h-5 text-recording" />
@@ -393,7 +394,7 @@ export default function CalendarPage() {
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
-                              <h4 className="font-semibold text-foreground group-hover:text-accent transition-colors">{event.title}</h4>
+                              <h4 className="font-semibold text-foreground group-hover:text-orange-400 transition-colors">{event.title}</h4>
                               <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
                                 <Clock className="w-4 h-4" />
                                 {formatEventTime(event.start, event.end)}
@@ -423,10 +424,11 @@ export default function CalendarPage() {
 
               {/* This Week */}
               <Card className="glass-card-liquid overflow-hidden">
-                <CardHeader>
+                <CardHeader className="relative">
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
                   <CardTitle className="flex items-center gap-2">
-                    <div className="p-2 rounded-lg bg-accent/10">
-                      <CalendarIcon className="w-5 h-5 text-accent" />
+                    <div className="p-2 rounded-lg bg-orange-500/10">
+                      <CalendarIcon className="w-5 h-5 text-orange-500" />
                     </div>
                     This Week
                   </CardTitle>
@@ -452,8 +454,8 @@ export default function CalendarPage() {
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
-                              <h4 className="font-semibold text-foreground group-hover:text-accent transition-colors">{event.title}</h4>
-                              <p className="text-sm text-accent font-medium mt-1">
+                              <h4 className="font-semibold text-foreground group-hover:text-orange-400 transition-colors">{event.title}</h4>
+                              <p className="text-sm text-orange-400 font-medium mt-1">
                                 {getEventDateLabel(event.start)}
                               </p>
                               <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
@@ -492,8 +494,8 @@ export default function CalendarPage() {
         <DialogContent className="glass-card-liquid sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 text-xl">
-              <div className="p-2 rounded-lg bg-accent/10">
-                <Video className="w-5 h-5 text-accent" />
+              <div className="p-2 rounded-lg bg-orange-500/10">
+                <Video className="w-5 h-5 text-orange-500" />
               </div>
               {selectedEvent?.title}
             </DialogTitle>
@@ -516,7 +518,7 @@ export default function CalendarPage() {
                     href={selectedEvent.meetingLink}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-accent hover:underline"
+                    className="flex items-center gap-2 text-sm text-orange-400 hover:underline"
                   >
                     <LinkIcon className="w-4 h-4" />
                     Join meeting link

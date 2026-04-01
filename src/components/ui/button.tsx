@@ -15,7 +15,7 @@ const buttonVariants = cva(
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-secondary hover:text-secondary-foreground",
         link: "text-accent underline-offset-4 hover:underline",
-        accent: "bg-accent text-accent-foreground hover:bg-accent/90",
+        accent: "bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:opacity-90 rounded-xl font-medium",
         recording: "bg-recording text-recording-foreground hover:bg-recording/90",
       },
       size: {

@@ -1,55 +1,159 @@
 export function HowItWorks() {
+  const steps = [
+    {
+      num: '1',
+      title: 'Connect calendar',
+      description: 'Link Google Calendar or Outlook. Takes 30 seconds.',
+      bgColor: 'rgba(249,115,22,0.1)',
+      textColor: '#FB923C',
+      borderColor: 'rgba(249,115,22,0.2)',
+    },
+    {
+      num: '2',
+      title: 'Bot auto-joins',
+      description: 'EchoBrief joins 2 minutes before your meeting starts. No action needed.',
+      bgColor: 'rgba(168,85,247,0.1)',
+      textColor: '#A855F7',
+      borderColor: 'rgba(168,85,247,0.2)',
+    },
+    {
+      num: '3',
+      title: 'AI processes',
+      description: 'Real-time transcription in 22 languages. Insight extraction. Speaker attribution.',
+      bgColor: 'rgba(59,130,246,0.1)',
+      textColor: '#3B82F6',
+      borderColor: 'rgba(59,130,246,0.2)',
+    },
+    {
+      num: '4',
+      title: 'Summary delivered',
+      description: 'Action items, decisions, and risks — sent to WhatsApp, Slack, or email in your language.',
+      bgColor: 'rgba(34,197,94,0.1)',
+      textColor: '#22C55E',
+      borderColor: 'rgba(34,197,94,0.2)',
+    },
+  ];
+
   return (
-    <section className="py-20 bg-stone-900 border-t border-b border-stone-800">
-      <div className="max-w-[1100px] mx-auto px-6">
-        <div className="text-[11px] font-bold tracking-[0.12em] uppercase text-orange-400 mb-3 text-center">How it works</div>
-        <h2 className="font-['Outfit'] text-[36px] font-semibold tracking-[-0.03em] text-center text-stone-50 mb-2">
-          Four steps. Zero effort.
-        </h2>
-        <p className="text-[16px] text-stone-400 text-center max-w-[520px] mx-auto mb-12 font-['DM_Sans']">
-          Connect once, and EchoBrief handles every meeting after that.
-        </p>
-
-        {/* Steps */}
-        <div className="relative grid grid-cols-2 md:grid-cols-4 gap-6">
-          {/* Connecting line (desktop only) */}
-          <div className="hidden md:block absolute top-9 left-[12.5%] right-[12.5%] h-0.5 bg-gradient-to-r from-orange-500 to-amber-500 opacity-30" />
-
-          {/* Step 1 */}
-          <div className="text-center relative px-3">
-            <div className="w-[72px] h-[72px] rounded-full flex items-center justify-center mx-auto mb-5 bg-[rgba(249,115,22,0.1)] border-2 border-[rgba(249,115,22,0.2)] relative z-10">
-              <span className="font-['Outfit'] text-[24px] font-bold text-orange-400">1</span>
-            </div>
-            <h3 className="font-['Outfit'] text-[15px] font-semibold mb-1.5 text-stone-50">Connect calendar</h3>
-            <p className="text-[12px] leading-relaxed text-stone-400 font-['DM_Sans']">Link Google Calendar or Outlook. Takes 30 seconds.</p>
+    <section
+      id="how-it-works"
+      style={{
+        padding: '80px 0',
+        background: '#1C1917',
+        borderTop: '1px solid #292524',
+        borderBottom: '1px solid #292524',
+      }}
+    >
+      <div className="mx-auto max-w-[1100px] px-6">
+        {/* Section header */}
+        <div className="text-center mb-12">
+          <div
+            style={{
+              fontSize: '11px',
+              fontFamily: "'DM Sans', sans-serif",
+              fontWeight: 700,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: '#FB923C',
+              marginBottom: '12px',
+            }}
+          >
+            How it works
           </div>
+          <h2
+            style={{
+              fontFamily: "'Outfit', sans-serif",
+              fontSize: '36px',
+              fontWeight: 600,
+              letterSpacing: '-0.03em',
+              color: '#FAFAF9',
+              marginBottom: '8px',
+            }}
+          >
+            Four steps. Zero effort.
+          </h2>
+          <p
+            style={{
+              fontSize: '16px',
+              fontFamily: "'DM Sans', sans-serif",
+              color: '#A8A29E',
+              maxWidth: '520px',
+              margin: '0 auto',
+            }}
+          >
+            Connect once, and EchoBrief handles every meeting after that.
+          </p>
+        </div>
 
-          {/* Step 2 */}
-          <div className="text-center relative px-3">
-            <div className="w-[72px] h-[72px] rounded-full flex items-center justify-center mx-auto mb-5 bg-[rgba(168,85,247,0.1)] border-2 border-[rgba(168,85,247,0.2)] relative z-10">
-              <span className="font-['Outfit'] text-[24px] font-bold text-purple-500">2</span>
-            </div>
-            <h3 className="font-['Outfit'] text-[15px] font-semibold mb-1.5 text-stone-50">Bot auto-joins</h3>
-            <p className="text-[12px] leading-relaxed text-stone-400 font-['DM_Sans']">EchoBrief joins 2 minutes before your meeting starts. No action needed.</p>
-          </div>
+        {/* Steps with gradient connecting line */}
+        <div className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-0">
+          {/* Gradient line connecting steps — desktop only */}
+          <div
+            aria-hidden="true"
+            className="hidden lg:block absolute"
+            style={{
+              top: '36px',
+              left: '12.5%',
+              right: '12.5%',
+              height: '2px',
+              background: 'linear-gradient(90deg, #F97316, #F59E0B)',
+              opacity: 0.3,
+            }}
+          />
 
-          {/* Step 3 */}
-          <div className="text-center relative px-3">
-            <div className="w-[72px] h-[72px] rounded-full flex items-center justify-center mx-auto mb-5 bg-[rgba(59,130,246,0.1)] border-2 border-[rgba(59,130,246,0.2)] relative z-10">
-              <span className="font-['Outfit'] text-[24px] font-bold text-blue-500">3</span>
-            </div>
-            <h3 className="font-['Outfit'] text-[15px] font-semibold mb-1.5 text-stone-50">AI processes</h3>
-            <p className="text-[12px] leading-relaxed text-stone-400 font-['DM_Sans']">Real-time transcription in 22 languages. Insight extraction. Speaker attribution.</p>
-          </div>
+          {steps.map((step, idx) => (
+            <div
+              key={idx}
+              className="text-center relative"
+              style={{ padding: '0 12px' }}
+            >
+              {/* Step number circle */}
+              <div
+                style={{
+                  width: '72px',
+                  height: '72px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 20px',
+                  fontFamily: "'Outfit', sans-serif",
+                  fontSize: '24px',
+                  fontWeight: 700,
+                  position: 'relative',
+                  zIndex: 2,
+                  background: step.bgColor,
+                  color: step.textColor,
+                  border: `2px solid ${step.borderColor}`,
+                }}
+              >
+                {step.num}
+              </div>
 
-          {/* Step 4 */}
-          <div className="text-center relative px-3">
-            <div className="w-[72px] h-[72px] rounded-full flex items-center justify-center mx-auto mb-5 bg-[rgba(34,197,94,0.1)] border-2 border-[rgba(34,197,94,0.2)] relative z-10">
-              <span className="font-['Outfit'] text-[24px] font-bold text-green-500">4</span>
+              <h3
+                style={{
+                  fontFamily: "'Outfit', sans-serif",
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  color: '#FAFAF9',
+                  marginBottom: '6px',
+                }}
+              >
+                {step.title}
+              </h3>
+
+              <p
+                style={{
+                  fontSize: '12px',
+                  fontFamily: "'DM Sans', sans-serif",
+                  lineHeight: 1.5,
+                  color: '#A8A29E',
+                }}
+              >
+                {step.description}
+              </p>
             </div>
-            <h3 className="font-['Outfit'] text-[15px] font-semibold mb-1.5 text-stone-50">Summary delivered</h3>
-            <p className="text-[12px] leading-relaxed text-stone-400 font-['DM_Sans']">Action items, decisions, and risks — sent to WhatsApp, Slack, or email in your language.</p>
-          </div>
+          ))}
         </div>
       </div>
     </section>

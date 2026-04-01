@@ -24,32 +24,36 @@ const statusConfig: Record<MeetingStatus, {
   upcoming: {
     icon: Clock,
     label: 'Upcoming',
-    dotClass: 'bg-accent',
-    textClass: 'text-accent',
+    dotClass: 'bg-orange-500',
+    textClass: 'text-orange-500',
   },
   recording: {
     icon: Mic,
     label: 'Recording',
-    dotClass: 'bg-recording animate-pulse',
-    textClass: 'text-recording',
+    // Recording stays green (#22C55E) per brand spec
+    dotClass: 'bg-green-500 animate-pulse',
+    textClass: 'text-green-500',
   },
   processing: {
     icon: Loader2,
     label: 'Processing',
-    dotClass: 'bg-warning',
-    textClass: 'text-warning',
+    // Processing stays blue (#3B82F6) per brand spec
+    dotClass: 'bg-blue-500',
+    textClass: 'text-blue-500',
   },
   completed: {
     icon: CheckCircle,
     label: 'Completed',
-    dotClass: 'bg-success',
-    textClass: 'text-success',
+    // Completed → orange-500 per brand spec
+    dotClass: 'bg-orange-500',
+    textClass: 'text-orange-500',
   },
   failed: {
     icon: AlertCircle,
     label: 'Failed',
-    dotClass: 'bg-destructive',
-    textClass: 'text-destructive',
+    // Failed → red (#EF4444) per brand spec
+    dotClass: 'bg-red-500',
+    textClass: 'text-red-500',
   },
 };
 

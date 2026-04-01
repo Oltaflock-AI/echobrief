@@ -28,8 +28,8 @@ export function StatsCards({
       icon: Video,
       label: 'Total Meetings',
       value: totalMeetings.toString(),
-      color: 'text-accent',
-      bgColor: 'bg-accent/10',
+      color: 'text-orange-500',
+      bgColor: 'bg-orange-500/10',
     },
     {
       icon: Clock,
@@ -57,7 +57,8 @@ export function StatsCards({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {stats.map((stat) => (
-        <Card key={stat.label} className="border-border">
+        <Card key={stat.label} className="border-border overflow-hidden relative">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-500" />
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
               <div className={`w-12 h-12 rounded-xl ${stat.bgColor} flex items-center justify-center`}>

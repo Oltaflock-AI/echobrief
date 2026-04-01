@@ -66,7 +66,9 @@ export function Sidebar({ onCollapsedChange }: SidebarProps) {
                 e.currentTarget.style.display = 'none';
               }}
             />
-            <span className="text-sm font-semibold text-sidebar-foreground">EchoBrief</span>
+            <span className="text-sm font-semibold" style={{ fontFamily: 'Outfit, sans-serif' }}>
+              <span className="text-white">echo</span><span className="text-orange-400">brief</span>
+            </span>
           </Link>
         )}
         {collapsed && (

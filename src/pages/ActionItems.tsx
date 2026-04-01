@@ -315,7 +315,7 @@ export default function ActionItems() {
                       ) : (
                         <ChevronRight className="w-4 h-4 text-muted-foreground" />
                       )}
-                      <span className="font-medium text-foreground group-hover:text-accent transition-colors">
+                      <span className="font-medium text-foreground group-hover:text-orange-400 transition-colors">
                         {group.title}
                       </span>
                       <span className="text-sm text-muted-foreground">
@@ -353,11 +353,11 @@ export default function ActionItems() {
                               className={cn(
                                 "w-5 h-5 rounded border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all",
                                 isCompleted 
-                                  ? "bg-accent border-accent" 
-                                  : "border-border hover:border-accent"
+                                  ? "bg-orange-500 border-orange-500" 
+                                  : "border-border hover:border-orange-400"
                               )}
                             >
-                              {isCompleted && <Check className="w-3 h-3 text-accent-foreground" />}
+                              {isCompleted && <Check className="w-3 h-3 text-white" />}
                             </button>
                             
                             {/* Task content */}
