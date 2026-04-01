@@ -174,9 +174,8 @@ export default function Auth() {
                 Back to sign in
               </Button>
             </div>
-          )}
-
-          {!emailSent && <div className="text-center mb-8">
+          ) : (<>
+          <div className="text-center mb-8">
             <h2 className="text-2xl font-bold text-foreground mb-2">
               {isResetPassword ? 'Set new password' : isForgotPassword ? 'Reset your password' : isSignUp ? 'Create your account' : 'Welcome back'}
             </h2>
@@ -389,8 +388,7 @@ export default function Auth() {
               </div>
             </>
           )}
-          {/* close !emailSent */}
-          </div>}
+          </>)}
         </div>
       </div>
     </div>
