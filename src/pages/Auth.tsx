@@ -19,7 +19,7 @@ export default function Auth() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { user, signIn, signUp } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -33,6 +33,13 @@ export default function Auth() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Redirect logged-in users to dashboard (but NOT during password recovery)
+  useEffect(() => {
+    if (user && !isResetPassword) {
+      navigate('/dashboard');
+    }
+  }, [user, isResetPassword, navigate]);
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
