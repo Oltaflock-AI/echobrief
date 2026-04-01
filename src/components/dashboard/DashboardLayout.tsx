@@ -11,27 +11,15 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Listen for sidebar collapse state
-  useEffect(() => {
-    const handleStorage = () => {
-      const stored = localStorage.getItem('sidebar-collapsed');
-      setSidebarCollapsed(stored === 'true');
-    };
-
-    handleStorage();
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
-  }, []);
-
   return (
-    <div className="min-h-screen bg-background page-gradient">
+    <div className="min-h-screen" style={{ background: "#0C0A09", color: "#FAFAF9" }}>
       <Sidebar onCollapsedChange={setSidebarCollapsed} />
       <div className={cn(
         "min-h-screen transition-all duration-200 relative z-10",
-        sidebarCollapsed ? "ml-14" : "ml-56"
+        sidebarCollapsed ? "ml-14" : "ml-[220px]"
       )}>
         <Header />
-        <main>
+        <main className="p-6">
           <PageTransition>
             {children}
           </PageTransition>
