@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Calendar as CalendarIcon, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, Loader2 } from 'lucide-react';
+import { Calendar as CalendarIcon, RefreshCw, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCalendar } from '@/contexts/CalendarContext';
-import { format, isToday, isTomorrow, parseISO, startOfDay, isSameDay } from 'date-fns';
+import { format, isToday, isTomorrow, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { MeetingDetailModal } from '@/components/dashboard/MeetingDetailModal';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -61,7 +61,10 @@ export default function Calendar() {
   const [syncMessage, setSyncMessage] = useState<{ count: number; visible: boolean }>({ count: 0, visible: false });
   const [upcomingExpanded, setUpcomingExpanded] = useState(false);
   const [autoFetched, setAutoFetched] = useState(false);
-  const [recordingEventId, setRecordingEventId] = useState<string | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+
+  const openModal = (event: CalendarEvent) => setSelectedEvent(event);
+  const closeModal = () => setSelectedEvent(null);
 
   // Auto-fetch on mount if events are empty and user is logged in
   useEffect(() => {
@@ -148,45 +151,28 @@ export default function Calendar() {
     return acc;
   }, {} as Record<string, CalendarEvent[]>);
 
-  const handleRecordNow = async (event: CalendarEvent) => {
+  const handleRecordWithBot = async (event: CalendarEvent) => {
     if (!user || !event.hasMeetingLink || !event.meetingUrl) return;
-    setRecordingEventId(event.id);
 
-    try {
-      const { data: session } = await supabase.auth.getSession();
-      if (!session?.session?.access_token) throw new Error('Not authenticated');
+    const { data: session } = await supabase.auth.getSession();
+    if (!session?.session?.access_token) throw new Error('Not authenticated');
 
-      // Call start-recall-recording function
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/start-recall-recording`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          meeting_url: event.meetingUrl,
-          user_id: user.id,
-          calendar_event_id: event.id,
-          title: event.title,
-        }),
-      });
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/start-recall-recording`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        meeting_url: event.meetingUrl,
+        user_id: user.id,
+        calendar_event_id: event.id,
+        title: event.title,
+      }),
+    });
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-
-      toast({
-        title: 'Recording started!',
-        description: 'Bot joining meeting...',
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error?.message || 'Failed to start recording',
-        variant: 'destructive',
-      });
-    } finally {
-      setRecordingEventId(null);
-    }
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Failed to start recording');
   };
 
   const handleSync = async () => {
@@ -262,11 +248,10 @@ export default function Calendar() {
   const EventCard = ({ event }: { event: CalendarEvent }) => {
     const isEventToday = isToday(parseISO(event.start_time));
     const borderColor = isEventToday ? '#F97316' : '#78716C';
-    const isRecording = recordingEventId === event.id;
-    const hasMeetingLink = event.hasMeetingLink ?? false;
 
     return (
       <div
+        onClick={() => openModal(event)}
         style={{
           background: '#1C1917',
           border: '1px solid #292524',
@@ -280,12 +265,14 @@ export default function Calendar() {
           borderLeft: `3px solid ${borderColor}`,
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = '#404040';
+          e.currentTarget.style.borderColor = '#44403C';
           e.currentTarget.style.background = '#292524';
+          e.currentTarget.style.transform = 'translateY(-1px)';
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.borderColor = '#292524';
           e.currentTarget.style.background = '#1C1917';
+          e.currentTarget.style.transform = 'translateY(0)';
         }}
       >
         <div style={{ flex: 1 }}>
@@ -294,46 +281,17 @@ export default function Calendar() {
           </h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <p style={{ fontSize: 13, color: '#A8A29E', margin: 0, fontFamily: 'DM Sans, sans-serif' }}>
-              {!event.is_all_day ? (
-                `${format(parseISO(event.start_time), 'h:mm a')} – ${format(parseISO(event.end_time), 'h:mm a')}`
-              ) : (
-                'All day'
-              )}
+              {!event.is_all_day
+                ? `${format(parseISO(event.start_time), 'h:mm a')} – ${format(parseISO(event.end_time), 'h:mm a')}`
+                : 'All day'}
             </p>
-            {!hasMeetingLink && (
+            {!event.hasMeetingLink && (
               <p style={{ fontSize: 11, color: '#78716C', margin: 0, fontFamily: 'DM Sans, sans-serif' }}>
                 No meeting link
               </p>
             )}
           </div>
         </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (hasMeetingLink) handleRecordNow(event);
-          }}
-          disabled={isRecording || !hasMeetingLink}
-          title={!hasMeetingLink ? 'No meeting link found in this event' : ''}
-          style={{
-            background: hasMeetingLink ? '#FB923C' : '#44403C',
-            color: hasMeetingLink ? 'white' : '#78716C',
-            border: 'none',
-            borderRadius: 6,
-            padding: '8px 14px',
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: isRecording || !hasMeetingLink ? 'not-allowed' : 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            marginRight: 12,
-            opacity: isRecording || !hasMeetingLink ? 0.5 : 1,
-            transition: 'all 0.2s',
-          }}
-        >
-          {isRecording ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : '●'}
-          Record Now
-        </button>
         <ChevronRight size={20} style={{ color: '#78716C' }} />
       </div>
     );
@@ -497,6 +455,13 @@ export default function Calendar() {
           }
         `}</style>
       </div>
+
+      {/* Meeting Detail Modal */}
+      <MeetingDetailModal
+        event={selectedEvent}
+        onClose={closeModal}
+        onRecordWithBot={handleRecordWithBot}
+      />
     </DashboardLayout>
   );
 }
