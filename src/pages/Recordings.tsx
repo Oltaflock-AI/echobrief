@@ -8,7 +8,7 @@ import { useRecording } from '@/contexts/RecordingContext';
 import { Meeting } from '@/types/meeting';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Loader2, Filter, Mic, Sparkles } from 'lucide-react';
+import { Search, Loader2, Filter, Mic, Sparkles, Clock } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -193,12 +193,184 @@ export default function Recordings() {
                 </div>
               </div>
             </div>
+
+            {/* Recent Meetings Section */}
+            <div style={{ marginBottom: 32 }}>
+              <div style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: '#78716C',
+                marginBottom: 16,
+              }}>
+                Recent Meetings
+              </div>
+
+              {/* Meetings List */}
+              <div>
+                {meetings.slice(0, 10).map((meeting, index) => {
+                  const statusDotColor = meeting.status === 'completed' ? '#22C55E' : meeting.status === 'processing' ? '#3B82F6' : '#44403C';
+                  const hasSummary = !!meeting.summary;
+                  const meetingDate = meeting.start_time ? new Date(meeting.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+
+                  return (
+                    <div
+                      key={meeting.id}
+                      onClick={() => navigate(`/dashboard/meetings/${meeting.id}`)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '14px 0',
+                        borderBottom: '1px solid #292524',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(249,115,22,0.04)';
+                        e.currentTarget.style.borderRadius = '8px';
+                        e.currentTarget.style.paddingLeft = '4px';
+                        e.currentTarget.style.paddingRight = '4px';
+                        e.currentTarget.querySelector('[data-title]')!.style.color = '#FAFAF9';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.borderRadius = '0';
+                        e.currentTarget.style.paddingLeft = '0';
+                        e.currentTarget.style.paddingRight = '0';
+                        e.currentTarget.querySelector('[data-title]')!.style.color = '#FAFAF9';
+                      }}
+                    >
+                      {/* Status Dot */}
+                      <div
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          background: statusDotColor,
+                          flexShrink: 0,
+                        }}
+                      />
+
+                      {/* Title */}
+                      <div
+                        data-title
+                        style={{
+                          flex: 1,
+                          fontSize: 14,
+                          fontWeight: 500,
+                          color: '#FAFAF9',
+                          fontFamily: 'DM Sans, sans-serif',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {meeting.title}
+                      </div>
+
+                      {/* Summary Badge */}
+                      {hasSummary && (
+                        <div
+                          style={{
+                            background: 'rgba(168,85,247,0.1)',
+                            border: '1px solid rgba(168,85,247,0.15)',
+                            color: '#A855F7',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            padding: '3px 10px',
+                            borderRadius: 100,
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                          }}
+                        >
+                          Summary
+                        </div>
+                      )}
+
+                      {/* Duration */}
+                      {meeting.duration_seconds && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            color: '#78716C',
+                            fontSize: 12,
+                            fontFamily: 'DM Sans, sans-serif',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Clock size={12} />
+                          {Math.round(meeting.duration_seconds / 60)}m
+                        </div>
+                      )}
+
+                      {/* Date */}
+                      <div
+                        style={{
+                          color: '#78716C',
+                          fontSize: 12,
+                          fontFamily: 'DM Sans, sans-serif',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {meetingDate}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* View All Link */}
+              {meetings.length > 10 && (
+                <div style={{ textAlign: 'center', marginTop: 16 }}>
+                  <button
+                    onClick={() => navigate('/dashboard/meetings')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#FB923C',
+                      fontSize: 13,
+                      fontFamily: 'DM Sans, sans-serif',
+                      cursor: 'pointer',
+                      textDecoration: 'none',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.textDecoration = 'underline';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.textDecoration = 'none';
+                    }}
+                  >
+                    View all {meetings.length} meetings →
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         )}
 
         {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px' }}>
-            <Loader2 style={{ width: 32, height: 32, animation: 'spin 1s linear infinite', color: '#A8A29E' }} />
+          // Loading State
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 24px' }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                border: '2px solid #292524',
+                borderTopColor: '#F97316',
+                animation: 'spin 0.8s linear infinite',
+                marginBottom: 16,
+              }}
+            />
+            <p style={{ fontSize: 14, color: '#78716C', margin: 0, fontFamily: 'DM Sans, sans-serif' }}>
+              Loading your meetings...
+            </p>
           </div>
         ) : meetings.length === 0 ? (
           // Empty State
@@ -210,9 +382,22 @@ export default function Recordings() {
             padding: '80px 24px',
             textAlign: 'center',
           }}>
-            <Mic style={{ width: 40, height: 40, marginBottom: 24, color: '#44403C' }} />
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 12,
+                background: 'rgba(249,115,22,0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 20,
+              }}
+            >
+              <Mic size={28} color="#F97316" />
+            </div>
             <h3 style={{ fontSize: 18, fontWeight: 600, color: '#FAFAF9', margin: 0, marginBottom: 12, fontFamily: 'Outfit, sans-serif' }}>
-              Your meetings will appear here
+              No meetings yet
             </h3>
             <p style={{
               fontSize: 14,
@@ -223,7 +408,7 @@ export default function Recordings() {
               lineHeight: 1.6,
               fontFamily: 'DM Sans, sans-serif',
             }}>
-              Connect your calendar and EchoBrief will automatically record and summarize your meetings.
+              Head to your Calendar to send a bot to an upcoming meeting, or hit Record to capture one now.
             </p>
             <div style={{ display: 'flex', gap: 12 }}>
               <Button
@@ -239,7 +424,7 @@ export default function Recordings() {
                   cursor: 'pointer',
                 }}
               >
-                → Go to Calendar
+                Go to Calendar
               </Button>
               <Button
                 onClick={() => startRecording()}
@@ -254,7 +439,7 @@ export default function Recordings() {
                   cursor: 'pointer',
                 }}
               >
-                + Record Now
+                Record Now
               </Button>
             </div>
           </div>
