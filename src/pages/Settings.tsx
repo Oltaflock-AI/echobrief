@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
+import { BotCustomization } from '@/components/dashboard/BotCustomization';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -491,6 +492,11 @@ export default function Settings() {
               </Button>
             </CardContent>
           </Card>
+
+          {/* Bot Customization */}
+          {user && (
+            <BotCustomization user_id={user.id} />
+          )}
 
           {/* Change Password */}
           <Card className="glass-card-liquid overflow-hidden">
