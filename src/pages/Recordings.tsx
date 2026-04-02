@@ -8,7 +8,7 @@ import { useRecording } from '@/contexts/RecordingContext';
 import { Meeting } from '@/types/meeting';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Loader2, Filter, Mic } from 'lucide-react';
+import { Search, Loader2, Filter, Mic, Sparkles } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -51,18 +51,150 @@ export default function Recordings() {
     return matchesSearch && matchesStatus;
   });
 
+  // Calculate stats
+  const totalRecordedMinutes = meetings.reduce((acc, meeting) => {
+    const duration = meeting.duration_seconds ? Math.round(meeting.duration_seconds / 60) : 0;
+    return acc + duration;
+  }, 0);
+
+  const totalHours = Math.floor(totalRecordedMinutes / 60);
+  const remainingMinutes = totalRecordedMinutes % 60;
+  const recordedTimeString = totalHours > 0 ? `${totalHours}h ${remainingMinutes}m` : `${remainingMinutes}m`;
+
+  const summariesCount = meetings.filter((m) => m.summary).length;
+
+  const timeSavedMinutes = Math.round(totalRecordedMinutes * 0.25); // 15 seconds per minute
+  const timeSavedHours = Math.floor(timeSavedMinutes / 60);
+  const timeSavedRemainingMinutes = timeSavedMinutes % 60;
+  const timeSavedString = timeSavedHours > 0 ? `${timeSavedHours}h ${timeSavedRemainingMinutes}m` : `${timeSavedRemainingMinutes}m`;
+
   return (
     <DashboardLayout>
       <div style={{ padding: '32px' }}>
-        {/* Header */}
-        <div style={{ marginBottom: 32 }}>
-          <h1 style={{ fontSize: 30, fontWeight: 'bold', color: '#FAFAF9', margin: 0, fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.02em' }}>
-            Meetings
-          </h1>
-          <p style={{ fontSize: 14, color: '#A8A29E', marginTop: 8, margin: 0, fontFamily: 'DM Sans, sans-serif' }}>
-            Browse and manage all your recorded meetings
-          </p>
+        {/* Header with Record button */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <h1 style={{ fontSize: 26, fontWeight: 600, color: '#FAFAF9', margin: 0, fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.01em' }}>
+                Meetings
+              </h1>
+              <button
+                onClick={() => startRecording()}
+                style={{
+                  background: 'linear-gradient(135deg, #F97316, #F59E0B)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '8px 16px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(249, 115, 22, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <Mic size={14} />
+                Record
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: '#78716C', margin: 0, fontFamily: 'DM Sans, sans-serif' }}>
+              Your meeting intelligence hub
+            </p>
+          </div>
         </div>
+
+        {!loading && meetings.length > 0 && (
+          <>
+            {/* Stats Row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+              {/* Meetings Stat */}
+              <div style={{
+                background: '#1C1917',
+                border: '1px solid #292524',
+                borderRadius: 14,
+                padding: 24,
+              }}>
+                <div style={{ fontSize: 32, fontWeight: 700, color: '#FAFAF9', margin: 0, fontFamily: 'Outfit, sans-serif' }}>
+                  {meetings.length}
+                </div>
+                <div style={{ fontSize: 13, color: '#78716C', margin: '4px 0 0 0', fontFamily: 'DM Sans, sans-serif' }}>
+                  Meetings
+                </div>
+              </div>
+
+              {/* Recorded Time Stat */}
+              <div style={{
+                background: '#1C1917',
+                border: '1px solid #292524',
+                borderRadius: 14,
+                padding: 24,
+              }}>
+                <div style={{ fontSize: 32, fontWeight: 700, color: '#FAFAF9', margin: 0, fontFamily: 'Outfit, sans-serif' }}>
+                  {recordedTimeString}
+                </div>
+                <div style={{ fontSize: 13, color: '#78716C', margin: '4px 0 0 0', fontFamily: 'DM Sans, sans-serif' }}>
+                  Recorded
+                </div>
+              </div>
+
+              {/* Summaries Stat */}
+              <div style={{
+                background: '#1C1917',
+                border: '1px solid #292524',
+                borderRadius: 14,
+                padding: 24,
+              }}>
+                <div style={{ fontSize: 32, fontWeight: 700, color: '#FAFAF9', margin: 0, fontFamily: 'Outfit, sans-serif' }}>
+                  {summariesCount}
+                </div>
+                <div style={{ fontSize: 13, color: '#78716C', margin: '4px 0 0 0', fontFamily: 'DM Sans, sans-serif' }}>
+                  Summaries
+                </div>
+              </div>
+            </div>
+
+            {/* Time Saved Banner */}
+            <div style={{
+              background: 'rgba(34, 197, 94, 0.06)',
+              border: '1px solid rgba(34, 197, 94, 0.12)',
+              borderRadius: 12,
+              padding: '16px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              marginBottom: 32,
+            }}>
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: '50%',
+                background: 'rgba(34, 197, 94, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <Sparkles size={20} color="#22C55E" />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#FAFAF9', margin: 0, fontFamily: 'Outfit, sans-serif' }}>
+                  ~{timeSavedString} saved
+                </div>
+                <div style={{ fontSize: 13, color: '#78716C', margin: '2px 0 0 0', fontFamily: 'DM Sans, sans-serif' }}>
+                  Time saved on meeting summaries with AI
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {loading ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px' }}>
