@@ -19,9 +19,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('[auth] Initializing...');
+    
+    // Hard timeout — if auth doesn't respond in 5s, give up
+    const authTimeoutId = setTimeout(() => {
+      console.warn('[auth] Timeout after 5s, forcing loading=false');
+      setLoading(false);
+    }, 5000);
+
     // Set up auth state listener BEFORE getting session
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('[auth] State change:', event, session?.user?.email);
+        clearTimeout(authTimeoutId);
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
@@ -30,12 +40,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('[auth] Got session:', session?.user?.email);
+      clearTimeout(authTimeoutId);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+    }).catch((err) => {
+      console.error('[auth] Error getting session:', err.message);
+      clearTimeout(authTimeoutId);
+      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(authTimeoutId);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string) => {
