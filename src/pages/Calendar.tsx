@@ -75,39 +75,48 @@ export default function Calendar() {
         throw new Error('Google Calendar not connected');
       }
 
-      // Call fetch function
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-calendar-events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          access_token: tokenData.google_access_token,
-        }),
-      });
+      // Get user's calendars
+      const { data: calendars } = await supabase
+        .from('calendars')
+        .select('id, calendar_id')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-
-      const { events } = result;
-
-      // Save to DB
-      if (events.length > 0) {
-        const eventsToSave = events.map((e: any) => ({
-          user_id: user.id,
-          event_id: e.id,
-          title: e.title,
-          start_time: e.start_time,
-          end_time: e.end_time,
-          is_all_day: e.is_all_day,
-        }));
-
-        await supabase
-          .from('calendar_events')
-          .upsert(eventsToSave, { onConflict: 'user_id,event_id' });
+      if (!calendars || calendars.length === 0) {
+        setEvents([]);
+        toast({ title: 'Info', description: 'No calendars connected' });
+        return;
       }
 
-      toast({ title: 'Synced!', description: `${events.length} events found` });
-      setEvents(events);
+      const now = new Date();
+      const maxDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const allEvents: any[] = [];
+
+      // Fetch from each calendar
+      for (const cal of calendars) {
+        const response = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.calendar_id)}/events?timeMin=${now.toISOString()}&timeMax=${maxDate.toISOString()}&singleEvents=true&orderBy=startTime`,
+          {
+            headers: { 'Authorization': `Bearer ${tokenData.google_access_token}` },
+          }
+        );
+
+        if (response.ok) {
+          const { items } = await response.json();
+          if (items) {
+            allEvents.push(...items.map((e: any) => ({
+              id: e.id,
+              title: e.summary || 'No title',
+              start_time: e.start?.dateTime || e.start?.date,
+              end_time: e.end?.dateTime || e.end?.date,
+              is_all_day: !e.start?.dateTime,
+            })));
+          }
+        }
+      }
+
+      toast({ title: 'Synced!', description: `${allEvents.length} events found` });
+      setEvents(allEvents);
     } catch (err: any) {
       toast({ title: 'Error', description: err?.message || 'Failed to sync', variant: 'destructive' });
     } finally {
