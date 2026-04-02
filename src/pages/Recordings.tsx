@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { MeetingCard } from '@/components/dashboard/MeetingCard';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRecording } from '@/contexts/RecordingContext';
 import { Meeting } from '@/types/meeting';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Loader2, Filter, Calendar as CalendarIcon } from 'lucide-react';
+import { Search, Loader2, Filter, Mic } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -17,6 +19,8 @@ import {
 
 export default function Recordings() {
   const { user } = useAuth();
+  const { startRecording } = useRecording();
+  const navigate = useNavigate();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -49,68 +53,123 @@ export default function Recordings() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <div style={{ padding: '32px' }}>
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Recordings</h1>
-          <p className="text-muted-foreground mt-1">
+        <div style={{ marginBottom: 32 }}>
+          <h1 style={{ fontSize: 30, fontWeight: 'bold', color: '#FAFAF9', margin: 0, fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.02em' }}>
+            Meetings
+          </h1>
+          <p style={{ fontSize: 14, color: '#A8A29E', marginTop: 8, margin: 0, fontFamily: 'DM Sans, sans-serif' }}>
             Browse and manage all your recorded meetings
           </p>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-4 mb-6">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search meetings..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40">
-              <Filter className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="processing">Processing</SelectItem>
-              <SelectItem value="recording">Recording</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Meetings List */}
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px' }}>
+            <Loader2 style={{ width: 32, height: 32, animation: 'spin 1s linear infinite', color: '#A8A29E' }} />
           </div>
-        ) : filteredMeetings.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
-              <CalendarIcon className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">
-              No recordings found
+        ) : meetings.length === 0 ? (
+          // Empty State
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '80px 24px',
+            textAlign: 'center',
+          }}>
+            <Mic style={{ width: 40, height: 40, marginBottom: 24, color: '#44403C' }} />
+            <h3 style={{ fontSize: 18, fontWeight: 600, color: '#FAFAF9', margin: 0, marginBottom: 12, fontFamily: 'Outfit, sans-serif' }}>
+              Your meetings will appear here
             </h3>
-            <p className="text-muted-foreground">
-              {searchQuery || statusFilter !== 'all'
-                ? 'Try adjusting your filters'
-                : 'Start recording to see your meetings here'}
+            <p style={{
+              fontSize: 14,
+              color: '#78716C',
+              margin: 0,
+              marginBottom: 32,
+              maxWidth: 340,
+              lineHeight: 1.6,
+              fontFamily: 'DM Sans, sans-serif',
+            }}>
+              Connect your calendar and EchoBrief will automatically record and summarize your meetings.
             </p>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <Button
+                onClick={() => navigate('/calendar')}
+                style={{
+                  border: '1px solid #292524',
+                  color: '#FB923C',
+                  background: 'transparent',
+                  borderRadius: 10,
+                  padding: '10px 20px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                → Go to Calendar
+              </Button>
+              <Button
+                onClick={() => startRecording()}
+                style={{
+                  background: 'linear-gradient(135deg, #F97316, #F59E0B)',
+                  color: 'white',
+                  borderRadius: 10,
+                  padding: '10px 20px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                + Record Now
+              </Button>
+            </div>
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredMeetings.map((meeting) => (
-              <MeetingCard key={meeting.id} meeting={meeting} />
-            ))}
-          </div>
+          <>
+            {/* Filters */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+              <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
+                <Search style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 16, height: 16, color: '#A8A29E' }} />
+                <Input
+                  placeholder="Search meetings..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ paddingLeft: 36 }}
+                />
+              </div>
+
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger style={{ width: 160 }}>
+                  <Filter style={{ width: 16, height: 16, marginRight: 8 }} />
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="processing">Processing</SelectItem>
+                  <SelectItem value="recording">Recording</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Meetings List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {filteredMeetings.map((meeting) => (
+                <MeetingCard key={meeting.id} meeting={meeting} />
+              ))}
+            </div>
+          </>
         )}
+
+        <style>{`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
     </DashboardLayout>
   );

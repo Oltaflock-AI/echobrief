@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { CalendarProvider } from "@/contexts/CalendarContext";
+import { useEffect } from "react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ExtensionTokenSync } from "@/components/ExtensionTokenSync";
 import { GlobalRecordingPanel } from "@/components/dashboard/GlobalRecordingPanel";
@@ -27,6 +28,76 @@ import ChromeExtensionGuide from "./pages/ChromeExtensionGuide";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+function CalendarAutoSync() {
+  const { user } = useAuth();
+  const { setEvents, setSynced } = useCalendar();
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchCalendarEvents = async () => {
+      try {
+        const { supabase } = await import("@/integrations/supabase/client");
+
+        // Check if Google is connected
+        const { data: tokenData } = await supabase
+          .from('user_oauth_tokens')
+          .select('google_access_token')
+          .eq('user_id', user.id)
+          .single();
+
+        if (!tokenData?.google_access_token) return;
+
+        // Get calendars
+        const { data: calendars } = await supabase
+          .from('calendars')
+          .select('id, calendar_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
+        if (!calendars || calendars.length === 0) return;
+
+        const now = new Date();
+        const maxDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const allEvents: any[] = [];
+
+        for (const cal of calendars) {
+          try {
+            const response = await fetch(
+              `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.calendar_id)}/events?timeMin=${now.toISOString()}&timeMax=${maxDate.toISOString()}&singleEvents=true&orderBy=startTime`,
+              { headers: { 'Authorization': `Bearer ${tokenData.google_access_token}` } }
+            );
+
+            if (response.ok) {
+              const { items } = await response.json();
+              if (items) {
+                allEvents.push(...items.map((e: any) => ({
+                  id: e.id,
+                  title: e.summary || 'No title',
+                  start_time: e.start?.dateTime || e.start?.date,
+                  end_time: e.end?.dateTime || e.end?.date,
+                  is_all_day: !e.start?.dateTime,
+                })));
+              }
+            }
+          } catch (err) {
+            console.error('Calendar fetch error:', err);
+          }
+        }
+
+        setEvents(allEvents);
+        setSynced(true);
+      } catch (err) {
+        console.error('Calendar auto-sync error:', err);
+      }
+    };
+
+    fetchCalendarEvents();
+  }, [user]);
+
+  return null;
+}
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -57,6 +128,7 @@ function AppRoutes() {
   return (
     <>
       <ExtensionTokenSync />
+      <CalendarAutoSync />
       <Routes>
         <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
         <Route path="/auth" element={<Auth />} />
