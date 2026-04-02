@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { RecordingButton } from '@/components/dashboard/RecordingButton';
-import { ExtensionStatus } from '@/components/dashboard/ExtensionStatus';
 import { DigestSettings } from '@/components/dashboard/DigestSettings';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,7 +9,6 @@ import { Meeting } from '@/types/meeting';
 import { Clock, ChevronRight, Mic, Users, CheckCircle2, Globe, Bot, FileText, Chrome, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Skeleton } from '@/components/ui/skeleton';
 import { T } from '@/lib/theme';
 
 interface CalendarAttendee {
@@ -264,9 +262,6 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Extension Status Banner */}
-        <ExtensionStatus className="mb-6" />
-
         {/* Digest Settings & Send Button */}
         {meetings.length > 0 && (
           <div style={{ marginBottom: 28 }}>
@@ -345,13 +340,7 @@ export default function Dashboard() {
         )}
 
         {/* Meeting cards */}
-        {loading ? (
-          <div className="space-y-2">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-[76px] rounded-2xl" />
-            ))}
-          </div>
-        ) : meetings.length === 0 ? (
+        {meetings.length === 0 && !loading ? (
           <div style={{ textAlign: 'center', padding: '64px 0' }}>
             <Mic style={{ width: 48, height: 48, margin: '0 auto 16px', color: T.textM }} />
             <p style={{ fontSize: 16, fontWeight: 500, color: T.text, marginBottom: 4 }}>No meetings yet</p>
