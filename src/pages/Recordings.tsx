@@ -22,26 +22,10 @@ export default function Recordings() {
   const { startRecording } = useRecording();
   const navigate = useNavigate();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [loading, setLoading] = useState(!user); // Only true if user not yet loaded
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // If no user, show empty immediately
-    if (!user) {
-      setLoading(false);
-      setMeetings([]);
-      return;
-    }
-
-    // User exists, but we're skipping Supabase for now
-    // Just show the empty state
-    setLoading(false);
-    setMeetings([]);
-    setFetchError(null);
-    console.log('[meetings] TEMP: Showing empty state (Supabase skipped)');
-  }, [user]);
+  // Remove loading state entirely — just show empty state
 
   const filteredMeetings = meetings.filter((meeting) => {
     const matchesSearch = meeting.title.toLowerCase().includes(searchQuery.toLowerCase());
@@ -132,9 +116,9 @@ export default function Recordings() {
         {/* Stats Row — ALWAYS render, shows 0s when empty */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
           {[
-            { value: loading ? '—' : meetings.length, label: 'Meetings' },
-            { value: loading ? '—' : recordedTimeString, label: 'Recorded' },
-            { value: loading ? '—' : summariesCount, label: 'Summaries' },
+            { value: meetings.length, label: 'Meetings' },
+            { value: recordedTimeString, label: 'Recorded' },
+            { value: summariesCount, label: 'Summaries' },
           ].map((stat, i) => (
             <div
               key={i}
@@ -201,7 +185,7 @@ export default function Recordings() {
                 margin: 0,
               }}
             >
-              {loading ? '—' : `~${timeSavedString} saved`}
+              ~{timeSavedString} saved
             </div>
             <div style={{ fontSize: 12, color: '#78716C', marginTop: 2, fontFamily: 'DM Sans, sans-serif' }}>
               Time saved on meeting summaries with AI
@@ -211,87 +195,8 @@ export default function Recordings() {
 
         {/* Meetings List Area — changes based on state */}
 
-        {/* Loading State */}
-        {loading && (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 12,
-            padding: '40px 0',
-          }}>
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: '50%',
-                border: '2px solid #292524',
-                borderTopColor: '#F97316',
-                animation: 'spin 0.8s linear infinite',
-              }}
-            />
-            <p style={{ color: '#78716C', fontSize: 13, fontFamily: 'DM Sans, sans-serif' }}>
-              Loading meetings...
-            </p>
-          </div>
-        )}
-
-        {/* Error State */}
-        {!loading && fetchError && (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            textAlign: 'center',
-            padding: '60px 24px',
-          }}>
-            <div
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 12,
-                background: 'rgba(239,68,68,0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 20,
-              }}
-            >
-              <Mic size={28} color="#EF4444" />
-            </div>
-            <h3 style={{ fontSize: 18, fontWeight: 600, color: '#FAFAF9', margin: 0, marginBottom: 12, fontFamily: 'Outfit, sans-serif' }}>
-              Error loading meetings
-            </h3>
-            <p style={{
-              fontSize: 14,
-              color: '#78716C',
-              margin: 0,
-              marginBottom: 32,
-              maxWidth: 340,
-              fontFamily: 'DM Sans, sans-serif',
-            }}>
-              {fetchError}
-            </p>
-            <Button
-              onClick={() => window.location.reload()}
-              style={{
-                background: 'linear-gradient(135deg, #F97316, #F59E0B)',
-                color: 'white',
-                borderRadius: 10,
-                padding: '10px 20px',
-                fontSize: 13,
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              Try Again
-            </Button>
-          </div>
-        )}
-
         {/* Empty State */}
-        {!loading && !fetchError && meetings.length === 0 && (
+        {meetings.length === 0 && (
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -361,8 +266,8 @@ export default function Recordings() {
           </div>
         )}
 
-        {/* Meetings List (when data loaded and not empty) */}
-        {!loading && !fetchError && meetings.length > 0 && (
+        {/* Meetings List (when not empty) */}
+        {meetings.length > 0 && (
           <>
             {/* Recent Meetings Label */}
             <div
