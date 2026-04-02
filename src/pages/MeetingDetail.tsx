@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { SlackDeliverySelector } from '@/components/dashboard/SlackDeliverySelector';
+import { WhatsAppDeliverySelector } from '@/components/dashboard/WhatsAppDeliverySelector';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Meeting, Transcript, MeetingInsights, StrategicInsight, SpeakerHighlight, ActionItem, FollowUp } from '@/types/meeting';
@@ -98,6 +99,7 @@ export default function MeetingDetail() {
   const [slackDialogOpen, setSlackDialogOpen] = useState(false);
   const [slackChannelId, setSlackChannelId] = useState<string | undefined>();
   const [slackChannelName, setSlackChannelName] = useState<string | undefined>();
+  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('summary');
   const [summaryLang, setSummaryLang] = useState('English');
 
@@ -225,6 +227,28 @@ export default function MeetingDetail() {
     }
   };
 
+  const handleSendToWhatsApp = async (phoneNumber: string) => {
+    if (!meeting || !user || !session?.access_token) return;
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-report`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          meeting_id: meeting.id, 
+          user_id: user.id,
+          phone_number: phoneNumber,
+          language: summaryLang.toLowerCase(),
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast({ title: 'Sent to WhatsApp', description: `Report sent to ${phoneNumber}` });
+      } else throw new Error(data.error || 'Failed to send');
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to send to WhatsApp', variant: 'destructive' });
+    }
+  };
+
   const getPriorityColor = (priority?: string) => {
     switch (priority) {
       case 'high': return 'bg-destructive/10 text-destructive border-destructive/20';
@@ -311,13 +335,22 @@ export default function MeetingDetail() {
             </div>
             <div className="flex gap-2">
               {insights && (
-                <button
-                  onClick={() => setSlackDialogOpen(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-medium transition-colors"
-                  style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.15)', color: '#FB923C' }}
-                >
-                  <Send size={14} /> Send to Slack
-                </button>
+                <>
+                  <button
+                    onClick={() => setSlackDialogOpen(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-medium transition-colors"
+                    style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.15)', color: '#FB923C' }}
+                  >
+                    <Send size={14} /> Send to Slack
+                  </button>
+                  <button
+                    onClick={() => setWhatsappDialogOpen(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-medium transition-colors"
+                    style={{ background: 'rgba(37, 211, 102, 0.08)', border: '1px solid rgba(37, 211, 102, 0.15)', color: '#25D366' }}
+                  >
+                    <MessageCircle size={14} /> Send to WhatsApp
+                  </button>
+                </>
               )}
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -353,6 +386,14 @@ export default function MeetingDetail() {
           defaultChannel={slackChannelId}
           defaultChannelName={slackChannelName}
           onSend={handleSendToSlack}
+        />
+
+        {/* WhatsApp Delivery Selector */}
+        <WhatsAppDeliverySelector
+          open={whatsappDialogOpen}
+          onOpenChange={setWhatsappDialogOpen}
+          meetingTitle={meeting.title}
+          onSend={handleSendToWhatsApp}
         />
 
         {/* Stats row */}
