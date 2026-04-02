@@ -22,28 +22,26 @@ export default function Recordings() {
   const { startRecording } = useRecording();
   const navigate = useNavigate();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!user); // Only true if user not yet loaded
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log('[meetings] Component mounted, user:', user?.id);
-    
-    if (!user?.id) {
-      console.log('[meetings] No user ID, skipping fetch');
+    // If no user, show empty immediately
+    if (!user) {
       setLoading(false);
       setMeetings([]);
       return;
     }
 
-    // TEMPORARY: Skip Supabase query and show empty state
-    // This proves the component renders correctly
-    console.log('[meetings] TEMP: Skipping Supabase, showing empty state');
+    // User exists, but we're skipping Supabase for now
+    // Just show the empty state
     setLoading(false);
     setMeetings([]);
     setFetchError(null);
-  }, [user?.id]);
+    console.log('[meetings] TEMP: Showing empty state (Supabase skipped)');
+  }, [user]);
 
   const filteredMeetings = meetings.filter((meeting) => {
     const matchesSearch = meeting.title.toLowerCase().includes(searchQuery.toLowerCase());
