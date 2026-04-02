@@ -82,11 +82,7 @@ function AppRoutes() {
         />
         <Route
           path="/recordings"
-          element={
-            <ProtectedRoute>
-              <Recordings />
-            </ProtectedRoute>
-          }
+          element={<Recordings />}
         />
         <Route
           path="/meeting/:id"
