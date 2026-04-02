@@ -213,17 +213,61 @@ export default function Settings() {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ returnTo: '/settings', origin: window.location.origin }),
+        body: JSON.stringify({ returnTo: '/settings?tab=integrations', origin: window.location.origin }),
       });
 
       const data = await response.json();
       if (data.error) throw new Error(data.error);
-      if (data.authUrl) window.location.href = data.authUrl;
+      if (data.authUrl) {
+        // Store that we're connecting a calendar so we can fetch after OAuth
+        sessionStorage.setItem('awaiting-calendar-fetch', 'true');
+        window.location.href = data.authUrl;
+      }
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
       setConnectingGoogle(false);
     }
   };
+
+  // After OAuth redirect, fetch calendars
+  useEffect(() => {
+    const awaitingCalendarFetch = sessionStorage.getItem('awaiting-calendar-fetch');
+    if (awaitingCalendarFetch && user && session?.access_token) {
+      sessionStorage.removeItem('awaiting-calendar-fetch');
+      
+      const fetchCalendars = async () => {
+        try {
+          const response = await fetch(`${SUPABASE_URL}/functions/v1/fetch-google-calendars`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (!response.ok) throw new Error('Failed to fetch calendars');
+          
+          const data = await response.json();
+          if (data.success && data.calendars) {
+            setGoogleCalendars(
+              data.calendars.map((cal: any) => ({
+                id: cal.id,
+                email: cal.email || '',
+                name: cal.calendar_name || 'Unnamed Calendar',
+                is_primary: cal.is_primary,
+                connected_at: new Date().toISOString(),
+              }))
+            );
+            toast({ title: 'Success!', description: 'Google Calendar connected.' });
+          }
+        } catch (error: any) {
+          console.error('Fetch calendars error:', error);
+        }
+      };
+
+      fetchCalendars();
+    }
+  }, [user, session?.access_token]);
 
   const handleConnectSlack = async () => {
     if (!user || !slackChannelId.trim()) return;
