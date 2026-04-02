@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Bell, LogOut, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlobalSearch } from './GlobalSearch';
@@ -6,9 +6,21 @@ import { GlobalSearch } from './GlobalSearch';
 export function Header() {
   const { user, signOut } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
 
   const userInitial = user?.email?.[0]?.toUpperCase() || '?';
+
+  // Close profile menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Keyboard shortcut for search (Cmd/Ctrl + K)
   useEffect(() => {
@@ -48,9 +60,9 @@ export function Header() {
           </button>
           
           {/* Profile Dropdown */}
-          <div className="relative">
+          <div className="relative" ref={profileRef}>
             <button
-              onClick={() => setProfileOpen(!profileOpen)}
+              onClick={() => setProfileMenuOpen(!profileMenuOpen)}
               className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-secondary transition-colors"
             >
               <div 
@@ -59,11 +71,14 @@ export function Header() {
               >
                 {userInitial}
               </div>
-              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              <ChevronDown 
+                className="w-4 h-4 text-muted-foreground transition-transform"
+                style={{ transform: profileMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              />
             </button>
             
             {/* Dropdown Menu */}
-            {profileOpen && (
+            {profileMenuOpen && (
               <div
                 className="absolute right-0 mt-2 w-48 rounded-lg border border-border bg-card shadow-lg z-50"
                 style={{
@@ -79,26 +94,18 @@ export function Header() {
                 {/* Sign Out */}
                 <button
                   onClick={() => {
-                    setProfileOpen(false);
+                    setProfileMenuOpen(false);
                     signOut();
                   }}
-                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors text-left"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-4 h-4 flex-shrink-0" />
                   Sign out
                 </button>
               </div>
             )}
           </div>
         </div>
-        
-        {/* Close dropdown when clicking outside */}
-        {profileOpen && (
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setProfileOpen(false)}
-          />
-        )}
       </header>
 
       {/* Global Search Modal */}
