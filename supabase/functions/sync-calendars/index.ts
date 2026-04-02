@@ -140,6 +140,8 @@ serve(async (req) => {
     // If no calendar_ids provided, fetch from Google API
     if (!calendar_ids && googleAccessToken) {
       try {
+        console.log(`Fetching calendars for user ${user_id} using token: ${googleAccessToken.substring(0, 20)}...`)
+        
         const calendarResponse = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
           headers: {
             'Authorization': `Bearer ${googleAccessToken}`,
@@ -147,27 +149,43 @@ serve(async (req) => {
           },
         })
 
-        if (calendarResponse.ok) {
-          const { items: calendars } = await calendarResponse.json()
-          if (calendars && calendars.length > 0) {
-            // Insert calendars into DB
-            const calendarInserts = calendars.map((cal: any) => ({
-              user_id,
-              provider: 'google',
-              calendar_id: cal.id,
-              calendar_name: cal.summary,
-              email: cal.id,
-              is_primary: cal.primary || false,
-              is_active: true,
-            }))
+        console.log(`Calendar API response: ${calendarResponse.status}`)
+        
+        if (!calendarResponse.ok) {
+          const error = await calendarResponse.text()
+          console.error(`Google Calendar API error: ${calendarResponse.status} - ${error}`)
+          throw new Error(`Google API returned ${calendarResponse.status}: ${error}`)
+        }
 
-            await supabaseClient
-              .from('calendars')
-              .upsert(calendarInserts, { onConflict: 'user_id,calendar_id' })
+        const { items: calendars } = await calendarResponse.json()
+        console.log(`Got ${calendars?.length || 0} calendars from Google`)
+        
+        if (calendars && calendars.length > 0) {
+          // Insert calendars into DB
+          const calendarInserts = calendars.map((cal: any) => ({
+            user_id,
+            provider: 'google',
+            calendar_id: cal.id,
+            calendar_name: cal.summary,
+            email: cal.id,
+            is_primary: cal.primary || false,
+            is_active: true,
+          }))
+
+          const { error: upsertError } = await supabaseClient
+            .from('calendars')
+            .upsert(calendarInserts, { onConflict: 'user_id,calendar_id' })
+          
+          if (upsertError) {
+            console.error(`Failed to upsert calendars: ${upsertError.message}`)
+            throw upsertError
           }
+          
+          console.log(`Successfully inserted ${calendarInserts.length} calendars`)
         }
       } catch (err) {
         console.error('Failed to fetch calendars from Google:', err)
+        throw err
       }
     }
 
