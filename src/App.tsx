@@ -16,7 +16,7 @@ import Dashboard from "./pages/Dashboard";
 import Recordings from "./pages/Recordings";
 import MeetingDetail from "./pages/MeetingDetail";
 import Settings from "./pages/Settings";
-import CalendarPage from "./pages/Calendar";
+import CalendarPage from "./pages/CalendarPolished";
 import ActionItems from "./pages/ActionItems";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import ChromeExtensionGuide from "./pages/ChromeExtensionGuide";
