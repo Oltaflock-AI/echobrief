@@ -230,8 +230,8 @@ export default function Settings() {
       const data = await response.json();
       if (data.error) throw new Error(data.error);
       if (data.authUrl) {
-        // Store that we're connecting a calendar so we can fetch after OAuth
-        sessionStorage.setItem('awaiting-calendar-fetch', 'true');
+        // Mark that we're waiting for calendar sync after OAuth
+        localStorage.setItem('awaiting-calendar-sync-' + user?.id, 'true');
         window.location.href = data.authUrl;
       }
     } catch (error: any) {
@@ -240,66 +240,49 @@ export default function Settings() {
     }
   };
 
-  // After OAuth redirect, fetch calendars and sync events
+  // After OAuth redirect, just reload calendars from DB
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const googleConnected = params.get('google_connected');
-    const awaitingCalendarFetch = sessionStorage.getItem('awaiting-calendar-fetch');
+    const shouldSync = googleConnected === 'true' || (user && localStorage.getItem('awaiting-calendar-sync-' + user?.id));
     
-    if ((googleConnected === 'true' || awaitingCalendarFetch) && user && session?.access_token) {
-      sessionStorage.removeItem('awaiting-calendar-fetch');
+    if (shouldSync && user) {
+      localStorage.removeItem('awaiting-calendar-sync-' + user?.id);
       
-      const fetchAndSyncCalendars = async () => {
+      const fetchCalendars = async () => {
         try {
-          // Call sync-calendars which will fetch + sync all calendars
-          const syncResponse = await fetch(`${SUPABASE_URL}/functions/v1/sync-calendars`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              user_id: user?.id,
-            }),
-          });
+          // Fetch calendars from DB (they should be there if OAuth succeeded)
+          const { data: calendarsData, error } = await supabase
+            .from('calendars')
+            .select('id, email, calendar_name, is_primary, is_active')
+            .eq('user_id', user.id)
+            .eq('is_active', true);
 
-          if (!syncResponse.ok) {
-            const error = await syncResponse.json();
-            throw new Error(error.error || 'Failed to sync calendars');
+          if (error) throw error;
+
+          if (calendarsData && calendarsData.length > 0) {
+            setGoogleCalendars(
+              calendarsData.map((cal: any) => ({
+                id: cal.id,
+                email: cal.email || '',
+                name: cal.calendar_name || 'Unnamed Calendar',
+                is_primary: cal.is_primary,
+                connected_at: new Date().toISOString(),
+              }))
+            );
+            toast({ title: 'Success!', description: `Connected ${calendarsData.length} calendar(s).` });
+          } else {
+            toast({ title: 'Info', description: 'No calendars found. Try again.' });
           }
-
-          // Fetch updated calendars from DB
-          if (user) {
-            const { data: calendarsData } = await supabase
-              .from('calendars')
-              .select('id, email, calendar_name, is_primary, is_active')
-              .eq('user_id', user.id)
-              .eq('is_active', true);
-
-            if (calendarsData) {
-              setGoogleCalendars(
-                calendarsData.map((cal: any) => ({
-                  id: cal.id,
-                  email: cal.email || '',
-                  name: cal.calendar_name || 'Unnamed Calendar',
-                  is_primary: cal.is_primary,
-                  connected_at: new Date().toISOString(),
-                }))
-              );
-            }
-          }
-
-          toast({ title: 'Success!', description: 'Google Calendar connected and events synced.' });
         } catch (error: any) {
-          console.error('Calendar sync error:', error);
-          const errorMsg = error?.message || 'Failed to connect calendar';
-          toast({ title: 'Error', description: errorMsg, variant: 'destructive' });
+          console.error('Error loading calendars:', error);
+          toast({ title: 'Error', description: 'Failed to load calendars', variant: 'destructive' });
         }
       };
 
-      fetchAndSyncCalendars();
+      fetchCalendars();
     }
-  }, [user, session?.access_token, activeTab]);
+  }, [user, activeTab]);
 
   const handleConnectSlack = async () => {
     if (!user || !slackChannelId.trim()) return;

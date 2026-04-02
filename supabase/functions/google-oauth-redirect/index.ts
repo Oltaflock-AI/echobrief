@@ -143,7 +143,39 @@ serve(async (req) => {
         });
       }
 
-      // Update profile to mark calendar as connected (no tokens here)
+      // Fetch calendars from Google and save them
+      try {
+        const calendarResponse = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
+          headers: {
+            "Authorization": `Bearer ${tokenData.access_token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (calendarResponse.ok) {
+          const { items: calendars } = await calendarResponse.json();
+          if (calendars && calendars.length > 0) {
+            const calendarInserts = calendars.map((cal: any) => ({
+              user_id: stateData.user_id,
+              provider: "google",
+              calendar_id: cal.id,
+              calendar_name: cal.summary,
+              email: cal.id,
+              is_primary: cal.primary || false,
+              is_active: true,
+            }));
+
+            await supabase
+              .from("calendars")
+              .upsert(calendarInserts, { onConflict: "user_id,calendar_id" });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch calendars:", err);
+        // Continue anyway, user can retry
+      }
+
+      // Update profile to mark calendar as connected
       const { error: profileError } = await supabase
         .from("profiles")
         .update({ google_calendar_connected: true })
@@ -151,11 +183,6 @@ serve(async (req) => {
 
       if (profileError) {
         console.error("Profile update error:", profileError);
-        await supabase.from("google_oauth_states").delete().eq("state", state);
-        return new Response(null, {
-          status: 302,
-          headers: { Location: `${frontendUrl}${returnTo}?error=save_failed` },
-        });
       }
 
       // Clean up used state
