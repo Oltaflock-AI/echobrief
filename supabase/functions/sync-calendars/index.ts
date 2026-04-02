@@ -194,7 +194,6 @@ serve(async (req) => {
         .eq('user_id', user_id)
         .eq('is_active', true)
         .eq('provider', 'google')
-        .eq('sync_enabled', true)
 
       if (error) throw error
       calendarsToSync = data || []
