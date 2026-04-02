@@ -62,9 +62,28 @@ export default function Calendar() {
   const handleManualSync = async () => {
     setSyncing(true);
     try {
-      toast({ title: 'Syncing...', description: 'Refreshing calendar events' });
-      // Manual sync would trigger the sync-calendars edge function
-      // For now, just refetch
+      // Get session token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({ title: 'Error', description: 'Not authenticated', variant: 'destructive' });
+        return;
+      }
+
+      // Call sync function
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-calendar-events`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+
+      toast({ title: 'Synced!', description: `${result.events_synced} events updated` });
+
+      // Refetch events
       const { data, error } = await supabase
         .from('calendar_events')
         .select('*')
@@ -75,10 +94,9 @@ export default function Calendar() {
 
       if (!error) {
         setEvents(data || []);
-        toast({ title: 'Synced!', description: 'Calendar events updated' });
       }
-    } catch (err) {
-      toast({ title: 'Error', description: 'Failed to sync calendar', variant: 'destructive' });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err?.message || 'Failed to sync calendar', variant: 'destructive' });
     } finally {
       setSyncing(false);
     }
