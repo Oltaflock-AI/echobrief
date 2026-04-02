@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar as CalendarIcon, RefreshCw, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { Calendar as CalendarIcon, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCalendar } from '@/contexts/CalendarContext';
 import { format, isToday, isTomorrow, parseISO, startOfDay, isSameDay } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 interface CalendarEvent {
   id: string;
@@ -26,6 +28,7 @@ export default function Calendar() {
   const [syncMessage, setSyncMessage] = useState<{ count: number; visible: boolean }>({ count: 0, visible: false });
   const [upcomingExpanded, setUpcomingExpanded] = useState(false);
   const [autoFetched, setAutoFetched] = useState(false);
+  const [recordingEventId, setRecordingEventId] = useState<string | null>(null);
 
   // Auto-fetch on mount if events are empty and user is logged in
   useEffect(() => {
@@ -107,6 +110,56 @@ export default function Calendar() {
     return acc;
   }, {} as Record<string, CalendarEvent[]>);
 
+  const handleRecordNow = async (event: CalendarEvent) => {
+    if (!user) return;
+    setRecordingEventId(event.id);
+
+    try {
+      // Extract meeting URL from event title or description
+      const urlMatch = event.title?.match(/(https:\/\/\S+)/);
+      const meetingUrl = urlMatch ? urlMatch[1] : null;
+
+      if (!meetingUrl) {
+        toast({ title: 'Error', description: 'No meeting URL found in event', variant: 'destructive' });
+        return;
+      }
+
+      const { data: session } = await supabase.auth.getSession();
+      if (!session?.session?.access_token) throw new Error('Not authenticated');
+
+      // Call start-recall-recording function
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/start-recall-recording`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          meeting_url: meetingUrl,
+          user_id: user.id,
+          calendar_event_id: event.id,
+          title: event.title,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+
+      toast({
+        title: 'Recording started!',
+        description: 'Bot joining meeting...',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error?.message || 'Failed to start recording',
+        variant: 'destructive',
+      });
+    } finally {
+      setRecordingEventId(null);
+    }
+  };
+
   const handleSync = async () => {
     setSyncing(true);
     try {
@@ -180,6 +233,7 @@ export default function Calendar() {
   const EventCard = ({ event }: { event: CalendarEvent }) => {
     const isEventToday = isToday(parseISO(event.start_time));
     const borderColor = isEventToday ? '#F97316' : '#78716C';
+    const isRecording = recordingEventId === event.id;
 
     return (
       <div
@@ -204,7 +258,7 @@ export default function Calendar() {
           e.currentTarget.style.background = '#1C1917';
         }}
       >
-        <div>
+        <div style={{ flex: 1 }}>
           <h3 style={{ fontSize: 15, fontWeight: 600, color: '#FAFAF9', margin: 0, marginBottom: 8, fontFamily: 'Outfit, sans-serif' }}>
             {event.title}
           </h3>
@@ -216,6 +270,31 @@ export default function Calendar() {
             )}
           </p>
         </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleRecordNow(event);
+          }}
+          disabled={isRecording}
+          style={{
+            background: '#FB923C',
+            color: 'white',
+            border: 'none',
+            borderRadius: 6,
+            padding: '8px 14px',
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: isRecording ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            marginRight: 12,
+            opacity: isRecording ? 0.7 : 1,
+          }}
+        >
+          {isRecording ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : '●'}
+          Record Now
+        </button>
         <ChevronRight size={20} style={{ color: '#78716C' }} />
       </div>
     );

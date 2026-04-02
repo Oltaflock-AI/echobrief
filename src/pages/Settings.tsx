@@ -17,6 +17,8 @@ interface Profile {
   slack_connected: boolean;
   slack_channel_id: string | null;
   slack_channel_name: string | null;
+  auto_join_meetings: boolean;
+  recording_preference: 'audio_only' | 'audio_video';
 }
 
 interface GoogleCalendar {
