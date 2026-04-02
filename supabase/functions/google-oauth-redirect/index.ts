@@ -145,6 +145,8 @@ serve(async (req) => {
 
       // Fetch calendars from Google and save them
       try {
+        console.log(`[google-oauth-redirect] Fetching calendars for user ${stateData.user_id}`);
+        
         const calendarResponse = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
           headers: {
             "Authorization": `Bearer ${tokenData.access_token}`,
@@ -152,27 +154,44 @@ serve(async (req) => {
           },
         });
 
-        if (calendarResponse.ok) {
-          const { items: calendars } = await calendarResponse.json();
-          if (calendars && calendars.length > 0) {
-            const calendarInserts = calendars.map((cal: any) => ({
-              user_id: stateData.user_id,
-              provider: "google",
-              calendar_id: cal.id,
-              calendar_name: cal.summary,
-              email: cal.id,
-              is_primary: cal.primary || false,
-              is_active: true,
-            }));
+        console.log(`[google-oauth-redirect] Calendar API response: ${calendarResponse.status}`);
 
-            await supabase
-              .from("calendars")
-              .upsert(calendarInserts, { onConflict: "user_id,calendar_id" });
+        if (!calendarResponse.ok) {
+          const errorText = await calendarResponse.text();
+          console.error(`[google-oauth-redirect] Calendar API error: ${errorText}`);
+          throw new Error(`Google Calendar API failed: ${calendarResponse.status}`);
+        }
+
+        const { items: calendars } = await calendarResponse.json();
+        console.log(`[google-oauth-redirect] Got ${calendars?.length || 0} calendars`);
+
+        if (!calendars || calendars.length === 0) {
+          console.warn("[google-oauth-redirect] No calendars found for user");
+        } else {
+          const calendarInserts = calendars.map((cal: any) => ({
+            user_id: stateData.user_id,
+            provider: "google",
+            calendar_id: cal.id,
+            calendar_name: cal.summary,
+            email: cal.id,
+            is_primary: cal.primary || false,
+            is_active: true,
+          }));
+
+          const { error: upsertError } = await supabase
+            .from("calendars")
+            .upsert(calendarInserts, { onConflict: "user_id,calendar_id" });
+          
+          if (upsertError) {
+            console.error(`[google-oauth-redirect] Upsert error: ${upsertError.message}`);
+            throw upsertError;
           }
+          
+          console.log(`[google-oauth-redirect] Successfully saved ${calendarInserts.length} calendars`);
         }
       } catch (err) {
-        console.error("Failed to fetch calendars:", err);
-        // Continue anyway, user can retry
+        console.error("[google-oauth-redirect] Calendar sync failed:", err);
+        // Continue anyway, redirect back so user can see the error in UI
       }
 
       // Update profile to mark calendar as connected
