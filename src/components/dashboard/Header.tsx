@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, Bell, LogOut, User, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { displayNameFromUserMetadata } from '@/lib/userDisplayName';
 import { GlobalSearch } from './GlobalSearch';
 
 export function Header() {
@@ -11,8 +12,10 @@ export function Header() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  const userInitial = user?.email?.[0]?.toUpperCase() || '?';
-  const userName = user?.email?.split('@')[0] || 'User';
+  const displayName = displayNameFromUserMetadata(user);
+  const userInitial =
+    (displayName?.[0] || user?.email?.[0])?.toUpperCase() || '?';
+  const userName = displayName || user?.email?.split('@')[0] || 'User';
 
   // Close profile menu on outside click or Escape
   useEffect(() => {

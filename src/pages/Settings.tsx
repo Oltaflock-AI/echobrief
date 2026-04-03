@@ -77,28 +77,55 @@ export default function Settings() {
     if (!user) return;
 
     const fetchProfile = async () => {
-      // Fetch profile
+      // Fresh user from Auth API — JWT in memory can lag behind Dashboard edits to display name
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      const authUser = authData?.user ?? user;
+      if (authErr) {
+        console.warn('[Settings] getUser:', authErr);
+      }
+
+      const fromAuthMeta = displayNameFromUserMetadata(authUser);
+
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (!profileError && profileData) {
+      if (profileError) {
+        console.error('[Settings] profile fetch:', profileError);
+        setFullName(fromAuthMeta);
+        setProfile(null);
+      } else if (profileData) {
         setProfile(profileData as Profile);
         const fromProfile = (profileData.full_name || '').trim();
-        const fromAuthMeta = displayNameFromUserMetadata(user);
         const resolvedName = fromProfile || fromAuthMeta;
         setFullName(resolvedName);
 
-        if (!fromProfile && fromAuthMeta) {
+        if (!fromProfile && resolvedName) {
           await supabase
             .from('profiles')
-            .update({ full_name: fromAuthMeta })
+            .update({ full_name: resolvedName })
             .eq('user_id', user.id);
         }
         setSlackChannelId(profileData.slack_channel_id || '');
         setSlackChannelName(profileData.slack_channel_name || '');
+      } else {
+        setProfile(null);
+        setFullName(fromAuthMeta);
+        if (fromAuthMeta || authUser.email) {
+          const { error: insertErr } = await supabase.from('profiles').insert({
+            user_id: user.id,
+            email: authUser.email ?? null,
+            full_name: fromAuthMeta || null,
+          });
+          if (insertErr?.code === '23505') {
+            await supabase
+              .from('profiles')
+              .update({ full_name: fromAuthMeta || null })
+              .eq('user_id', user.id);
+          }
+        }
       }
 
       // Fetch connected Google Calendars
