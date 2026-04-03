@@ -16,50 +16,36 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(false); // Start as false, not true
+  /** True until we resolve the initial session (getSession + listener). Avoids routing before auth is known. */
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('[auth] Starting auth init...');
-    
-    // Try to get session but don't wait more than 1 second
     let isMounted = true;
-    const timeout = setTimeout(() => {
-      console.warn('[auth] 1s timeout, continuing anyway');
-      if (isMounted) setLoading(false);
-    }, 1000);
 
-    // Set up listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        console.log('[auth] Auth change:', event);
-        if (isMounted) {
-          setSession(session);
-          setUser(session?.user ?? null);
-          setLoading(false);
-        }
+      (_event, nextSession) => {
+        if (!isMounted) return;
+        setSession(nextSession);
+        setUser(nextSession?.user ?? null);
+        setLoading(false);
       }
     );
 
-    // Try to get session (non-blocking)
-    Promise.race([
-      supabase.auth.getSession(),
-      new Promise((_, reject) => setTimeout(() => reject('timeout'), 500))
-    ])
-      .then(({ data: { session } }) => {
-        if (isMounted) {
-          setSession(session);
-          setUser(session?.user ?? null);
-          setLoading(false);
-        }
+    supabase.auth
+      .getSession()
+      .then(({ data: { session: initialSession } }) => {
+        if (!isMounted) return;
+        setSession(initialSession);
+        setUser(initialSession?.user ?? null);
+        setLoading(false);
       })
       .catch((err) => {
-        console.log('[auth] Session error (continuing anyway):', err);
+        console.error('[auth] getSession failed:', err);
         if (isMounted) setLoading(false);
       });
 
     return () => {
       isMounted = false;
-      clearTimeout(timeout);
       subscription.unsubscribe();
     };
   }, []);

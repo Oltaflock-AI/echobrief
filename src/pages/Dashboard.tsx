@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { RecordingButton } from '@/components/dashboard/RecordingButton';
@@ -87,54 +87,125 @@ export default function Dashboard() {
   const [insightCounts, setInsightCounts] = useState<Record<string, boolean>>({});
   const [digestSending, setDigestSending] = useState(false);
   const [showDigestSettings, setShowDigestSettings] = useState(false);
-  
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const aliveRef = useRef(true);
+
   const prefillMeeting = (location.state as { prefillMeeting?: PrefillMeeting })?.prefillMeeting;
 
+  const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      promise
+        .then((v) => {
+          clearTimeout(t);
+          resolve(v);
+        })
+        .catch((e) => {
+          clearTimeout(t);
+          reject(e);
+        });
+    });
+  };
+
   useEffect(() => {
-    if (!user) return;
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setFetchError(null);
 
     const checkOnboardingAndFetch = async () => {
-      // Check if onboarding is completed
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('onboarding_completed')
-        .eq('user_id', user.id)
-        .single();
+      try {
+        const { data: profile, error: profileError } = await withTimeout(
+          supabase
+            .from('profiles')
+            .select('onboarding_completed')
+            .eq('user_id', user.id)
+            .maybeSingle(),
+          25_000,
+          'Profile load'
+        );
 
-      if (profile && !profile.onboarding_completed) {
-        navigate('/onboarding');
-        return;
-      }
+        if (!aliveRef.current) return;
 
-      const fetchMeetings = async () => {
-        const { data, error } = await supabase
-          .from('meetings')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('start_time', { ascending: false });
+        if (profileError) {
+          console.error('[Dashboard] Profile fetch:', profileError);
+        }
 
-        if (!error && data) {
+        if (profile && !profile.onboarding_completed) {
+          navigate('/onboarding');
+          return;
+        }
+
+        const { data, error } = await withTimeout(
+          supabase
+            .from('meetings')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('start_time', { ascending: false }),
+          25_000,
+          'Meetings load'
+        );
+
+        if (!aliveRef.current) return;
+
+        if (error) {
+          console.error('[Dashboard] Meetings fetch:', error);
+          setFetchError(error.message || 'Could not load meetings');
+          setMeetings([]);
+          return;
+        }
+
+        if (data) {
           setMeetings(data as Meeting[]);
-          
-          const { data: insights } = await supabase
-            .from('meeting_insights')
-            .select('meeting_id')
-            .in('meeting_id', data.map(m => m.id));
-          
-          if (insights) {
-            const counts: Record<string, boolean> = {};
-            insights.forEach(i => { counts[i.meeting_id] = true; });
-            setInsightCounts(counts);
+
+          if (data.length > 0) {
+            const { data: insights, error: insightsError } = await withTimeout(
+              supabase
+                .from('meeting_insights')
+                .select('meeting_id')
+                .in('meeting_id', data.map((m) => m.id)),
+              25_000,
+              'Insights load'
+            );
+
+            if (!aliveRef.current) return;
+
+            if (insightsError) {
+              console.error('[Dashboard] Insights fetch:', insightsError);
+            } else if (insights) {
+              const counts: Record<string, boolean> = {};
+              insights.forEach((i) => {
+                counts[i.meeting_id] = true;
+              });
+              setInsightCounts(counts);
+            }
           }
         }
-        setLoading(false);
-      };
-
-      fetchMeetings();
+      } catch (err) {
+        console.error('[Dashboard] Failed to fetch meetings:', err);
+        if (aliveRef.current) {
+          setFetchError(err instanceof Error ? err.message : 'Could not load meetings');
+          setMeetings([]);
+        }
+      } finally {
+        if (aliveRef.current) setLoading(false);
+      }
     };
 
+    void checkOnboardingAndFetch();
+
     const channel = supabase
-      .channel('meetings-changes')
+      .channel(`meetings-changes-${user.id}`)
       .on(
         'postgres_changes',
         {
@@ -158,9 +229,9 @@ export default function Dashboard() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, navigate]);
 
   const stats = useMemo(() => {
     const totalMeetings = meetings.length;
@@ -281,6 +352,24 @@ export default function Dashboard() {
             attendees={prefillMeeting?.attendees}
           />
         </div>
+
+        {fetchError && !loading && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: 24,
+              padding: '14px 18px',
+              borderRadius: 12,
+              border: '1px solid rgba(239,68,68,0.35)',
+              background: 'rgba(239,68,68,0.08)',
+              fontFamily: 'DM Sans, sans-serif',
+              fontSize: 14,
+              color: '#FCA5A5',
+            }}
+          >
+            {fetchError}. Check your connection and that the app is pointed at the correct Supabase project.
+          </div>
+        )}
 
         {/* Stats Row — 3 columns */}
         {!loading && meetings.length > 0 && (
