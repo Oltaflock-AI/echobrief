@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarIcon, RefreshCw, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
@@ -11,35 +12,50 @@ import { MeetingDetailModal } from '@/components/dashboard/MeetingDetailModal';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
-function extractMeetingUrl(event: any): string | null {
-  // 1. Check conferenceData (Google Meet native)
-  if (event.conferenceData?.entryPoints) {
-    const videoEntry = event.conferenceData.entryPoints.find(
-      (e: any) => e.entryPointType === 'video'
-    );
-    if (videoEntry?.uri) return videoEntry.uri;
+function mapServerEventsToCalendar(raw: unknown[]): CalendarEvent[] {
+  return raw
+    .filter((e): e is Record<string, unknown> => !!e && typeof e === 'object')
+    .map((e) => ({
+      id: String(e.id ?? ''),
+      title: String(e.title ?? 'No title'),
+      start_time: String(e.start_time ?? e.start ?? ''),
+      end_time: String(e.end_time ?? e.end ?? ''),
+      is_all_day: Boolean(e.is_all_day),
+      meetingUrl: typeof e.meetingUrl === 'string' ? e.meetingUrl : undefined,
+      hasMeetingLink: Boolean(e.hasMeetingLink),
+      attendees: Array.isArray(e.attendees)
+        ? (e.attendees as CalendarEvent['attendees'])
+        : undefined,
+    }))
+    .filter((e) => e.id && e.start_time);
+}
+
+async function syncCalendarViaEdgeFunction(accessToken: string): Promise<{
+  events: CalendarEvent[];
+  error?: string;
+  hint?: string;
+}> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-calendar`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  const data = (await res.json()) as {
+    error?: string;
+    hint?: string;
+    upcomingEvents?: unknown[];
+  };
+  if (!res.ok) {
+    return {
+      events: [],
+      error: data.error || 'Calendar sync failed',
+      hint: data.hint,
+    };
   }
-
-  // 2. Check hangoutLink (older Google Meet format)
-  if (event.hangoutLink) return event.hangoutLink;
-
-  // 3. Check location field
-  if (event.location) {
-    const urlMatch = event.location.match(
-      /https?:\/\/(meet\.google\.com|zoom\.us|teams\.microsoft\.com|webex\.com)[^\s]*/i
-    );
-    if (urlMatch) return urlMatch[0];
-  }
-
-  // 4. Check description field
-  if (event.description) {
-    const urlMatch = event.description.match(
-      /https?:\/\/(meet\.google\.com|zoom\.us|teams\.microsoft\.com|webex\.com)[^\s<"]*/i
-    );
-    if (urlMatch) return urlMatch[0];
-  }
-
-  return null;
+  const raw = Array.isArray(data.upcomingEvents) ? data.upcomingEvents : [];
+  return { events: mapServerEventsToCalendar(raw) };
 }
 
 interface CalendarEvent {
@@ -54,7 +70,7 @@ interface CalendarEvent {
 }
 
 export default function Calendar() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { events, setEvents, synced, setSynced, lastSyncTime, setLastSyncTime } = useCalendar();
   const { toast } = useToast();
 
@@ -67,67 +83,19 @@ export default function Calendar() {
   const openModal = (event: CalendarEvent) => setSelectedEvent(event);
   const closeModal = () => setSelectedEvent(null);
 
-  // Auto-fetch on mount if events are empty and user is logged in
+  // Auto-fetch via Edge Function (OAuth tokens are not readable from the browser when RLS blocks user_oauth_tokens)
   useEffect(() => {
-    if (autoFetched || events.length > 0 || !user) return;
+    if (autoFetched || events.length > 0 || !user || !session?.access_token) return;
 
     const autoFetch = async () => {
       try {
-        const { data: tokenData } = await supabase
-          .from('user_oauth_tokens')
-          .select('google_access_token')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (!tokenData?.google_access_token) return;
-
-        const { data: calendars } = await supabase
-          .from('calendars')
-          .select('id, calendar_id')
-          .eq('user_id', user.id)
-          .eq('is_active', true);
-
-        if (!calendars || calendars.length === 0) return;
-
-        const now = new Date();
-        const maxDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        const allEvents: CalendarEvent[] = [];
-
-        for (const cal of calendars) {
-          try {
-            const response = await fetch(
-              `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.calendar_id)}/events?timeMin=${now.toISOString()}&timeMax=${maxDate.toISOString()}&singleEvents=true&orderBy=startTime`,
-              { headers: { 'Authorization': `Bearer ${tokenData.google_access_token}` } }
-            );
-
-            if (response.ok) {
-              const { items } = await response.json();
-              if (items) {
-                allEvents.push(...items.map((e: any) => {
-                  const meetingUrl = extractMeetingUrl(e);
-                  // Store full attendee object for modal rendering
-                  const attendees = e.attendees && Array.isArray(e.attendees) ? e.attendees : [];
-                  return {
-                    id: e.id,
-                    title: e.summary || 'No title',
-                    start_time: e.start?.dateTime || e.start?.date,
-                    end_time: e.end?.dateTime || e.end?.date,
-                    is_all_day: !e.start?.dateTime,
-                    meetingUrl,
-                    hasMeetingLink: !!meetingUrl,
-                    attendees: attendees,
-                  };
-                }));
-              }
-            }
-          } catch (err) {
-            console.error('Fetch error:', err);
-          }
+        const { events: ev, error } = await syncCalendarViaEdgeFunction(session.access_token);
+        if (error) return;
+        setEvents(ev);
+        if (ev.length > 0) {
+          setSynced(true);
+          setLastSyncTime(new Date());
         }
-
-        setEvents(allEvents);
-        setSynced(true);
-        setLastSyncTime(new Date());
       } catch (err) {
         console.error('Auto-fetch error:', err);
       } finally {
@@ -135,8 +103,8 @@ export default function Calendar() {
       }
     };
 
-    autoFetch();
-  }, [user, autoFetched, events.length, setEvents, setSynced, setLastSyncTime]);
+    void autoFetch();
+  }, [user, session?.access_token, autoFetched, events.length, setEvents, setSynced, setLastSyncTime]);
 
   // Group events by date
   const groupedEvents = {
@@ -182,68 +150,28 @@ export default function Calendar() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      if (!user) throw new Error('Not logged in');
+      if (!user || !session?.access_token) throw new Error('Not logged in');
 
-      const { data: tokenData } = await supabase
-        .from('user_oauth_tokens')
-        .select('google_access_token')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const { events: ev, error, hint } = await syncCalendarViaEdgeFunction(session.access_token);
 
-      if (!tokenData?.google_access_token) {
-        throw new Error('Google Calendar not connected');
-      }
-
-      const { data: calendars } = await supabase
-        .from('calendars')
-        .select('id, calendar_id')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
-
-      if (!calendars || calendars.length === 0) {
-        setEvents([]);
-        toast({ title: 'Info', description: 'No calendars connected' });
-        setSyncing(false);
+      if (error) {
+        toast({
+          title: 'Calendar',
+          description: hint || error,
+          variant: 'destructive',
+        });
         return;
       }
 
-      const now = new Date();
-      const maxDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-      const allEvents: CalendarEvent[] = [];
-
-      for (const cal of calendars) {
-        try {
-          const response = await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.calendar_id)}/events?timeMin=${now.toISOString()}&timeMax=${maxDate.toISOString()}&singleEvents=true&orderBy=startTime`,
-            { headers: { 'Authorization': `Bearer ${tokenData.google_access_token}` } }
-          );
-
-          if (response.ok) {
-            const { items } = await response.json();
-            if (items) {
-              allEvents.push(...items.map((e: any) => ({
-                id: e.id,
-                title: e.summary || 'No title',
-                start_time: e.start?.dateTime || e.start?.date,
-                end_time: e.end?.dateTime || e.end?.date,
-                is_all_day: !e.start?.dateTime,
-              })));
-            }
-          }
-        } catch (err) {
-          console.error('Fetch error:', err);
-        }
-      }
-
-      setEvents(allEvents);
+      setEvents(ev);
       setSynced(true);
       setLastSyncTime(new Date());
 
-      // Show sync message
-      setSyncMessage({ count: allEvents.length, visible: true });
-      setTimeout(() => setSyncMessage(prev => ({ ...prev, visible: false })), 3000);
-    } catch (err: any) {
-      toast({ title: 'Error', description: err?.message || 'Failed to sync', variant: 'destructive' });
+      setSyncMessage({ count: ev.length, visible: true });
+      setTimeout(() => setSyncMessage((prev) => ({ ...prev, visible: false })), 3000);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to sync';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
     } finally {
       setSyncing(false);
     }
@@ -371,8 +299,12 @@ export default function Calendar() {
             <h3 style={{ fontSize: 14, fontWeight: 600, color: '#A8A29E', margin: 0, marginBottom: 8 }}>
               No upcoming meetings found
             </h3>
-            <p style={{ fontSize: 13, color: '#78716C', margin: 0 }}>
-              Make sure your Google Calendar is connected in Settings
+            <p style={{ fontSize: 13, color: '#78716C', margin: 0, maxWidth: 360 }}>
+              Add Calendar in{' '}
+              <Link to="/settings?tab=integrations" style={{ color: '#FB923C', textDecoration: 'underline' }}>
+                Settings → Integrations
+              </Link>{' '}
+              to run Google OAuth for this EchoBrief account. Project secrets alone do not connect your calendar.
             </p>
           </div>
         ) : (

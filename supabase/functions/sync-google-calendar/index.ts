@@ -2,6 +2,32 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
 
+function extractMeetingUrl(event: Record<string, unknown>): string | null {
+  const conferenceData = event.conferenceData as
+    | { entryPoints?: { entryPointType?: string; uri?: string }[] }
+    | undefined;
+  if (conferenceData?.entryPoints) {
+    const videoEntry = conferenceData.entryPoints.find(
+      (e) => e.entryPointType === "video",
+    );
+    if (videoEntry?.uri) return videoEntry.uri;
+  }
+  if (typeof event.hangoutLink === "string") return event.hangoutLink;
+  if (typeof event.location === "string") {
+    const m = event.location.match(
+      /https?:\/\/(meet\.google\.com|zoom\.us|teams\.microsoft\.com|webex\.com)[^\s]*/i,
+    );
+    if (m) return m[0];
+  }
+  if (typeof event.description === "string") {
+    const m = event.description.match(
+      /https?:\/\/(meet\.google\.com|zoom\.us|teams\.microsoft\.com|webex\.com)[^\s<"]*/i,
+    );
+    if (m) return m[0];
+  }
+  return null;
+}
+
 serve(async (req) => {
   const corsResponse = handleCorsPrelight(req);
   if (corsResponse) return corsResponse;
@@ -33,18 +59,62 @@ serve(async (req) => {
       );
     }
 
-    // Get user's Google access token
-    const { data: tokenData, error: tokenError } = await supabase
+    // Get user's Google tokens (service role — not readable from browser when RLS locks the table)
+    let { data: tokenData, error: tokenError } = await supabase
       .from("user_oauth_tokens")
-      .select("google_access_token")
+      .select("google_access_token, google_refresh_token, google_token_expiry")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (tokenError || !tokenData?.google_access_token) {
       return new Response(
-        JSON.stringify({ error: "Google calendar not connected" }),
+        JSON.stringify({
+          error: "Google calendar not connected",
+          code: "NOT_CONNECTED",
+          hint: "Use Settings → Integrations → Add Calendar to complete Google OAuth for this account.",
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    let accessToken = tokenData.google_access_token;
+    const expiry = tokenData.google_token_expiry
+      ? new Date(tokenData.google_token_expiry)
+      : null;
+    const needsRefresh =
+      expiry && expiry.getTime() < Date.now() + 60_000 &&
+      !!tokenData.google_refresh_token;
+    if (needsRefresh) {
+      const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
+      const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+      if (googleClientId && googleClientSecret) {
+        const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: "refresh_token",
+            refresh_token: tokenData.google_refresh_token!,
+            client_id: googleClientId,
+            client_secret: googleClientSecret,
+          }),
+        });
+        const refreshed = await refreshRes.json();
+        if (refreshed.access_token) {
+          accessToken = refreshed.access_token;
+          const newExpiry = new Date();
+          newExpiry.setSeconds(
+            newExpiry.getSeconds() + (refreshed.expires_in || 3600),
+          );
+          await supabase.from("user_oauth_tokens").upsert(
+            {
+              user_id: user.id,
+              google_access_token: accessToken,
+              google_token_expiry: newExpiry.toISOString(),
+            },
+            { onConflict: "user_id" },
+          );
+        }
+      }
     }
 
     console.log(`[sync-google-calendar] Fetching calendars for user ${user.id}`);
@@ -54,7 +124,7 @@ serve(async (req) => {
       "https://www.googleapis.com/calendar/v3/users/me/calendarList",
       {
         headers: {
-          "Authorization": `Bearer ${tokenData.google_access_token}`,
+          "Authorization": `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
       }
@@ -76,7 +146,12 @@ serve(async (req) => {
 
     if (!calendars || calendars.length === 0) {
       return new Response(
-        JSON.stringify({ success: true, calendars: [], events: 0 }),
+        JSON.stringify({
+          success: true,
+          calendars: 0,
+          events: 0,
+          upcomingEvents: [],
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -106,16 +181,21 @@ serve(async (req) => {
 
     console.log(`[sync-google-calendar] Successfully saved ${calendarInserts.length} calendars`);
 
-    // Fetch events for all calendars
+    // Fetch events for all calendars (also build `upcomingEvents` for the web app — client cannot read OAuth tokens when RLS blocks `user_oauth_tokens`)
     let totalEvents = 0;
+    const upcomingEvents: Record<string, unknown>[] = [];
+    const now = new Date();
+    const maxDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const timeMin = encodeURIComponent(now.toISOString());
+    const timeMax = encodeURIComponent(maxDate.toISOString());
 
     for (const cal of calendars) {
       try {
         const eventsResponse = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?maxResults=50&orderBy=startTime&singleEvents=true&timeMin=${new Date().toISOString()}`,
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?maxResults=100&orderBy=startTime&singleEvents=true&timeMin=${timeMin}&timeMax=${timeMax}`,
           {
             headers: {
-              "Authorization": `Bearer ${tokenData.google_access_token}`,
+              "Authorization": `Bearer ${accessToken}`,
               "Content-Type": "application/json",
             },
           }
@@ -125,6 +205,29 @@ serve(async (req) => {
           const { items: events } = await eventsResponse.json();
 
           if (events && events.length > 0) {
+            for (const event of events as Record<string, unknown>[]) {
+              const startObj = event.start as { dateTime?: string; date?: string } | undefined;
+              const endObj = event.end as { dateTime?: string; date?: string } | undefined;
+              const startRaw = startObj?.dateTime || startObj?.date;
+              const endRaw = endObj?.dateTime || endObj?.date;
+              if (!startRaw) continue;
+              const meetingUrl = extractMeetingUrl(event);
+              const attendees = Array.isArray(event.attendees) ? event.attendees : [];
+              upcomingEvents.push({
+                id: event.id,
+                title: (typeof event.summary === "string" ? event.summary : null) || "No title",
+                start_time: startRaw,
+                end_time: endRaw || startRaw,
+                is_all_day: !startObj?.dateTime,
+                meetingUrl,
+                hasMeetingLink: !!meetingUrl,
+                attendees,
+                start: startRaw,
+                end: endRaw || startRaw,
+                meetingLink: meetingUrl,
+              });
+            }
+
             const eventInserts = events.map((event: any) => ({
               user_id: user.id,
               calendar_id: cal.id,
@@ -149,6 +252,8 @@ serve(async (req) => {
             if (!eventError) {
               totalEvents += eventInserts.length;
               console.log(`[sync-google-calendar] Synced ${eventInserts.length} events from ${cal.summary}`);
+            } else {
+              console.warn(`[sync-google-calendar] calendar_events upsert skipped: ${eventError.message}`);
             }
           }
         }
@@ -162,6 +267,7 @@ serve(async (req) => {
         success: true,
         calendars: calendarInserts.length,
         events: totalEvents,
+        upcomingEvents,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

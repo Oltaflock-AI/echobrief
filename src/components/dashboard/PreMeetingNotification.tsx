@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { X, Mic, Calendar, Clock, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { format, differenceInMinutes, parseISO, addMinutes } from 'date-fns';
+import { format, differenceInMinutes, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 interface UpcomingMeeting {
@@ -47,26 +46,51 @@ export function PreMeetingNotification({
           }
         );
 
-        const data = await response.json();
-        
-        if (data.events && Array.isArray(data.events)) {
-          const now = new Date();
-          const notificationWindow = addMinutes(now, notificationMinutes);
-          
-          // Find meetings starting within notification window
-          const upcoming = data.events.find((event: UpcomingMeeting) => {
-            const startTime = parseISO(event.start);
-            const minutesUntil = differenceInMinutes(startTime, now);
-            return minutesUntil > 0 && minutesUntil <= notificationMinutes && !dismissed.has(event.id);
-          });
+        const data = await response.json() as { upcomingEvents?: unknown[] };
+        const list = Array.isArray(data.upcomingEvents) ? data.upcomingEvents : [];
 
-          if (upcoming) {
-            const startTime = parseISO(upcoming.start);
-            setMinutesUntilMeeting(differenceInMinutes(startTime, now));
-            setUpcomingMeeting(upcoming);
-          } else {
-            setUpcomingMeeting(null);
-          }
+        const now = new Date();
+
+        const upcoming = list.find((raw: unknown) => {
+          if (!raw || typeof raw !== 'object') return false;
+          const event = raw as {
+            id?: string;
+            start?: string;
+            start_time?: string;
+          };
+          const startStr = event.start_time || event.start;
+          if (!startStr || !event.id) return false;
+          const startTime = parseISO(startStr);
+          const minutesUntil = differenceInMinutes(startTime, now);
+          return minutesUntil > 0 && minutesUntil <= notificationMinutes && !dismissed.has(event.id);
+        }) as
+          | {
+              id: string;
+              title?: string;
+              start?: string;
+              start_time?: string;
+              end?: string;
+              end_time?: string;
+              meetingUrl?: string;
+              meetingLink?: string;
+              attendees?: UpcomingMeeting['attendees'];
+            }
+          | undefined;
+
+        if (upcoming) {
+          const startStr = upcoming.start_time || upcoming.start!;
+          const startTime = parseISO(startStr);
+          setMinutesUntilMeeting(differenceInMinutes(startTime, now));
+          setUpcomingMeeting({
+            id: upcoming.id,
+            title: upcoming.title || 'Meeting',
+            start: startStr,
+            end: upcoming.end_time || upcoming.end || startStr,
+            meetingLink: upcoming.meetingUrl || upcoming.meetingLink || null,
+            attendees: upcoming.attendees,
+          });
+        } else {
+          setUpcomingMeeting(null);
         }
       } catch (error) {
         console.error('Error checking upcoming meetings:', error);
