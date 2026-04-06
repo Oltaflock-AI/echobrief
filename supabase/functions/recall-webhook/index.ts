@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  createSarvamJob,
-  uploadToSarvamJob,
-  startSarvamJob,
-} from "../_shared/sarvam.ts";
+import { processRecallAudio } from "../_shared/recall-pipeline.ts";
 
 const RECALL_API_KEY = Deno.env.get("RECALL_API_KEY")!;
 const RECALL_API_BASE_URL =
@@ -120,59 +116,6 @@ function getEventCategory(event: Record<string, any>): string | null {
   return eventName.split(".")[0] || null;
 }
 
-async function getRecallBot(botId: string) {
-  const botResponse = await fetch(`${RECALL_API_URL}/bot/${botId}/`, {
-    headers: {
-      Authorization: RECALL_API_KEY,
-      Accept: "application/json",
-    },
-  });
-
-  if (!botResponse.ok) {
-    const errText = await botResponse.text();
-    throw new Error(`Failed to fetch bot details: ${botResponse.status} ${errText}`);
-  }
-
-  return botResponse.json();
-}
-
-async function getAudioDownloadUrl(botData: Record<string, any>) {
-  const recordings = Array.isArray(botData.recordings) ? botData.recordings : [];
-
-  // Primary path: use the /audio_mixed/ API with the recording ID.
-  // Recall docs confirm audio is NOT in media_shortcuts — it requires
-  // a dedicated API call with the recording_id.
-  const recordingWithId = recordings.find((r: any) => r?.id);
-  if (recordingWithId?.id) {
-    const response = await fetch(
-      `${RECALL_API_URL}/audio_mixed/?recording_id=${recordingWithId.id}`,
-      {
-        headers: {
-          Authorization: RECALL_API_KEY,
-          Accept: "application/json",
-        },
-      },
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-      const url =
-        data.results?.[0]?.data?.download_url ||
-        data.results?.[0]?.url ||
-        null;
-      if (url) return url;
-    }
-  }
-
-  // Fallback: check if any recording object itself has a direct URL
-  for (const recording of recordings) {
-    if (recording.url) return recording.url;
-  }
-
-  // Last resort: video_url (unlikely for audio_mixed_mp3 config)
-  return botData.video_url || null;
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -190,8 +133,6 @@ serve(async (req) => {
     const event = JSON.parse(rawBody);
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const sarvamApiKey = Deno.env.get("SARVAM_API_KEY")!;
-    const sarvamWebhookSecret = Deno.env.get("SARVAM_WEBHOOK_SECRET")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     console.log("[recall-webhook] Event received:", JSON.stringify(event));
@@ -273,104 +214,13 @@ serve(async (req) => {
     }
 
     // --- Recording is done — fetch audio from Recall and send to Sarvam ---
-
-    await supabase
-      .from("meetings")
-      .update({ status: "processing" })
-      .eq("id", meeting.id);
-
-    // Step 1: Fetch bot details to get the audio download URL
-    const botData = await getRecallBot(botId);
-    console.log("[recall-webhook] Bot data keys:", Object.keys(botData).join(","));
-
-    // Step 2: Get audio download URL via /audio_mixed/ API (documented path)
-    const audioUrl = await getAudioDownloadUrl(botData);
-
-    if (!audioUrl) {
-      console.error("[recall-webhook] No audio URL found in bot data:", JSON.stringify(botData));
-      await supabase
-        .from("meetings")
-        .update({ status: "failed" })
-        .eq("id", meeting.id);
-      return new Response(JSON.stringify({ error: "No audio URL from Recall" }), { status: 500 });
-    }
-
-    console.log("[recall-webhook] Downloading audio from Recall...");
-
-    // Step 3: Download the audio file from Recall's S3 signed URL
-    const audioResponse = await fetch(audioUrl);
-    if (!audioResponse.ok) {
-      throw new Error(`Failed to download audio: ${audioResponse.status}`);
-    }
-    const audioBlob = await audioResponse.blob();
-    const audioSize = audioBlob.size;
-    console.log(`[recall-webhook] Audio downloaded: ${(audioSize / 1024 / 1024).toFixed(2)} MB`);
-
-    // Step 4: Upload audio to Supabase Storage for archival
-    const storagePath = `${meeting.user_id}/${meeting.id}/recall-audio.mp3`;
-    const { error: uploadError } = await supabase.storage
-      .from("recordings")
-      .upload(storagePath, audioBlob, {
-        contentType: "audio/mpeg",
-        upsert: true,
-      });
-
-    if (uploadError) {
-      console.error("[recall-webhook] Storage upload error:", uploadError);
-      // Continue anyway — Sarvam can still process from the blob in memory
-    } else {
-      // Save the storage path to the meeting record
-      await supabase
-        .from("meetings")
-        .update({ audio_url: `recordings/${storagePath}` })
-        .eq("id", meeting.id);
-      console.log("[recall-webhook] Audio saved to Supabase Storage");
-    }
-
-    // Step 5: Create Sarvam batch job with full features
-    const callbackUrl = `${supabaseUrl}/functions/v1/sarvam-webhook`;
-    const job = await createSarvamJob(sarvamApiKey, callbackUrl, sarvamWebhookSecret);
-    console.log("[recall-webhook] Sarvam job created:", job.job_id);
-
-    // Step 6: Upload audio to Sarvam
-    const fileName = "recall-audio.mp3";
-    await uploadToSarvamJob(sarvamApiKey, job.job_id, fileName, audioBlob);
-    console.log("[recall-webhook] Audio uploaded to Sarvam job");
-
-    // Step 7: Start Sarvam processing
-    await startSarvamJob(sarvamApiKey, job.job_id);
-    console.log("[recall-webhook] Sarvam job started:", job.job_id);
-
-    // Step 8: Save sarvam_job_id and config so sarvam-webhook can find this meeting
-    await supabase
-      .from("meetings")
-      .update({
-        sarvam_job_id: job.job_id,
-        recall_bot_id: botId,
-        processing_config: {
-          source: "recall",
-          recall_bot_id: botId,
-          audio_file_name: fileName,
-          slackDestination: meeting.processing_config?.slackDestination || null,
-          sendEmail: meeting.processing_config?.sendEmail || false,
-        },
-      })
-      .eq("id", meeting.id);
-
-    console.log(`[recall-webhook] Meeting ${meeting.id} handed off to Sarvam (job: ${job.job_id})`);
-
-    // From here, sarvam-webhook handles:
-    // - Receiving transcript with diarization + language detection
-    // - Generating insights via GPT
-    // - Saving transcript to DB
-    // - Delivering to Slack/email/etc
-    // - Marking meeting as completed
+    const sarvamJobId = await processRecallAudio(supabase, meeting, botId);
 
     return new Response(
       JSON.stringify({
         success: true,
         meeting_id: meeting.id,
-        sarvam_job_id: job.job_id,
+        sarvam_job_id: sarvamJobId,
         message: "Audio downloaded from Recall and submitted to Sarvam for transcription",
       }),
       { headers: { "Content-Type": "application/json" } }

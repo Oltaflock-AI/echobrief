@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
+import { processRecallAudio } from "../_shared/recall-pipeline.ts";
 
 const RECALL_API_KEY = Deno.env.get("RECALL_API_KEY")!;
 const RECALL_API_BASE_URL =
@@ -16,7 +17,7 @@ const RECALL_STATUS_MAP: Record<string, string> = {
   in_call_recording: "recording",
   call_ended: "processing",
   recording_done: "processing",
-  done: "processing", // will be "completed" once Sarvam finishes
+  done: "done", // special handling below
   fatal: "failed",
 };
 
@@ -44,7 +45,7 @@ serve(async (req) => {
     // Fetch the meeting
     const { data: meeting, error } = await supabase
       .from("meetings")
-      .select("id, status, recall_bot_id, sarvam_job_id")
+      .select("*")
       .eq("id", meeting_id)
       .single();
 
@@ -56,22 +57,32 @@ serve(async (req) => {
     }
 
     // If no recall bot, or already completed/failed, just return current status
-    if (!meeting.recall_bot_id || meeting.status === "completed" || meeting.status === "failed") {
+    if (
+      !meeting.recall_bot_id ||
+      meeting.status === "completed" ||
+      meeting.status === "failed"
+    ) {
       return new Response(JSON.stringify({ status: meeting.status }), {
         headers: jsonHeaders,
       });
     }
 
     // Query Recall API for the bot's current status
-    const botResponse = await fetch(`${RECALL_API_URL}/bot/${meeting.recall_bot_id}/`, {
-      headers: {
-        Authorization: RECALL_API_KEY,
-        Accept: "application/json",
+    const botResponse = await fetch(
+      `${RECALL_API_URL}/bot/${meeting.recall_bot_id}/`,
+      {
+        headers: {
+          Authorization: RECALL_API_KEY,
+          Accept: "application/json",
+        },
       },
-    });
+    );
 
     if (!botResponse.ok) {
-      console.error("[check-recall-status] Recall API error:", botResponse.status);
+      console.error(
+        "[check-recall-status] Recall API error:",
+        botResponse.status,
+      );
       return new Response(JSON.stringify({ status: meeting.status }), {
         headers: jsonHeaders,
       });
@@ -79,9 +90,10 @@ serve(async (req) => {
 
     const botData = await botResponse.json();
     const statusChanges = botData.status_changes || [];
-    const latestStatus = statusChanges.length > 0
-      ? statusChanges[statusChanges.length - 1].code
-      : null;
+    const latestStatus =
+      statusChanges.length > 0
+        ? statusChanges[statusChanges.length - 1].code
+        : null;
 
     if (!latestStatus) {
       return new Response(JSON.stringify({ status: meeting.status }), {
@@ -91,14 +103,63 @@ serve(async (req) => {
 
     const mappedStatus = RECALL_STATUS_MAP[latestStatus] || meeting.status;
 
-    // Update DB if the status has changed
+    // If Recall is "done" and we haven't started Sarvam yet, trigger the pipeline
+    if (mappedStatus === "done" && !meeting.sarvam_job_id) {
+      console.log(
+        `[check-recall-status] Recall bot done for meeting ${meeting.id}, triggering Sarvam pipeline...`,
+      );
+      try {
+        const sarvamJobId = await processRecallAudio(
+          supabase,
+          meeting,
+          meeting.recall_bot_id,
+        );
+        return new Response(
+          JSON.stringify({
+            status: "processing",
+            recall_status: latestStatus,
+            sarvam_job_id: sarvamJobId,
+          }),
+          { headers: jsonHeaders },
+        );
+      } catch (pipelineErr) {
+        console.error(
+          "[check-recall-status] Pipeline error:",
+          pipelineErr,
+        );
+        return new Response(
+          JSON.stringify({
+            status: "failed",
+            recall_status: latestStatus,
+            error:
+              pipelineErr instanceof Error
+                ? pipelineErr.message
+                : "Pipeline failed",
+          }),
+          { headers: jsonHeaders },
+        );
+      }
+    }
+
+    // If Recall is "done" but Sarvam is already running, report as processing
+    if (mappedStatus === "done" && meeting.sarvam_job_id) {
+      return new Response(
+        JSON.stringify({
+          status: "processing",
+          recall_status: latestStatus,
+        }),
+        { headers: jsonHeaders },
+      );
+    }
+
+    // Update DB if the status has changed (for non-"done" statuses)
     if (mappedStatus !== meeting.status) {
       await supabase
         .from("meetings")
         .update({ status: mappedStatus })
         .eq("id", meeting.id);
       console.log(
-        `[check-recall-status] Updated meeting ${meeting.id}: ${meeting.status} -> ${mappedStatus} (recall: ${latestStatus})`
+        `[check-recall-status] Updated meeting ${meeting.id}: ${meeting.status} -> ${mappedStatus} (recall: ${latestStatus})`,
       );
     }
 
@@ -107,13 +168,15 @@ serve(async (req) => {
         status: mappedStatus,
         recall_status: latestStatus,
       }),
-      { headers: jsonHeaders }
+      { headers: jsonHeaders },
     );
   } catch (err) {
     console.error("[check-recall-status] Error:", err);
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }),
-      { status: 500, headers: jsonHeaders }
+      JSON.stringify({
+        error: err instanceof Error ? err.message : "Unknown error",
+      }),
+      { status: 500, headers: jsonHeaders },
     );
   }
 });
