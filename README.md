@@ -303,6 +303,7 @@ meeting_notifications
 | `process-meeting` | Main ingest pipeline, Sarvam submitter, Whisper fallback path |
 | `sarvam-webhook` | Handles async Sarvam callbacks and downstream completion |
 | `start-recall-recording` | Creates a Recall bot and starts bot-based meeting capture |
+| `check-recall-status` | Polls Recall API for live bot status, syncs DB, and triggers the Sarvam pipeline when recording finishes |
 | `recall-webhook` | Receives Recall status events and hands completed audio into the AI pipeline |
 | `google-oauth-start` / `google-oauth-callback` / `google-oauth-redirect` | Google Calendar OAuth flow |
 | `sync-google-calendar` / `sync-calendars` / `fetch-calendar-events` | Calendar sync and event retrieval utilities |

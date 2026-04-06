@@ -41,6 +41,7 @@ Extension detects Meet/Zoom → `chrome.tabCapture` → offscreen document runs 
 - `supabase/functions/upload-recording/` -- Accepts audio upload, stores in Supabase Storage
 - `supabase/functions/_shared/insights.ts` -- Hallucination detection, GPT prompt, insight saving, delivery
 - `supabase/functions/_shared/sarvam.ts` -- Sarvam API client (create job, upload, start)
+- `supabase/functions/_shared/recall-pipeline.ts` -- Shared Recall audio download + Sarvam submission logic (used by recall-webhook and check-recall-status)
 - `supabase/functions/_shared/cors.ts` -- CORS headers shared across functions
 
 ### Database
