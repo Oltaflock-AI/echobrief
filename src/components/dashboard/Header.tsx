@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Bell, LogOut, User, Settings } from 'lucide-react';
+import { Search, LogOut, User, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { displayNameFromUserMetadata } from '@/lib/userDisplayName';
@@ -74,13 +74,8 @@ export function Header() {
           </div>
         </div>
 
-        {/* Right side: notification + profile dropdown */}
+        {/* Right side: profile dropdown */}
         <div className="flex items-center gap-3">
-          <button className="relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-            <Bell className="w-[18px] h-[18px]" />
-            <span className="absolute top-1.5 right-1.5 w-[7px] h-[7px] rounded-full bg-orange-500" />
-          </button>
-          
           {/* Profile Dropdown */}
           <div ref={profileRef} style={{ position: 'relative' }}>
             {/* Avatar button */}
@@ -170,7 +165,6 @@ export function Header() {
                 {[
                   { icon: <User size={14} />, label: 'Profile', action: () => { navigate('/settings'); setProfileMenuOpen(false); } },
                   { icon: <Settings size={14} />, label: 'Settings', action: () => { navigate('/settings'); setProfileMenuOpen(false); } },
-                  { icon: <Bell size={14} />, label: 'Notifications', action: () => setProfileMenuOpen(false) },
                 ].map((item, i) => (
                   <button
                     key={i}
