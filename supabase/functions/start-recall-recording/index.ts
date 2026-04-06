@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
 
 const RECALL_API_KEY = Deno.env.get("RECALL_API_KEY")!;
 const RECALL_API_BASE_URL =
@@ -7,15 +8,11 @@ const RECALL_API_BASE_URL =
 const RECALL_API_URL = `${RECALL_API_BASE_URL}/api/v1`;
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
-    });
-  }
+  const corsResponse = handleCorsPrelight(req);
+  if (corsResponse) return corsResponse;
+
+  const origin = req.headers.get("origin");
+  const corsHeaders = getCorsHeaders(origin);
 
   try {
     const { meeting_url, user_id, calendar_event_id, title } = await req.json();
@@ -24,7 +21,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     if (!meeting_url || !user_id) {
-      return new Response(JSON.stringify({ error: 'Missing meeting_url or user_id' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'Missing meeting_url or user_id' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // Create a bot and request an async mixed-audio artifact.
@@ -87,13 +84,13 @@ serve(async (req) => {
       recall_bot_id: botData.id,
       status: 'recording',
     }), {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
     console.error('Start recording error:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to start recording' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

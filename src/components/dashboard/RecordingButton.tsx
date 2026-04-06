@@ -164,14 +164,14 @@ export function RecordingButton({
                 className="flex-1"
                 onClick={() => setRecordingMode('browser')}
               >
-                Browser
+                Extension
               </Button>
               <Button 
                 variant={recordingMode === 'bot' ? 'default' : 'outline'}
                 className="flex-1"
                 onClick={() => setRecordingMode('bot')}
               >
-                Bot (No screen share)
+                Bot (No Screen Share)
               </Button>
             </div>
 

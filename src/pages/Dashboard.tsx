@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { RecordingButton } from '@/components/dashboard/RecordingButton';
+import { ExtensionStatus } from '@/components/dashboard/ExtensionStatus';
 import { DigestSettings } from '@/components/dashboard/DigestSettings';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -352,6 +353,9 @@ export default function Dashboard() {
             attendees={prefillMeeting?.attendees}
           />
         </div>
+
+        {/* Extension status */}
+        <ExtensionStatus className="mb-6" />
 
         {fetchError && !loading && (
           <div
