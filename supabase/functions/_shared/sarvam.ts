@@ -40,7 +40,7 @@ export async function createSarvamJob(
     body: JSON.stringify({
       job_parameters: {
         model: "saaras:v3",
-        mode: "translate",
+        mode: "transcribe",
         with_diarization: true,
         with_timestamps: true,
         language_code: "unknown",
