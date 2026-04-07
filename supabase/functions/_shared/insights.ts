@@ -243,14 +243,14 @@ export async function saveInsights(
   meetingId: string,
   insights: Record<string, any>,
 ) {
-  const { data: existing } = await supabase
+  const { data: existingRows } = await supabase
     .from("meeting_insights")
     .select("id")
     .eq("meeting_id", meetingId)
-    .single();
+    .limit(1);
 
-  if (!existing) {
-    await supabase.from("meeting_insights").insert({
+  if (!existingRows || existingRows.length === 0) {
+    const { error: insertError } = await supabase.from("meeting_insights").insert({
       meeting_id: meetingId,
       summary_short: insights.summary_short || "",
       summary_detailed: insights.summary_detailed || "",
@@ -265,6 +265,10 @@ export async function saveInsights(
       timeline_entries: insights.timeline_entries || [],
       meeting_metrics: insights.meeting_metrics || {},
     });
+    if (insertError) {
+      console.error(`[saveInsights] Failed to insert insights for meeting ${meetingId}:`, insertError);
+      throw new Error(`Failed to save insights: ${insertError.message}`);
+    }
   }
 }
 

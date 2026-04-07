@@ -139,6 +139,7 @@ serve(async (req) => {
               meetingId: meeting.id,
               slackDestination: config.slackDestination,
               sendEmail: config.sendEmail,
+              forceWhisper: true,
             }),
           });
           return new Response(JSON.stringify({ success: true, fallback: "whisper", reason: "empty_sarvam_transcript" }), {
@@ -227,6 +228,7 @@ serve(async (req) => {
             meetingId: meeting.id,
             slackDestination: config.slackDestination,
             sendEmail: config.sendEmail,
+            forceWhisper: true,
           }),
         });
       } catch (fallbackError) {

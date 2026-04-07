@@ -145,12 +145,14 @@ export default function MeetingDetail() {
           }
         }
 
-        const { data: insightsData } = await supabase
+        const { data: insightsRows } = await supabase
           .from('meeting_insights')
           .select('*')
           .eq('meeting_id', id)
-          .single();
+          .order('created_at', { ascending: false })
+          .limit(1);
 
+        const insightsData = insightsRows?.[0] || null;
         if (insightsData) {
           setInsights({
             ...insightsData,
@@ -264,12 +266,14 @@ export default function MeetingDetail() {
             }
           }
 
-          const { data: insightsData } = await supabase
+          const { data: insightsRows } = await supabase
             .from('meeting_insights')
             .select('*')
             .eq('meeting_id', id)
-            .single();
+            .order('created_at', { ascending: false })
+            .limit(1);
 
+          const insightsData = insightsRows?.[0] || null;
           if (insightsData) {
             setInsights({
               ...insightsData,

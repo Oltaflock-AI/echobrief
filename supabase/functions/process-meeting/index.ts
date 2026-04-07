@@ -214,7 +214,7 @@ serve(async (req) => {
   const corsHeaders = getCorsHeaders(origin);
 
   try {
-    const { meetingId, slackDestination, sendEmail } = await req.json();
+    const { meetingId, slackDestination, sendEmail, forceWhisper } = await req.json();
 
     if (!meetingId) {
       return new Response(
@@ -266,8 +266,8 @@ serve(async (req) => {
       .update({ status: "processing" })
       .eq("id", meetingId);
 
-    // --- Sarvam path (default) ---
-    if (sarvamApiKey && sarvamWebhookSecret && meeting.audio_url) {
+    // --- Sarvam path (default, skipped when forceWhisper is set) ---
+    if (!forceWhisper && sarvamApiKey && sarvamWebhookSecret && meeting.audio_url) {
       try {
         const { data: audioData, error: downloadError } =
           await supabase.storage
