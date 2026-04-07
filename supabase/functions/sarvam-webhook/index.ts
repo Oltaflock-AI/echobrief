@@ -122,6 +122,42 @@ serve(async (req) => {
 
       const finalTranscript = hallucinated ? "" : transcript;
 
+      // If Sarvam returned empty/hallucinated transcript, fall back to Whisper
+      // instead of saving "no clear speech" — the audio may be fine but Sarvam
+      // couldn't handle it.
+      if (!finalTranscript) {
+        console.warn(`Sarvam returned empty transcript for job ${job_id}, falling back to Whisper`);
+        try {
+          const fallbackUrl = `${supabaseUrl}/functions/v1/process-meeting`;
+          await fetch(fallbackUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              meetingId: meeting.id,
+              slackDestination: config.slackDestination,
+              sendEmail: config.sendEmail,
+            }),
+          });
+          return new Response(JSON.stringify({ success: true, fallback: "whisper", reason: "empty_sarvam_transcript" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (fallbackError) {
+          console.error("Whisper fallback failed after empty Sarvam transcript:", fallbackError);
+          await supabase
+            .from("meetings")
+            .update({ status: "failed" })
+            .eq("id", meeting.id);
+          return new Response(JSON.stringify({ success: false, error: "Both Sarvam and Whisper failed" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+
       const { data: existingTranscript } = await supabase
         .from("transcripts")
         .select("id")
@@ -131,9 +167,7 @@ serve(async (req) => {
       if (!existingTranscript) {
         await supabase.from("transcripts").insert({
           meeting_id: meeting.id,
-          content: hallucinated
-            ? "No clear speech was detected in this recording. The audio may have been too quiet or contained only background noise."
-            : finalTranscript,
+          content: finalTranscript,
           speakers: speakerSegments,
           word_timestamps: (result as any).timestamps || [],
           stt_provider: "sarvam",
