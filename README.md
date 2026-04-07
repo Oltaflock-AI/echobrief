@@ -483,6 +483,39 @@ This section is intentionally detailed because the hardest part of this project 
 
 **Why this matters:** good engineering is not only about model output. It is about delivering the right output in the right workflow.
 
+### 11. A race condition in the Recall webhook created two transcription jobs per meeting
+
+**Problem:** every completed Recall meeting was generating two separate Sarvam transcription jobs, wasting API quota and producing non-deterministic results.
+
+**Why it happened:** Recall fires two distinct webhook events almost simultaneously when a recording finishes — `audio_mixed.done` (audio file is ready for download) and `bot.done` (bot lifecycle is complete). The handler was listening to both. Both events arrived within milliseconds of each other, both read `sarvam_job_id = null` from the database, and both triggered the full audio download → upload → Sarvam job creation pipeline in parallel before either had a chance to write the new job ID back.
+
+**What I changed:**
+
+- restricted `recall-webhook` to only trigger `processRecallAudio` on `audio_mixed.done` — the authoritative signal that the MP3 is actually downloadable
+- `bot.done` is now treated as a status-only update and does not initiate any pipeline work
+- `check-recall-status` polling already acts as a fallback for the rare case where `audio_mixed.done` is never received
+
+**Why this matters:** this is a real race condition in a distributed webhook system. The fix required understanding the semantic difference between two events from an external API and recognizing that "database reads are not atomic with writes across concurrent executions."
+
+### 12. A silent recording caused an infinite webhook retry loop that never resolved
+
+**Problem:** a 23-second meeting where participants left immediately got permanently stuck on "Processing" and never completed — even though the transcription pipeline had technically already finished.
+
+**Why it happened:** a chain of failures:
+
+1. Sarvam completed the job successfully but wrote no output file — correct behavior when the audio contains no speech
+2. The webhook handler tried to download that file, received a 400 "does not exist" response, and threw an unhandled exception, returning a 500 to the caller
+3. The `check-recall-status` polling function was triggering `sarvam-webhook` every 5 seconds as a fallback, but silently ignored the 500 response and kept retrying
+4. This created a permanent loop: Sarvam done, webhook crashes, poller retries, webhook crashes again — indefinitely
+
+**What I changed:**
+
+- added a try/catch in `sarvam-webhook` around the Sarvam file download call
+- when the download returns 400 "does not exist", the handler now substitutes an empty transcript instead of throwing
+- the meeting completes gracefully with a "no clear speech detected" message instead of staying stuck forever
+
+**Why this matters:** this is the kind of edge case that only surfaces in production with real data. Sarvam was behaving correctly — it just had nothing to output. The bug was entirely in the error handling layer, and it created a silent infinite loop with no obvious signal that anything was wrong. Catching it required reading logs across three separate functions and tracing the retry path manually.
+
 ---
 
 ## Technical Highlights
