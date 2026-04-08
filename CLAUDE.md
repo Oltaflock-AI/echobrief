@@ -4,7 +4,7 @@
 
 EchoBrief is an AI meeting intelligence platform. It consists of three main parts:
 1. **React web app** (Vite + TypeScript) -- dashboard for viewing meetings, transcripts, insights, calendar, action items, settings
-2. **Chrome Extension** (Manifest V3, vanilla JS) -- captures tab audio from Google Meet / Zoom Web meetings
+2. **Chrome Extension** (Manifest V3, vanilla JS) -- captures tab audio from Google Meet / Zoom Web meetings (backend only; extension UI has been removed from the dashboard — all dashboard recording is bot-only via Recall)
 3. **Supabase backend** -- PostgreSQL database, Auth, Storage (audio files), and Deno Edge Functions for processing
 
 ## Quick Commands
@@ -19,7 +19,9 @@ npm run functions:serve  # Serve Supabase Edge Functions locally (needs supabase
 ## Architecture
 
 ### Recording Flow
-Extension detects Meet/Zoom → `chrome.tabCapture` → offscreen document runs `MediaRecorder` → uploads WebM to `upload-recording` Edge Function → `process-meeting` dispatches to Sarvam AI (async, webhook callback) or falls back to Whisper → GPT-4o-mini generates insights → saves to DB → optionally delivers to Slack/email.
+**Dashboard (bot-only):** User enters a meeting URL → `start-recall-recording` creates a Recall bot → bot joins and records → `recall-webhook` receives completion → audio downloaded and submitted to Sarvam AI (async, webhook callback) or falls back to Whisper → GPT-4o-mini generates insights → saves to DB → optionally delivers to Slack/email.
+
+**Chrome Extension (backend still active, UI removed from dashboard):** Extension detects Meet/Zoom → `chrome.tabCapture` → offscreen document runs `MediaRecorder` → uploads WebM to `upload-recording` Edge Function → same processing pipeline as above.
 
 ### Key Files
 
@@ -86,6 +88,8 @@ See `BRAND.md` for colors (orange/amber gradient primary, stone neutrals), typog
 **Edge Functions (Supabase secrets):**
 - `OPENAI_API_KEY` -- Required for Whisper + GPT
 - `SARVAM_API_KEY` -- Required for Sarvam STT
+- `RESEND_API_KEY` -- Required for email delivery via Resend
+- `RECALL_API_KEY` -- Required for bot-based meeting recording
 - Google OAuth client ID/secret
 - Slack app credentials
 

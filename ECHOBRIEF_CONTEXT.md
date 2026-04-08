@@ -36,14 +36,14 @@
 ## Current Working State (As of Apr 2, 2026)
 
 ### ✅ What Works
-- **Chrome Extension MV3** — Records Google Meet/Zoom audio, uploads to Supabase
+- **Bot Recording (Dashboard)** — Recall bot joins meetings via URL, records, transcribes, and generates insights (primary recording method in dashboard UI)
+- **Chrome Extension MV3** — Records Google Meet/Zoom audio, uploads to Supabase (backend still active; extension UI removed from dashboard to reduce user confusion)
 - **Calendar Sync** — Fetches Google Calendar events with attendees
-- **Bot Dispatch (Manual)** — Sends Recall bot to join Teams/Zoom on demand
-- **Email Delivery** — Meeting summaries sent via Resend (noreply@echobrief.in)
+- **Email Delivery** — Meeting summaries and reports sent via Resend (noreply@echobrief.in) — CORS fix deployed Apr 7, 2026
 - **Auth Flow** — Signup, login, email verification via Supabase
 - **Settings UI** — Tab-based (Account, Bot, Integrations, Security)
 - **Meeting Detail Modal** — Comprehensive modal on calendar event click
-- **Dashboard UI** — Empty state, loading state, proper UX
+- **Dashboard UI** — Empty state, loading state, proper UX, bot-only recording
 - **Profile Dropdown** — Top-right SaaS-style menu with sign-out
 
 ### ⚠️ In Progress / Known Issues
@@ -92,7 +92,7 @@
 ### Components
 - **MeetingDetailModal** — `src/components/dashboard/MeetingDetailModal.tsx`
   - Opens on calendar event click
-  - Shows time, attendees, meeting link, two recording options
+  - Shows time, attendees, meeting link, bot recording option (extension toggle removed)
   - State: `botStatus` (idle/loading/joined/error)
   - Calls: `handleSendBot()` → `onRecordWithBot` prop
 

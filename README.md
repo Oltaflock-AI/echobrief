@@ -40,8 +40,8 @@ EchoBrief is a full-stack meeting intelligence product built to solve a practica
 
 This system captures meeting audio in two ways:
 
-- **Chrome Extension path** for browser meetings using Manifest V3 tab capture and an offscreen recording document
-- **Recall bot path** for automated scheduled recordings from meeting links found in synced calendars
+- **Recall bot path** (primary, exposed in dashboard UI) for bot-based meeting recordings — user enters a meeting URL and a Recall bot joins to record
+- **Chrome Extension path** (backend still active, UI removed from dashboard) for browser meetings using Manifest V3 tab capture and an offscreen recording document
 
 Once a meeting is recorded, EchoBrief pushes the audio through an AI pipeline:
 
@@ -79,13 +79,13 @@ Most meeting tools stop at transcription. EchoBrief goes deeper in both product 
 
 | Area | Capabilities |
 |---|---|
-| **Recording** | Chrome extension recording for Meet and Zoom, Recall-based meeting bot recording, manual recording controls, active recording UI, recording state sync |
+| **Recording** | Recall-based meeting bot recording (primary, dashboard UI), Chrome extension recording for Meet and Zoom (backend only, UI removed from dashboard), manual recording controls, active recording UI |
 | **Transcription** | Sarvam batch STT with webhook completion, OpenAI Whisper fallback, speaker segmentation, timestamp handling, hallucination filtering |
 | **AI Insights** | Executive summary, short summary, action items, decisions, risks, questions, timeline, engagement-style meeting metrics |
 | **Calendar** | Google OAuth, multi-calendar support, calendar event syncing, meeting-link extraction, upcoming meeting views |
 | **Delivery** | Slack summary delivery, meeting email delivery, scheduled email workflows, digest report generation, WhatsApp report pipeline |
-| **Dashboard** | Authenticated dashboard, recordings view, meeting detail view, action item tracking, analytics chart, global search, settings, extension install detection with status banner |
-| **User Experience** | Protected routes, onboarding, extension install guide, live status updates, responsive interface, animated transitions |
+| **Dashboard** | Authenticated dashboard, recordings view, meeting detail view, action item tracking, analytics chart, global search, settings (extension status banner removed — dashboard is bot-only) |
+| **User Experience** | Protected routes, onboarding, live status updates, responsive interface, animated transitions |
 | **Security** | Supabase Auth, Row Level Security, OAuth state tracking, service-role-only server operations, CORS and rate-limiting helpers |
 
 ---

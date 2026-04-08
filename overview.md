@@ -37,12 +37,18 @@
                                                  └─────────────────────┘
 ```
 
-**Flow:**
+**Flow (Bot — primary):**
+1. User enters a meeting URL in the dashboard
+2. Recall bot joins the meeting and records audio
+3. On completion, audio is downloaded and submitted to Sarvam AI (or Whisper fallback)
+4. GPT-4o-mini generates structured insights from the transcript
+5. User views summaries in dashboard; can send to Slack or email
+
+**Flow (Extension — backend only, UI removed from dashboard):**
 1. User installs Chrome extension and logs in via web app
 2. Extension auto-detects Google Meet / Zoom Web meetings and starts recording
 3. Audio is captured via tab capture → uploaded to Supabase Storage
-4. `process-meeting` Edge Function transcribes with Whisper and generates insights via OpenAI
-5. User views summaries in dashboard; can send to Slack or email
+4. Same processing pipeline as above
 
 ---
 
@@ -120,7 +126,6 @@ echobrief/
 - **DashboardLayout** – Sidebar + header layout for authenticated pages
 - **RecordingButton** – Start/stop recording from web
 - **GlobalRecordingPanel** – Floating panel when recording is active
-- **ExtensionStatus** – Shows Chrome extension install/connect status
 - **MeetingCard** / **MeetingStatusBadge** – Meeting list items
 - **MeetingTabs** – Summary, transcript, action items, timeline
 - **SlackDeliverySelector** – Choose Slack channel for delivery
@@ -291,7 +296,7 @@ npm run functions:serve   # Serve Edge Functions with OPENAI_API_KEY from supaba
 
 ## Key Features Summary
 
-- **Recording**: Chrome extension tab capture for Meet/Zoom Web
+- **Recording**: Recall bot recording (primary, dashboard UI), Chrome extension tab capture (backend only, UI removed from dashboard)
 - **AI Processing**: Whisper transcription + GPT summarization (action items, decisions, risks, timeline)
 - **Integrations**: Google Calendar, Slack, Notion
 - **Delivery**: Email summaries, Slack channel delivery
