@@ -62,6 +62,16 @@ serve(async (req) => {
       return new Response("Meeting not found", { status: 404 });
     }
 
+    // Idempotency guard: if meeting is already completed or failed, skip processing.
+    // This prevents cascade re-triggers from check-recall-status polling.
+    if (meeting.status === "completed" || meeting.status === "failed") {
+      console.log(`[sarvam-webhook] Meeting ${meeting.id} already ${meeting.status}, skipping`);
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: `already_${meeting.status}` }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const config = meeting.processing_config || {};
 
     if (normalizedState === "COMPLETED") {
@@ -171,9 +181,17 @@ serve(async (req) => {
       // couldn't handle it.
       if (!finalTranscript) {
         console.warn(`Sarvam returned empty transcript for job ${job_id}, falling back to Whisper`);
+
+        // Mark meeting as "transcribing" to prevent check-recall-status from
+        // re-triggering this webhook while Whisper is running.
+        await supabase
+          .from("meetings")
+          .update({ status: "transcribing" })
+          .eq("id", meeting.id);
+
         try {
           const fallbackUrl = `${supabaseUrl}/functions/v1/process-meeting`;
-          await fetch(fallbackUrl, {
+          const fallbackRes = await fetch(fallbackUrl, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -186,6 +204,9 @@ serve(async (req) => {
               forceWhisper: true,
             }),
           });
+          const fallbackResult = await fallbackRes.json().catch(() => ({}));
+          console.log(`[sarvam-webhook] Whisper fallback response: ${fallbackRes.status}`, JSON.stringify(fallbackResult).substring(0, 300));
+
           return new Response(JSON.stringify({ success: true, fallback: "whisper", reason: "empty_sarvam_transcript" }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
@@ -194,7 +215,7 @@ serve(async (req) => {
           console.error("Whisper fallback failed after empty Sarvam transcript:", fallbackError);
           await supabase
             .from("meetings")
-            .update({ status: "failed" })
+            .update({ status: "failed", error_message: "Transcription failed: both Sarvam and Whisper could not process this recording." })
             .eq("id", meeting.id);
           return new Response(JSON.stringify({ success: false, error: "Both Sarvam and Whisper failed" }), {
             status: 500,

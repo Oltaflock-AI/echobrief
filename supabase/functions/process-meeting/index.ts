@@ -49,10 +49,23 @@ async function whisperTranscribe(
         throw new Error("Failed to download audio file");
       }
 
-      const audioFile = new File([audioData], "audio.webm", {
-        type: "audio/webm",
-      });
+      const audioSizeMB = audioData.size / 1024 / 1024;
+      const isMP3 = meeting.audio_url.includes(".mp3");
+      const fileName = isMP3 ? "audio.mp3" : "audio.webm";
+      const mimeType = isMP3 ? "audio/mpeg" : "audio/webm";
+      console.log(`[whisper] Audio size: ${audioSizeMB.toFixed(2)} MB, format: ${fileName}`);
 
+      // Whisper API has a 25MB file size limit.
+      // Splitting compressed audio (MP3/WebM) at arbitrary byte boundaries produces
+      // invalid audio that Whisper can't decode, so we don't attempt chunking.
+      const WHISPER_SIZE_LIMIT = 24.5 * 1024 * 1024; // 24.5 MB with safety margin
+
+      if (audioData.size > WHISPER_SIZE_LIMIT) {
+        console.error(`[whisper] Audio file (${audioSizeMB.toFixed(1)} MB) exceeds Whisper 25MB limit — cannot transcribe`);
+        throw new Error(`Audio file too large for Whisper (${audioSizeMB.toFixed(1)} MB). Whisper supports up to 25 MB.`);
+      }
+
+      const audioFile = new File([audioData], fileName, { type: mimeType });
       const transcription = await openai.audio.transcriptions.create({
         file: audioFile,
         model: "whisper-1",
@@ -61,7 +74,7 @@ async function whisperTranscribe(
       });
 
       transcript = transcription.text;
-      wordTimestamps = (transcription as any).words || [];
+      wordTimestamps = transcription.words || [];
 
       const hallucinated = isLikelyHallucination(transcript);
       if (hallucinated) {
@@ -159,7 +172,25 @@ Only include segments where you can make a reasonable attribution.`;
         });
       }
     } catch (transcribeError) {
-      console.error("Transcription error:", transcribeError);
+      const errMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
+      console.error("Transcription error:", errMsg);
+      // If the file is too large for Whisper, save a clear error instead of
+      // proceeding with an empty transcript that produces "no speech detected".
+      if (errMsg.includes("too large")) {
+        await supabase
+          .from("meetings")
+          .update({ status: "failed", error_message: errMsg })
+          .eq("id", meetingId);
+        return {
+          success: false,
+          hasTranscript: false,
+          hasInsights: false,
+          hasSpeakerSegments: false,
+          noAudioDetected: false,
+          slackSent: false,
+          emailSent: false,
+        };
+      }
       transcript = "";
     }
   }

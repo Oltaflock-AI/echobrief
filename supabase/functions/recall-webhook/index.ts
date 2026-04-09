@@ -109,6 +109,34 @@ function extractStatusCode(event: Record<string, any>) {
   );
 }
 
+// Extract the sub_code from a Recall webhook event.
+// Recall includes sub_codes for terminal events like call_ended to indicate
+// the specific reason (e.g. bot_kicked_from_waiting_room).
+function extractSubCode(event: Record<string, any>): string | null {
+  return (
+    event.data?.data?.sub_code ||
+    event.data?.sub_code ||
+    null
+  );
+}
+
+// Sub-codes that indicate the bot was never admitted or never recorded.
+// When we see these, the meeting should be marked as failed — not "processing".
+const FAILURE_SUB_CODES: Record<string, string> = {
+  bot_kicked_from_waiting_room:
+    "The recording bot was removed from the waiting room before it could join the meeting. Ask the meeting host to admit the bot.",
+  bot_removed_from_waiting_room:
+    "The recording bot was removed from the waiting room. Ask the meeting host to admit the bot.",
+  cannot_join_meeting:
+    "The recording bot could not join the meeting. The meeting link may be invalid or the meeting may have ended.",
+  meeting_not_found:
+    "The meeting was not found. Please check the meeting link and try again.",
+  bot_not_accepted:
+    "The recording bot was not accepted into the meeting. Ask the meeting host to admit the bot.",
+  timeout_exceeded_waiting_room:
+    "The recording bot timed out waiting to be admitted to the meeting. Ask the meeting host to admit the bot sooner.",
+};
+
 // Returns the top-level event type prefix, e.g. "bot" or "audio_mixed"
 function getEventCategory(event: Record<string, any>): string | null {
   const eventName: string | undefined = event.event;
@@ -189,18 +217,45 @@ serve(async (req) => {
         fatal: "failed",
       };
 
+      const subCode = extractSubCode(event);
+      console.log(`[recall-webhook] statusCode=${statusCode}, subCode=${subCode}, eventCategory=${eventCategory}`);
+
       if (statusCode === "fatal") {
+        const errorMsg = subCode ? FAILURE_SUB_CODES[subCode] || `Bot error: ${subCode}` : "Recording bot encountered a fatal error";
         await supabase
           .from("meetings")
-          .update({ status: "failed" })
+          .update({ status: "failed", error_message: errorMsg })
           .eq("id", meeting.id);
-        console.error(`[recall-webhook] Bot ${botId} failed`);
+        console.error(`[recall-webhook] Bot ${botId} failed: ${errorMsg}`);
       } else if (eventCategory === "audio_mixed" && statusCode === "failed") {
         await supabase
           .from("meetings")
           .update({ status: "failed", error_message: "Audio processing failed in Recall" })
           .eq("id", meeting.id);
         console.error(`[recall-webhook] Audio processing failed for bot ${botId}`);
+      } else if (statusCode === "call_ended" && subCode && FAILURE_SUB_CODES[subCode]) {
+        // Bot was kicked from waiting room or otherwise never entered the call.
+        // Mark as failed immediately — audio_mixed.done will never arrive.
+        const errorMsg = FAILURE_SUB_CODES[subCode];
+        await supabase
+          .from("meetings")
+          .update({ status: "failed", error_message: errorMsg })
+          .eq("id", meeting.id);
+        console.warn(`[recall-webhook] Bot ${botId} call_ended with failure sub_code: ${subCode}`);
+      } else if (eventCategory === "bot" && statusCode === "done" && !meeting.sarvam_job_id) {
+        // bot.done fired but no audio was ever processed (no sarvam_job_id).
+        // This can happen when the bot was kicked before recording or audio_mixed
+        // event was never received. If the meeting is already failed, leave it.
+        if (meeting.status !== "failed" && meeting.status !== "completed") {
+          const errorMsg = subCode && FAILURE_SUB_CODES[subCode]
+            ? FAILURE_SUB_CODES[subCode]
+            : "The recording bot finished without capturing any audio. The bot may not have been admitted to the meeting.";
+          await supabase
+            .from("meetings")
+            .update({ status: "failed", error_message: errorMsg })
+            .eq("id", meeting.id);
+          console.warn(`[recall-webhook] Bot ${botId} done with no audio processed — marking as failed`);
+        }
       } else if (statusMap[statusCode]) {
         await supabase
           .from("meetings")
@@ -208,7 +263,7 @@ serve(async (req) => {
           .eq("id", meeting.id);
       }
 
-      return new Response(JSON.stringify({ acknowledged: true, event: event.event, status: statusCode }), {
+      return new Response(JSON.stringify({ acknowledged: true, event: event.event, status: statusCode, sub_code: subCode }), {
         headers: { "Content-Type": "application/json" },
       });
     }

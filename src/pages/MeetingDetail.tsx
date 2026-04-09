@@ -456,6 +456,11 @@ export default function MeetingDetail() {
               </h1>
               <div className="flex gap-2 items-center flex-wrap">
                 <StatusBadge status={meeting.status || 'scheduled'} />
+                {meeting.status === 'failed' && meeting.error_message && (
+                  <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium" style={{ background: '#FEE2E2', color: '#B91C1C' }}>
+                    {meeting.error_message}
+                  </span>
+                )}
                 <SourceBadge source={meeting.source || 'manual'} />
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
                   <Globe size={11} /> {meeting.language || 'English'}

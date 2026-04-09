@@ -22,6 +22,22 @@ const RECALL_STATUS_MAP: Record<string, string> = {
   fatal: "failed",
 };
 
+// Sub-codes that indicate the bot never recorded anything useful
+const FAILURE_SUB_CODES: Record<string, string> = {
+  bot_kicked_from_waiting_room:
+    "The recording bot was removed from the waiting room before it could join the meeting. Ask the meeting host to admit the bot.",
+  bot_removed_from_waiting_room:
+    "The recording bot was removed from the waiting room. Ask the meeting host to admit the bot.",
+  cannot_join_meeting:
+    "The recording bot could not join the meeting. The meeting link may be invalid or the meeting may have ended.",
+  meeting_not_found:
+    "The meeting was not found. Please check the meeting link and try again.",
+  bot_not_accepted:
+    "The recording bot was not accepted into the meeting. Ask the meeting host to admit the bot.",
+  timeout_exceeded_waiting_room:
+    "The recording bot timed out waiting to be admitted to the meeting. Ask the meeting host to admit the bot sooner.",
+};
+
 serve(async (req) => {
   const corsResponse = handleCorsPrelight(req);
   if (corsResponse) return corsResponse;
@@ -57,11 +73,12 @@ serve(async (req) => {
       });
     }
 
-    // If no recall bot, or already completed/failed, just return current status
+    // If no recall bot, or already completed/failed/transcribing, just return current status
     if (
       !meeting.recall_bot_id ||
       meeting.status === "completed" ||
-      meeting.status === "failed"
+      meeting.status === "failed" ||
+      meeting.status === "transcribing"
     ) {
       return new Response(JSON.stringify({ status: meeting.status }), {
         headers: jsonHeaders,
@@ -102,10 +119,57 @@ serve(async (req) => {
       });
     }
 
+    // Check if any status change has a failure sub_code (e.g. bot_kicked_from_waiting_room).
+    // This catches cases where the webhook event was missed.
+    const latestEntry = statusChanges[statusChanges.length - 1];
+    const latestSubCode = latestEntry?.sub_code || null;
+
+    // Check for call_ended or done with a failure sub_code
+    const hasFailureSubCode = statusChanges.some(
+      (sc: any) => sc.sub_code && FAILURE_SUB_CODES[sc.sub_code],
+    );
+
+    if (hasFailureSubCode && meeting.status !== "failed" && meeting.status !== "completed") {
+      const failedEntry = statusChanges.find(
+        (sc: any) => sc.sub_code && FAILURE_SUB_CODES[sc.sub_code],
+      );
+      const errorMsg = FAILURE_SUB_CODES[failedEntry.sub_code];
+      console.log(
+        `[check-recall-status] Bot has failure sub_code: ${failedEntry.sub_code} — marking meeting ${meeting.id} as failed`,
+      );
+      await supabase
+        .from("meetings")
+        .update({ status: "failed", error_message: errorMsg })
+        .eq("id", meeting.id);
+      return new Response(
+        JSON.stringify({ status: "failed", recall_status: latestStatus, sub_code: failedEntry.sub_code }),
+        { headers: jsonHeaders },
+      );
+    }
+
     const mappedStatus = RECALL_STATUS_MAP[latestStatus] || meeting.status;
 
-    // If Recall is "done" and we haven't started Sarvam yet, trigger the pipeline
+    // If Recall is "done" and we haven't started Sarvam yet, trigger the pipeline.
+    // But first check if the bot actually has recordings — if not, it never captured audio.
     if (mappedStatus === "done" && !meeting.sarvam_job_id) {
+      const hasRecordings = Array.isArray(botData.recordings) && botData.recordings.length > 0;
+      if (!hasRecordings) {
+        console.warn(
+          `[check-recall-status] Recall bot done but has no recordings for meeting ${meeting.id} — marking as failed`,
+        );
+        await supabase
+          .from("meetings")
+          .update({
+            status: "failed",
+            error_message: "The recording bot finished without capturing any audio. The bot may not have been admitted to the meeting.",
+          })
+          .eq("id", meeting.id);
+        return new Response(
+          JSON.stringify({ status: "failed", recall_status: latestStatus, reason: "no_recordings" }),
+          { headers: jsonHeaders },
+        );
+      }
+
       console.log(
         `[check-recall-status] Recall bot done for meeting ${meeting.id}, triggering Sarvam pipeline...`,
       );

@@ -204,17 +204,28 @@ export async function processRecallAudio(
     throw new Error("No audio URL from Recall");
   }
 
-  console.log("[recall-pipeline] Downloading audio from Recall...");
+  console.log("[recall-pipeline] Downloading audio from Recall...", audioUrl.substring(0, 100));
 
   // 3. Download the audio file
   const audioResponse = await fetch(audioUrl);
   if (!audioResponse.ok) {
+    const errText = await audioResponse.text().catch(() => "");
+    console.error(`[recall-pipeline] Audio download failed: ${audioResponse.status} ${errText.substring(0, 200)}`);
+    await supabase
+      .from("meetings")
+      .update({ status: "failed", error_message: `Failed to download audio from Recall (HTTP ${audioResponse.status})` })
+      .eq("id", meeting.id);
     throw new Error(`Failed to download audio: ${audioResponse.status}`);
   }
   const audioBlob = await audioResponse.blob();
+  const audioSizeMB = audioBlob.size / 1024 / 1024;
   console.log(
-    `[recall-pipeline] Audio downloaded: ${(audioBlob.size / 1024 / 1024).toFixed(2)} MB`,
+    `[recall-pipeline] Audio downloaded: ${audioSizeMB.toFixed(2)} MB (${audioBlob.size} bytes)`,
   );
+
+  if (audioBlob.size < 1000) {
+    console.error(`[recall-pipeline] Audio file suspiciously small (${audioBlob.size} bytes) — may be empty or corrupted`);
+  }
 
   // 4. Upload audio to Supabase Storage for archival
   const storagePath = `${meeting.user_id}/${meeting.id}/recall-audio.mp3`;

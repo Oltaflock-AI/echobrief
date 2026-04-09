@@ -149,36 +149,62 @@ export async function downloadSarvamResults(
   jobId: string,
   fileName: string,
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(`${SARVAM_BASE_URL}/download-files`, {
-    method: "POST",
-    headers: {
-      "api-subscription-key": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      job_id: jobId,
-      files: [fileName],
-    }),
-  });
+  // Try multiple output file name patterns — Sarvam may name results differently
+  // depending on the input format or API version.
+  const baseName = fileName.replace(/\.[^.]+$/, "");
+  const candidateNames = [
+    fileName.replace(/\.[^.]+$/, ".json"),   // recall-audio.json
+    fileName,                                  // recall-audio.mp3 (original)
+    `${baseName}_output.json`,                 // recall-audio_output.json
+    "output.json",                             // generic
+  ];
+  // Deduplicate
+  const uniqueNames = [...new Set(candidateNames)];
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Sarvam download failed (${res.status}): ${err}`);
+  for (const candidate of uniqueNames) {
+    try {
+      const res = await fetch(`${SARVAM_BASE_URL}/download-files`, {
+        method: "POST",
+        headers: {
+          "api-subscription-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          job_id: jobId,
+          files: [candidate],
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        console.warn(`[sarvam] Download attempt for "${candidate}" failed (${res.status}): ${err.substring(0, 200)}`);
+        continue;
+      }
+
+      const downloadData: SarvamDownloadResponse = await res.json();
+      console.log(`[sarvam] Download response for "${candidate}": keys=${Object.keys(downloadData).join(",")}, download_urls_keys=${Object.keys(downloadData.download_urls || {}).join(",")}`);
+
+      const downloadUrl = downloadData.download_urls?.[candidate]?.file_url;
+      if (!downloadUrl) {
+        console.warn(`[sarvam] No download URL in response for "${candidate}"`);
+        continue;
+      }
+
+      const fileRes = await fetch(downloadUrl);
+      if (!fileRes.ok) {
+        console.warn(`[sarvam] Fetching result file for "${candidate}" failed (${fileRes.status})`);
+        continue;
+      }
+
+      console.log(`[sarvam] Successfully downloaded results using file name "${candidate}"`);
+      return fileRes.json();
+    } catch (err) {
+      console.warn(`[sarvam] Error trying file name "${candidate}":`, err);
+      continue;
+    }
   }
 
-  const downloadData: SarvamDownloadResponse = await res.json();
-  const downloadUrl = downloadData.download_urls?.[fileName]?.file_url;
-
-  if (!downloadUrl) {
-    throw new Error(
-      `No presigned download URL returned from Sarvam for file "${fileName}". Response: ${JSON.stringify(downloadData)}`,
-    );
-  }
-
-  const fileRes = await fetch(downloadUrl);
-  if (!fileRes.ok) {
-    throw new Error(`Failed to fetch Sarvam result file (${fileRes.status})`);
-  }
-
-  return fileRes.json();
+  throw new Error(
+    `Sarvam download failed: no output file found. Tried: ${uniqueNames.join(", ")}`,
+  );
 }
