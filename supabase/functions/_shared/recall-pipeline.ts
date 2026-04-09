@@ -31,6 +31,63 @@ export async function getRecallBot(botId: string) {
   return botResponse.json();
 }
 
+/**
+ * Fetches the Recall bot's transcript which includes real speaker names
+ * from the meeting platform (Google Meet, Zoom, Teams).
+ * Returns an array of utterances with participant info and timestamped words.
+ */
+export async function getRecallTranscript(
+  botId: string,
+): Promise<RecallTranscriptEntry[] | null> {
+  try {
+    const response = await fetch(
+      `${RECALL_API_URL}/bot/${botId}/transcript/`,
+      {
+        headers: {
+          Authorization: RECALL_API_KEY,
+          Accept: "application/json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      console.warn(
+        `[recall-pipeline] Failed to fetch Recall transcript: ${response.status}`,
+      );
+      return null;
+    }
+
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      console.warn("[recall-pipeline] Recall transcript is empty");
+      return null;
+    }
+
+    console.log(
+      `[recall-pipeline] Recall transcript fetched: ${data.length} utterances`,
+    );
+    return data;
+  } catch (err) {
+    console.warn("[recall-pipeline] Error fetching Recall transcript:", err);
+    return null;
+  }
+}
+
+export interface RecallTranscriptEntry {
+  participant: {
+    id: number;
+    name: string;
+    is_host?: boolean;
+    platform?: string;
+    extra_data?: any;
+  };
+  words: Array<{
+    text: string;
+    start_timestamp: { relative: number; absolute?: string };
+    end_timestamp: { relative: number; absolute?: string };
+  }>;
+}
+
 export async function getAudioDownloadUrl(botData: Record<string, any>) {
   const recordings = Array.isArray(botData.recordings)
     ? botData.recordings
@@ -89,12 +146,48 @@ export async function processRecallAudio(
     .update({ status: "processing" })
     .eq("id", meeting.id);
 
-  // 1. Fetch bot details
-  const botData = await getRecallBot(botId);
+  // 1. Fetch bot details and Recall transcript (in parallel)
+  const [botData, recallTranscript] = await Promise.all([
+    getRecallBot(botId),
+    getRecallTranscript(botId),
+  ]);
   console.log(
     "[recall-pipeline] Bot data keys:",
     Object.keys(botData).join(","),
   );
+
+  // Extract participant names from Recall transcript
+  const recallParticipants: Array<{ id: number; name: string }> = [];
+  if (recallTranscript) {
+    const seen = new Set<number>();
+    for (const entry of recallTranscript) {
+      if (entry.participant?.id != null && !seen.has(entry.participant.id)) {
+        seen.add(entry.participant.id);
+        recallParticipants.push({
+          id: entry.participant.id,
+          name: entry.participant.name,
+        });
+      }
+    }
+    console.log(
+      `[recall-pipeline] Recall participants: ${recallParticipants.map((p) => p.name).join(", ")}`,
+    );
+  }
+
+  // Also check meeting_participants from bot data
+  if (
+    recallParticipants.length === 0 &&
+    Array.isArray(botData.meeting_participants)
+  ) {
+    for (const p of botData.meeting_participants) {
+      if (p.name) {
+        recallParticipants.push({ id: p.id, name: p.name });
+      }
+    }
+    console.log(
+      `[recall-pipeline] Participants from bot data: ${recallParticipants.map((p) => p.name).join(", ")}`,
+    );
+  }
 
   // 2. Get audio download URL
   const audioUrl = await getAudioDownloadUrl(botData);
@@ -160,7 +253,29 @@ export async function processRecallAudio(
   await startSarvamJob(sarvamApiKey, job.job_id);
   console.log("[recall-pipeline] Sarvam job started:", job.job_id);
 
-  // 8. Save sarvam_job_id
+  // 8. Build speaker timeline from Recall transcript for later mapping.
+  // Each entry captures a time range → speaker name so we can map Sarvam's
+  // acoustic SPEAKER_XX labels to real names after transcription.
+  const recallSpeakerTimeline: Array<{
+    speaker: string;
+    start: number;
+    end: number;
+  }> = [];
+  if (recallTranscript) {
+    for (const entry of recallTranscript) {
+      if (!entry.words || entry.words.length === 0) continue;
+      const start = entry.words[0]?.start_timestamp?.relative ?? 0;
+      const end =
+        entry.words[entry.words.length - 1]?.end_timestamp?.relative ?? start;
+      recallSpeakerTimeline.push({
+        speaker: entry.participant?.name || "Unknown",
+        start,
+        end,
+      });
+    }
+  }
+
+  // 9. Save sarvam_job_id + Recall speaker data
   await supabase
     .from("meetings")
     .update({
@@ -172,6 +287,10 @@ export async function processRecallAudio(
         slackDestination:
           meeting.processing_config?.slackDestination || null,
         sendEmail: meeting.processing_config?.sendEmail || false,
+        recall_speaker_timeline:
+          recallSpeakerTimeline.length > 0 ? recallSpeakerTimeline : null,
+        recall_participants:
+          recallParticipants.length > 0 ? recallParticipants : null,
       },
     })
     .eq("id", meeting.id);

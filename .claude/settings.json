@@ -13,8 +13,9 @@
         "timeout": 3000
       }
     ],
-    "PreCommit": [
+    "PostToolUse": [
       {
+        "matcher": "detect-changes",
         "command": "code-review-graph detect-changes --brief",
         "timeout": 10000
       }

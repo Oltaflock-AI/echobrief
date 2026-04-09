@@ -105,7 +105,8 @@ serve(async (req) => {
         console.log("First entry keys:", Object.keys(diarizedEntries[0]).join(","));
       }
 
-      const speakerSegments: SpeakerSegment[] = diarizedEntries.map(
+      // Build initial speaker segments with acoustic labels
+      const rawSegments: SpeakerSegment[] = diarizedEntries.map(
         (entry: any) => ({
           speaker: `SPEAKER_${String(entry.speaker_id || "0").padStart(2, "0")}`,
           text: entry.transcript || entry.text || "",
@@ -114,6 +115,49 @@ serve(async (req) => {
           speaker_id: entry.speaker_id || "0",
         }),
       );
+
+      // Map acoustic speaker IDs to real names using Recall's speaker timeline.
+      // Recall's transcript has real participant names with timestamps; we match
+      // each Sarvam segment to the Recall utterance with the most time overlap.
+      const recallTimeline: Array<{ speaker: string; start: number; end: number }> =
+        config.recall_speaker_timeline || [];
+      const speakerIdToName: Record<string, string> = {};
+
+      if (recallTimeline.length > 0) {
+        // For each Sarvam segment, find the best-matching Recall utterance
+        for (const seg of rawSegments) {
+          if (speakerIdToName[seg.speaker_id || "0"]) continue; // already mapped
+
+          let bestOverlap = 0;
+          let bestName = "";
+
+          for (const rt of recallTimeline) {
+            const overlapStart = Math.max(seg.start || 0, rt.start);
+            const overlapEnd = Math.min(seg.end || 0, rt.end);
+            const overlap = Math.max(0, overlapEnd - overlapStart);
+
+            if (overlap > bestOverlap) {
+              bestOverlap = overlap;
+              bestName = rt.speaker;
+            }
+          }
+
+          if (bestName && bestOverlap > 0) {
+            speakerIdToName[seg.speaker_id || "0"] = bestName;
+          }
+        }
+
+        console.log(
+          `Speaker ID mapping: ${JSON.stringify(speakerIdToName)}`,
+        );
+      }
+
+      // Apply name mapping — fall back to acoustic label if no match
+      const speakerSegments: SpeakerSegment[] = rawSegments.map((seg) => ({
+        ...seg,
+        speaker:
+          speakerIdToName[seg.speaker_id || "0"] || seg.speaker,
+      }));
 
       const hallucinated = isLikelyHallucination(transcript);
       if (hallucinated) {
