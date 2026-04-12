@@ -44,18 +44,18 @@ interface Attendee {
   organizer?: boolean;
 }
 
-// ─── Reusable badge components matching prototype ───
+// ─── Reusable badge components ───
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; color: string; label: string }> = {
-    completed: { bg: '#FFF7ED', color: '#C2410C', label: 'Completed' },
-    processing: { bg: '#DBEAFE', color: '#1D4ED8', label: 'Processing' },
-    recording: { bg: '#DCFCE7', color: '#15803D', label: 'Recording' },
-    failed: { bg: '#FEE2E2', color: '#B91C1C', label: 'Failed' },
-    scheduled: { bg: 'hsl(var(--muted))', color: 'hsl(var(--muted-foreground))', label: 'Scheduled' },
+  const map: Record<string, { className: string; label: string }> = {
+    completed: { className: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400', label: 'Completed' },
+    processing: { className: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400', label: 'Processing' },
+    recording: { className: 'bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400', label: 'Recording' },
+    failed: { className: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400', label: 'Failed' },
+    scheduled: { className: 'bg-muted text-muted-foreground', label: 'Scheduled' },
   };
   const s = map[status] || map.scheduled;
   return (
-    <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, color: s.color, background: s.bg, letterSpacing: '0.02em', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <span className={cn('inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide', s.className)}>
       {status === 'recording' && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />}
       {s.label}
     </span>
@@ -64,7 +64,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function SourceBadge({ source }: { source: string }) {
   return (
-    <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, color: '#A855F7', background: 'rgba(168,85,247,0.12)' }}>
+    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide bg-purple-500/10 text-purple-500">
       <Bot size={11} />
       Bot
     </span>
@@ -81,7 +81,7 @@ function ProtoCard({ children, style, className }: { children: React.ReactNode; 
 }
 
 function GradientBar() {
-  return <div style={{ height: 3, background: 'linear-gradient(135deg, #F97316, #F59E0B)', borderRadius: 2, marginBottom: 16 }} />;
+  return <div className="h-[3px] rounded-sm bg-gradient-to-r from-orange-500 to-amber-500 mb-4" />;
 }
 
 export default function MeetingDetail() {

@@ -112,13 +112,12 @@ export function Sidebar({ onCollapsedChange }: SidebarProps) {
               style={{
                 padding: '10px 12px',
                 borderRadius: 10,
-                background: isActive ? 'rgba(249,115,22,0.08)' : 'transparent',
-                color: isActive ? T.orangeL : T.textS,
+                background: isActive ? 'hsl(var(--accent) / 0.08)' : 'transparent',
+                color: isActive ? 'hsl(var(--accent))' : T.textS,
                 border: 'none',
                 width: '100%',
                 textAlign: 'left' as const,
                 marginBottom: 2,
-                fontFamily: "'DM Sans', sans-serif",
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {

@@ -278,7 +278,7 @@ export default function ActionItems() {
               
               <div className="flex items-center gap-2 ml-auto">
                 <Select value={meetingFilter} onValueChange={setMeetingFilter}>
-                  <SelectTrigger className="w-[180px] h-9 text-sm">
+                  <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">
                     <Filter className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
                     <SelectValue placeholder="All meetings" />
                   </SelectTrigger>
@@ -291,7 +291,7 @@ export default function ActionItems() {
                 </Select>
                 
                 <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                  <SelectTrigger className="w-[140px] h-9 text-sm">
+                  <SelectTrigger className="w-full sm:w-[140px] h-9 text-sm">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>

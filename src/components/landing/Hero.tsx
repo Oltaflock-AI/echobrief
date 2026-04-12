@@ -34,10 +34,9 @@ export function Hero() {
             animate="show"
             variants={fade}
             className="mb-6 inline-flex items-center gap-2 rounded-full border border-orange-500/20 bg-orange-500/[0.06] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 dark:text-orange-300"
-            style={{ fontFamily: "'DM Sans', sans-serif" }}
           >
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60 motion-reduce:animate-none" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
             </span>
             22 Indian languages · Bot recording
@@ -48,8 +47,7 @@ export function Hero() {
             initial="hidden"
             animate="show"
             variants={fade}
-            className="max-w-[560px] text-left text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.045em] text-foreground md:text-5xl lg:text-[3.25rem]"
-            style={{ fontFamily: "'Outfit', sans-serif" }}
+            className="max-w-[560px] text-left text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.045em] text-foreground font-heading md:text-5xl lg:text-[3.25rem]"
           >
             Turn noise into{' '}
             <span className="gradient-text">decisions</span>
@@ -62,7 +60,6 @@ export function Hero() {
             animate="show"
             variants={fade}
             className="mt-6 max-w-[480px] text-left text-lg leading-relaxed text-muted-foreground md:text-xl"
-            style={{ fontFamily: "'DM Sans', sans-serif" }}
           >
             EchoBrief joins Meet, Zoom, and Teams. It transcribes code-mixed speech, maps speakers to real names, and
             ships summaries to Slack, WhatsApp, or inbox. Built for teams in India; clear anywhere.
@@ -78,7 +75,6 @@ export function Hero() {
             <Link
               to="/auth"
               className="group inline-flex items-center gap-2 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 px-7 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-orange-500/30 no-underline transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-500/40"
-              style={{ fontFamily: "'DM Sans', sans-serif" }}
             >
               Start free
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" strokeWidth={2} />
@@ -86,7 +82,6 @@ export function Hero() {
             <a
               href="#how-it-works"
               className="inline-flex items-center rounded-2xl border border-border bg-background/80 px-6 py-3.5 text-[15px] font-medium text-foreground no-underline backdrop-blur-sm transition-colors hover:border-orange-500/35 hover:bg-orange-500/[0.05]"
-              style={{ fontFamily: "'DM Sans', sans-serif" }}
             >
               See how it works
             </a>
@@ -101,19 +96,19 @@ export function Hero() {
           >
             <div>
               <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Languages</dt>
-              <dd className="mt-1 text-3xl font-semibold tabular-nums text-foreground" style={{ fontFamily: 'Outfit, sans-serif' }}>
+              <dd className="mt-1 text-3xl font-semibold tabular-nums text-foreground font-heading">
                 22
               </dd>
             </div>
             <div>
               <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Platforms</dt>
-              <dd className="mt-1 text-3xl font-semibold text-foreground" style={{ fontFamily: 'Outfit, sans-serif' }}>
+              <dd className="mt-1 text-3xl font-semibold text-foreground font-heading">
                 3
               </dd>
             </div>
             <div className="col-span-2 sm:col-span-1">
               <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Delivery</dt>
-              <dd className="mt-1 text-sm font-semibold leading-snug text-foreground" style={{ fontFamily: 'Outfit, sans-serif' }}>
+              <dd className="mt-1 text-sm font-semibold leading-snug text-foreground font-heading">
                 Slack · WhatsApp · Email
               </dd>
             </div>

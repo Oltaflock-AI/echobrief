@@ -3,7 +3,7 @@ import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { CalendarSelector } from '@/components/dashboard/CalendarSelector';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { 
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -11,12 +11,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { 
-  Calendar as CalendarIcon, 
-  Video, 
-  Loader2, 
-  RefreshCw, 
-  Clock, 
+import {
+  Calendar as CalendarIcon,
+  Video,
+  Loader2,
+  RefreshCw,
+  Clock,
   AlertCircle,
   Sparkles,
   MapPin,
@@ -131,8 +131,6 @@ export default function CalendarPolished() {
       return;
     }
 
-    // Launch provider selection modal
-    // For now, start Google OAuth
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/google-oauth-start`, {
         method: 'POST',
@@ -204,7 +202,7 @@ export default function CalendarPolished() {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-96">
-          <Loader2 size={32} className="animate-spin" style={{ color: '#FB923C' }} />
+          <Loader2 size={32} className="animate-spin text-accent" />
         </div>
       </DashboardLayout>
     );
@@ -212,17 +210,17 @@ export default function CalendarPolished() {
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl mx-auto px-8 py-8">
+      <div className="max-w-4xl mx-auto px-4 py-8 sm:px-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
-            📅 Calendar
+          <h1 className="text-3xl font-bold text-foreground mb-2 font-heading">
+            Calendar
           </h1>
-          <p style={{ color: '#78716C' }}>Connect your calendars and record meetings directly</p>
+          <p className="text-muted-foreground">Connect your calendars and record meetings directly</p>
         </div>
 
         {/* Calendar Selector */}
-        <div className="mb-8 p-6 rounded-xl" style={{ background: '#1C1917', border: '1px solid #292524' }}>
+        <div className="mb-8 p-6 rounded-xl bg-card border border-border">
           <div className="mb-4">
             <label className="text-sm font-semibold text-foreground mb-3 block">Select Calendars</label>
             <CalendarSelector
@@ -239,11 +237,7 @@ export default function CalendarPolished() {
               onClick={fetchEvents}
               disabled={syncing || selectedCalendarIds.length === 0}
               size="sm"
-              style={{
-                background: 'rgba(249, 115, 22, 0.1)',
-                color: '#FB923C',
-                border: '1px solid rgba(249, 115, 22, 0.3)',
-              }}
+              className="bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20"
             >
               {syncing ? <Loader2 size={14} className="mr-2 animate-spin" /> : <RefreshCw size={14} className="mr-2" />}
               Sync Events
@@ -253,27 +247,24 @@ export default function CalendarPolished() {
 
         {/* Events List */}
         {selectedCalendarIds.length === 0 ? (
-          <div className="text-center py-16" style={{ background: '#1C1917', borderRadius: 12, border: '1px solid #292524' }}>
-            <CalendarIcon size={48} className="mx-auto mb-4 opacity-50" style={{ color: '#78716C' }} />
+          <div className="text-center py-16 rounded-xl bg-card border border-border">
+            <CalendarIcon size={48} className="mx-auto mb-4 text-muted-foreground/50" />
             <h2 className="text-lg font-semibold text-foreground mb-2">No calendars selected</h2>
-            <p className="text-sm mb-6" style={{ color: '#78716C' }}>
+            <p className="text-sm text-muted-foreground mb-6">
               Connect your calendar to see upcoming meetings and record them.
             </p>
             <Button
               onClick={handleAddCalendar}
-              style={{
-                background: '#FB923C',
-                color: '#fff',
-              }}
+              className="bg-accent text-accent-foreground hover:bg-accent/90"
             >
               <Plus size={14} className="mr-2" /> Connect Calendar
             </Button>
           </div>
         ) : events.length === 0 ? (
-          <div className="text-center py-16" style={{ background: '#1C1917', borderRadius: 12, border: '1px solid #292524' }}>
-            <Sparkles size={48} className="mx-auto mb-4 opacity-50" style={{ color: '#78716C' }} />
+          <div className="text-center py-16 rounded-xl bg-card border border-border">
+            <Sparkles size={48} className="mx-auto mb-4 text-muted-foreground/50" />
             <h2 className="text-lg font-semibold text-foreground mb-2">No upcoming events</h2>
-            <p className="text-sm" style={{ color: '#78716C' }}>
+            <p className="text-sm text-muted-foreground">
               You have no scheduled meetings in your selected calendars.
             </p>
           </div>
@@ -281,13 +272,7 @@ export default function CalendarPolished() {
           <div className="space-y-6">
             {Object.entries(groupedEvents).map(([dateStr, dateEvents]) => (
               <div key={dateStr}>
-                <div
-                  className="text-sm font-semibold mb-3 px-4 py-2 rounded-lg"
-                  style={{
-                    background: 'rgba(249, 115, 22, 0.08)',
-                    color: '#FB923C',
-                  }}
-                >
+                <div className="text-sm font-semibold mb-3 px-4 py-2 rounded-lg bg-accent/[0.08] text-accent">
                   {getDateLabel(dateStr)}
                 </div>
 
@@ -299,13 +284,12 @@ export default function CalendarPolished() {
                         setSelectedEvent(event);
                         setEventDialogOpen(true);
                       }}
-                      className="p-4 rounded-xl cursor-pointer transition-colors hover:opacity-80"
-                      style={{ background: '#1C1917', border: '1px solid #292524' }}
+                      className="p-4 rounded-xl cursor-pointer transition-colors bg-card border border-border hover:bg-secondary"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1">
                           <h3 className="font-semibold text-foreground mb-1">{event.title}</h3>
-                          <div className="flex flex-wrap gap-2 text-sm" style={{ color: '#78716C' }}>
+                          <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Clock size={14} />
                               {format(parseISO(event.start_time), 'h:mm a')} - {format(parseISO(event.end_time || event.start_time), 'h:mm a')}
@@ -327,11 +311,11 @@ export default function CalendarPolished() {
 
                         <div className="flex items-center gap-2">
                           {event.meeting_link && (
-                            <Badge style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3B82F6' }}>
+                            <Badge className="bg-blue-500/15 text-blue-500 border-0">
                               <Video size={12} className="mr-1" /> Zoom/Meet
                             </Badge>
                           )}
-                          <ChevronRight size={16} style={{ color: '#A8A29E' }} />
+                          <ChevronRight size={16} className="text-muted-foreground" />
                         </div>
                       </div>
                     </div>
@@ -355,10 +339,10 @@ export default function CalendarPolished() {
             <div className="space-y-3 py-4">
               {selectedEvent?.location && (
                 <div className="flex items-start gap-3">
-                  <MapPin size={16} style={{ color: '#FB923C', marginTop: 2 }} />
+                  <MapPin size={16} className="text-accent mt-0.5" />
                   <div>
                     <p className="text-sm font-medium text-foreground">Location</p>
-                    <p className="text-sm" style={{ color: '#78716C' }}>
+                    <p className="text-sm text-muted-foreground">
                       {selectedEvent.location}
                     </p>
                   </div>
@@ -367,10 +351,10 @@ export default function CalendarPolished() {
 
               {selectedEvent?.organizer_name && (
                 <div className="flex items-start gap-3">
-                  <Users size={16} style={{ color: '#FB923C', marginTop: 2 }} />
+                  <Users size={16} className="text-accent mt-0.5" />
                   <div>
                     <p className="text-sm font-medium text-foreground">Organizer</p>
-                    <p className="text-sm" style={{ color: '#78716C' }}>
+                    <p className="text-sm text-muted-foreground">
                       {selectedEvent.organizer_name}
                     </p>
                   </div>
@@ -379,15 +363,14 @@ export default function CalendarPolished() {
 
               {selectedEvent?.meeting_link && (
                 <div className="flex items-start gap-3">
-                  <Video size={16} style={{ color: '#FB923C', marginTop: 2 }} />
+                  <Video size={16} className="text-accent mt-0.5" />
                   <div>
                     <p className="text-sm font-medium text-foreground">Meeting Link</p>
                     <a
                       href={selectedEvent.meeting_link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm"
-                      style={{ color: '#3B82F6' }}
+                      className="text-sm text-blue-500 hover:underline"
                     >
                       {selectedEvent.meeting_link}
                     </a>
@@ -400,17 +383,13 @@ export default function CalendarPolished() {
               <Button
                 variant="outline"
                 onClick={() => setEventDialogOpen(false)}
-                style={{ color: '#A8A29E' }}
               >
                 Close
               </Button>
               {selectedEvent?.meeting_link && (
                 <Button
                   onClick={handleRecordEvent}
-                  style={{
-                    background: '#FB923C',
-                    color: '#fff',
-                  }}
+                  className="bg-accent text-accent-foreground hover:bg-accent/90"
                 >
                   <Sparkles size={14} className="mr-2" /> Record This Meeting
                 </Button>

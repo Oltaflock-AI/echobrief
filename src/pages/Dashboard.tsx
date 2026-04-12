@@ -10,6 +10,7 @@ import { Meeting } from '@/types/meeting';
 import { Clock, ChevronRight, Mic, Users, CheckCircle2, Globe, Bot, FileText, Zap, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 import { useThemeTokens } from '@/lib/theme';
 
 interface CalendarAttendee {
@@ -26,58 +27,51 @@ interface PrefillMeeting {
   attendees?: CalendarAttendee[];
 }
 
-// ─── Badge (prototype exact) ───
-function Badge({ children, color, bg }: { children: React.ReactNode; color: string; bg: string }) {
+// ─── Badge ───
+function Badge({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <span style={{
-      padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600,
-      color, background: bg, letterSpacing: '0.02em',
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-    }}>
+    <span className={cn(
+      'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide',
+      className
+    )}>
       {children}
     </span>
   );
 }
 
-// ─── StatusBadge (prototype exact) ───
+// ─── StatusBadge ───
 function StatusBadge({ status }: { status: string }) {
-  const T = useThemeTokens();
-  const map: Record<string, { bg: string; color: string; label: string }> = {
-    completed: { bg: '#FFF7ED', color: '#C2410C', label: 'Completed' },
-    processing: { bg: '#DBEAFE', color: '#1D4ED8', label: 'Processing' },
-    recording: { bg: '#DCFCE7', color: '#15803D', label: 'Recording' },
-    failed: { bg: '#FEE2E2', color: '#B91C1C', label: 'Failed' },
-    scheduled: { bg: 'rgba(168,168,168,0.1)', color: '#A8A29E', label: 'Scheduled' },
+  const map: Record<string, { className: string; label: string }> = {
+    completed: { className: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400', label: 'Completed' },
+    processing: { className: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400', label: 'Processing' },
+    recording: { className: 'bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400', label: 'Recording' },
+    failed: { className: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400', label: 'Failed' },
+    scheduled: { className: 'bg-muted text-muted-foreground', label: 'Scheduled' },
   };
   const s = map[status] || map.scheduled;
   return (
-    <Badge color={s.color} bg={s.bg}>
+    <Badge className={s.className}>
       {status === 'recording' && (
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.green, animation: 'pulse 1.5s infinite' }} />
+        <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
       )}
       {s.label}
     </Badge>
   );
 }
 
-// ─── SourceBadge (prototype exact) ───
+// ─── SourceBadge ───
 function SourceBadge({ source }: { source: string }) {
-  const T = useThemeTokens();
   return (
-    <Badge
-      color={T.purple}
-      bg="rgba(168,85,247,0.12)"
-    >
+    <Badge className="bg-purple-500/10 text-purple-500">
       <Bot size={11} />
       Bot
     </Badge>
   );
 }
 
-// ─── GradientBar (prototype exact) ───
+// ─── GradientBar ───
 function GradientBar() {
-  const T = useThemeTokens();
-  return <div style={{ height: 3, background: T.gradient, borderRadius: 2 }} />;
+  return <div className="h-[3px] rounded-sm bg-gradient-to-r from-orange-500 to-amber-500" />;
 }
 
 export default function Dashboard() {
@@ -316,38 +310,17 @@ export default function Dashboard() {
     <DashboardLayout>
       <div className="mx-auto max-w-[1200px] px-6 py-8 md:px-10 md:py-10">
         {/* Welcome message */}
-        <p
-          className="text-muted-foreground"
-          style={{
-            fontFamily: 'DM Sans, sans-serif',
-            fontSize: 14,
-            margin: '0 0 24px 0',
-            fontWeight: 400,
-          }}
-        >
+        <p className="text-sm text-muted-foreground mb-6">
           Welcome back, {user?.email?.split('@')[0] || 'User'}
         </p>
 
         {/* Header: Meetings title + Record button */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+        <div className="flex items-center justify-between mb-7">
           <div>
-            <h1
-              className="text-3xl font-semibold tracking-[-0.02em] text-foreground md:text-[2rem]"
-              style={{
-                fontFamily: 'Outfit, sans-serif',
-                margin: 0,
-              }}
-            >
+            <h1 className="text-3xl font-semibold tracking-[-0.02em] text-foreground font-heading md:text-[2rem]">
               Meetings
             </h1>
-            <p
-              className="text-muted-foreground"
-              style={{
-                fontFamily: 'DM Sans, sans-serif',
-                fontSize: 13,
-                margin: '4px 0 0 0',
-              }}
-            >
+            <p className="text-[13px] text-muted-foreground mt-1">
               Your meeting intelligence hub
             </p>
           </div>
@@ -372,19 +345,19 @@ export default function Dashboard() {
         {/* Stats Row: 3 columns */}
         {!loading && meetings.length > 0 && (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+            <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-3">
               {/* Meetings Count */}
               <div className="rounded-[14px] border border-border bg-card p-6 shadow-sm">
-                <div className="text-foreground" style={{ fontFamily: 'Outfit, sans-serif', fontSize: 32, fontWeight: 700, margin: 0 }}>
+                <div className="text-[2rem] font-bold text-foreground font-heading tabular-nums">
                   {meetings.length}
                 </div>
-                <div className="text-muted-foreground" style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, margin: '4px 0 0 0' }}>
+                <div className="text-[13px] text-muted-foreground mt-1">
                   Meetings
                 </div>
               </div>
 
               <div className="rounded-[14px] border border-border bg-card p-6 shadow-sm">
-                <div className="text-foreground" style={{ fontFamily: 'Outfit, sans-serif', fontSize: 32, fontWeight: 700, margin: 0 }}>
+                <div className="text-[2rem] font-bold text-foreground font-heading tabular-nums">
                   {(() => {
                     const totalSecs = meetings.reduce((acc, m) => acc + (m.duration_seconds || 0), 0);
                     const hours = Math.floor(totalSecs / 3600);
@@ -392,16 +365,16 @@ export default function Dashboard() {
                     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
                   })()}
                 </div>
-                <div className="text-muted-foreground" style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, margin: '4px 0 0 0' }}>
+                <div className="text-[13px] text-muted-foreground mt-1">
                   Recorded
                 </div>
               </div>
 
               <div className="rounded-[14px] border border-border bg-card p-6 shadow-sm">
-                <div className="text-foreground" style={{ fontFamily: 'Outfit, sans-serif', fontSize: 32, fontWeight: 700, margin: 0 }}>
+                <div className="text-[2rem] font-bold text-foreground font-heading tabular-nums">
                   {meetings.filter(m => m.summary).length}
                 </div>
-                <div className="text-muted-foreground" style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, margin: '4px 0 0 0' }}>
+                <div className="text-[13px] text-muted-foreground mt-1">
                   Summaries
                 </div>
               </div>
@@ -410,10 +383,10 @@ export default function Dashboard() {
             {/* Time Saved Banner */}
             <div className="mb-8 flex items-center gap-3.5 rounded-xl border border-green-500/20 bg-green-500/[0.08] px-5 py-4 dark:bg-green-500/10">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-500/15">
-                <Sparkles className="h-5 w-5 text-green-600 dark:text-green-400" style={{ flexShrink: 0 }} />
+                <Sparkles className="h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
               </div>
               <div>
-                <div className="text-foreground" style={{ fontFamily: 'Outfit, sans-serif', fontSize: 15, fontWeight: 600, margin: 0 }}>
+                <div className="text-[15px] font-semibold text-foreground font-heading">
                   ~{(() => {
                     const totalSecs = meetings.reduce((acc, m) => acc + (m.duration_seconds || 0), 0);
                     const totalMins = Math.round(totalSecs / 60);
@@ -423,7 +396,7 @@ export default function Dashboard() {
                     return hours > 0 ? `${hours}h ${mins}m saved` : `${mins}m saved`;
                   })()}
                 </div>
-                <div className="text-muted-foreground" style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, margin: '2px 0 0 0' }}>
+                <div className="text-[13px] text-muted-foreground mt-0.5">
                   Estimated time saved on meeting summaries
                 </div>
               </div>
@@ -459,41 +432,35 @@ export default function Dashboard() {
                 className="group block no-underline"
               >
                 <div className="cursor-pointer rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-px hover:border-orange-500/20 hover:bg-muted/50 hover:shadow-md dark:hover:bg-muted/30">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
                       {/* Meeting icon */}
-                      <div style={{
-                        width: 42, height: 42, borderRadius: 12,
-                        background: meeting.status === 'processing'
-                          ? 'rgba(59,130,246,0.1)'
-                          : 'rgba(249,115,22,0.08)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                      }}>
+                      <div className={cn(
+                        'flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl',
+                        meeting.status === 'processing' ? 'bg-blue-500/10' : 'bg-accent/[0.08]'
+                      )}>
                         {meeting.status === 'processing' ? (
-                          <div style={{ width: 10, height: 10, borderRadius: '50%', background: T.blue, animation: 'pulse 1.5s infinite' }} />
+                          <div className="h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse" />
                         ) : (
-                          <FileText size={18} color={T.orangeL} />
+                          <FileText size={18} className="text-orange-400 dark:text-orange-300" />
                         )}
                       </div>
 
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <span style={{
-                            fontFamily: 'Outfit, sans-serif', fontSize: 15, fontWeight: 600,
-                            color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const,
-                          }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[15px] font-semibold text-foreground font-heading truncate">
                             {meeting.title}
                           </span>
                         </div>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' as const }}>
+                        <div className="flex flex-wrap items-center gap-2">
                           <StatusBadge status={meeting.status || 'scheduled'} />
                           <SourceBadge source={meeting.source || 'manual'} />
                           {(meeting as any).language && (
-                            <Badge color={T.textS} bg="rgba(168,168,168,0.08)">
+                            <Badge className="bg-muted text-muted-foreground">
                               <Globe size={10} /> {(meeting as any).language}
                             </Badge>
                           )}
-                          <span style={{ color: T.textM, fontSize: 12 }}>
+                          <span className="text-xs text-muted-foreground">
                             {getSourceLabel(meeting.source)} · {format(new Date(meeting.start_time), 'MMM d')} {format(new Date(meeting.start_time), 'h:mm a')}
                             {meeting.duration_seconds ? ` · ${formatDuration(meeting.duration_seconds)}` : ''}
                           </span>
@@ -502,16 +469,16 @@ export default function Dashboard() {
                     </div>
 
                     {/* Right side stats + chevron */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+                    <div className="flex items-center gap-4 shrink-0">
                       {meeting.status === 'completed' && (
-                        <div style={{ display: 'flex', gap: 12, color: T.textM, fontSize: 12 }}>
+                        <div className="hidden sm:flex gap-3 text-xs text-muted-foreground">
                           {meeting.duration_seconds && (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <span className="flex items-center gap-0.5">
                               <Clock size={12} /> {formatDuration(meeting.duration_seconds)}
                             </span>
                           )}
                           {insightCounts[meeting.id] && (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <span className="flex items-center gap-0.5">
                               <Zap size={12} /> Summary
                             </span>
                           )}

@@ -53,8 +53,8 @@ export function GlobalRecordingPanel({ onRecordingComplete }: GlobalRecordingPan
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 animate-in">
-      <div className="bg-card rounded-lg shadow-lg border border-border border-l-2 border-l-accent p-4 min-w-[280px]">
+    <div className="fixed bottom-4 right-4 z-50 animate-in sm:bottom-6 sm:right-6">
+      <div className="bg-card rounded-lg shadow-lg border border-border border-l-2 border-l-accent p-4 w-[calc(100vw-2rem)] max-w-[320px] sm:w-auto sm:min-w-[280px]">
         {/* Recording title */}
         {meetingTitle && (
           <p className="text-sm font-medium text-foreground truncate mb-2">

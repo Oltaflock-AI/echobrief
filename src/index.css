@@ -208,7 +208,7 @@
   }
 
   .list-row.active {
-    background-color: rgba(249, 115, 22, 0.08);
+    background-color: hsl(var(--accent) / 0.08);
   }
 
   /* Status indicators - small, subtle dots */
@@ -247,13 +247,13 @@
   }
 
   .nav-item.active {
-    color: #FB923C;
-    background-color: rgba(249, 115, 22, 0.08);
+    color: hsl(var(--accent));
+    background-color: hsl(var(--accent) / 0.08);
   }
 
   .nav-item.active:hover {
-    color: #FB923C;
-    background-color: rgba(249, 115, 22, 0.12);
+    color: hsl(var(--accent));
+    background-color: hsl(var(--accent) / 0.12);
   }
 
   /* Document section - Notion blocks style */
@@ -280,8 +280,8 @@
   }
 
   .action-item-checkbox.checked {
-    background-color: #F97316;
-    border-color: #F97316;
+    background-color: hsl(var(--accent));
+    border-color: hsl(var(--accent));
   }
 
   .action-item-text {
@@ -394,8 +394,7 @@
 
   .tag-accent {
     /* AI/insights badge → purple per brand spec */
-    background-color: rgba(168, 85, 247, 0.1);
-    color: #A855F7;
+    @apply bg-purple-500/10 text-purple-500;
   }
 
   .tag-success {
@@ -468,6 +467,13 @@
     opacity: 0;
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-in {
+      animation: none;
+      opacity: 1;
+    }
+  }
+
   @keyframes fadeInUp {
     from {
       opacity: 0;
@@ -482,6 +488,12 @@
   /* Subtle fade in animation */
   .animate-in {
     animation: fadeIn 0.2s ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-in {
+      animation: none;
+    }
   }
 
   @keyframes fadeIn {
@@ -588,6 +600,12 @@
     animation: landing-shimmer 4s ease-in-out infinite;
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .landing-shimmer {
+      animation: none;
+    }
+  }
+
   .dark .landing-shimmer {
     background: linear-gradient(
       110deg,
@@ -665,10 +683,7 @@
 
   /* Speaker label styling - AI/transcript = purple per brand spec */
   .speaker-label {
-    @apply inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full;
-    background-color: rgba(168, 85, 247, 0.1);
-    color: #A855F7;
-    @apply mr-2;
+    @apply inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-purple-500/10 text-purple-500 mr-2;
   }
 
   /* Transcript segment */
@@ -692,7 +707,7 @@
     border-radius: 3px;
   }
   .dark ::-webkit-scrollbar-thumb {
-    background: #44403C;
+    background: hsl(var(--border));
   }
 
   /* Logo: concentric ripples breathe (sound-wave metaphor; no lockup distortion) */
@@ -713,6 +728,14 @@
   .logo-mark-animated .logo-core {
     animation: echobrief-core 3s ease-in-out infinite;
     transform-origin: 16px 16px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .logo-mark-animated .logo-ring-outer,
+    .logo-mark-animated .logo-ring-mid,
+    .logo-mark-animated .logo-core {
+      animation: none;
+    }
   }
   @keyframes echobrief-ring-outer {
     0%,
@@ -748,12 +771,12 @@
 
   /* Input placeholder color for dark mode */
   .dark input::placeholder {
-    color: #78716C;
+    color: hsl(var(--muted-foreground));
   }
 
   /* Select option backgrounds for dark mode */
   .dark select option {
-    background: #1C1917;
-    color: #FAFAF9;
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
   }
 }

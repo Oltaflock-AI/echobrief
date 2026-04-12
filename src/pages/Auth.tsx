@@ -117,8 +117,7 @@ export default function Auth() {
           </div>
 
           <h1
-            className="mb-5 text-4xl font-semibold leading-tight tracking-[-0.02em] text-foreground"
-            style={{ fontFamily: 'Outfit, sans-serif' }}
+            className="mb-5 text-4xl font-semibold leading-tight tracking-[-0.02em] text-foreground font-heading"
           >
             Transform your meetings
             <br />
@@ -167,7 +166,7 @@ export default function Auth() {
                 <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-orange-500/20 bg-orange-500/[0.08]">
                   <Mail className="h-8 w-8 text-orange-600 dark:text-orange-400" />
                 </div>
-                <h2 className="mb-2 text-xl font-semibold text-foreground" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                <h2 className="mb-2 text-xl font-semibold text-foreground font-heading">
                   Check your email
                 </h2>
                 <p className="mb-6 text-sm text-muted-foreground">
@@ -190,8 +189,7 @@ export default function Auth() {
               <>
                 <div className="mb-8 text-center">
                   <h2
-                    className="mb-2 text-2xl font-semibold tracking-[-0.02em] text-foreground"
-                    style={{ fontFamily: 'Outfit, sans-serif' }}
+                    className="mb-2 text-2xl font-semibold tracking-[-0.02em] text-foreground font-heading"
                   >
                     {isResetPassword ? 'Set new password' : isForgotPassword ? 'Reset your password' : isSignUp ? 'Create your account' : 'Welcome back'}
                   </h2>
