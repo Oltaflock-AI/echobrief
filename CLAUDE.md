@@ -19,7 +19,7 @@ npm run functions:serve  # Serve Supabase Edge Functions locally (needs supabase
 ## Architecture
 
 ### Recording Flow
-**Dashboard (bot-only):** User enters a meeting URL → `start-recall-recording` creates a Recall bot → bot joins and records → `recall-webhook` receives completion → audio downloaded and submitted to Sarvam AI (async, webhook callback) or falls back to Whisper → `sarvam-webhook` maps Sarvam's acoustic speaker IDs (SPEAKER_00, SPEAKER_01) to real participant names using Recall's speaker timeline (time-overlap matching) → GPT-4o-mini generates insights → saves to DB → optionally delivers to Slack/email.
+**Dashboard (bot-only):** User enters a meeting URL → `start-recall-recording` creates a Recall bot (with real-time transcription enabled via `recallai_streaming`) → bot joins and records → `recall-webhook` receives `audio_mixed.done` event → audio downloaded from Recall + Recall transcript fetched (via `media_shortcuts.transcript` download URL) for real participant names → audio submitted to Sarvam AI in translate mode (async, webhook callback) or falls back to Whisper → `sarvam-webhook` maps each Sarvam segment to real participant names using per-segment time-overlap matching against Recall's speaker timeline → GPT-4o-mini generates insights → saves to DB → optionally delivers to Slack/email.
 
 **Chrome Extension (backend still active, UI removed from dashboard):** Extension detects Meet/Zoom → `chrome.tabCapture` → offscreen document runs `MediaRecorder` → uploads WebM to `upload-recording` Edge Function → same processing pipeline as above.
 
@@ -42,8 +42,8 @@ npm run functions:serve  # Serve Supabase Edge Functions locally (needs supabase
 - `supabase/functions/sarvam-webhook/` -- Async callback from Sarvam STT
 - `supabase/functions/upload-recording/` -- Accepts audio upload, stores in Supabase Storage
 - `supabase/functions/_shared/insights.ts` -- Hallucination detection, GPT prompt, insight saving, delivery
-- `supabase/functions/_shared/sarvam.ts` -- Sarvam API client (create job, upload, start)
-- `supabase/functions/_shared/recall-pipeline.ts` -- Shared Recall audio download + Sarvam submission logic (used by recall-webhook and check-recall-status). Also fetches Recall's transcript to extract real participant names and build a speaker timeline (speaker name + time range) stored in `processing_config` for later mapping in sarvam-webhook.
+- `supabase/functions/_shared/sarvam.ts` -- Sarvam API client (create job, upload, start). Uses `mode: "translate"` to output English regardless of source language, with `with_diarization: true`.
+- `supabase/functions/_shared/recall-pipeline.ts` -- Shared Recall audio download + Sarvam submission logic (used by recall-webhook and check-recall-status). Fetches Recall's transcript via `media_shortcuts.transcript` download URL (the old `/bot/{id}/transcript/` endpoint is deprecated) to extract real participant names and build a speaker timeline (speaker name + time range) stored in `processing_config` for per-segment mapping in sarvam-webhook.
 - `supabase/functions/_shared/cors.ts` -- CORS headers shared across functions
 
 ### Database
@@ -58,13 +58,13 @@ PostgreSQL with Row-Level Security. Key tables:
 
 All tables enforce `auth.uid() = user_id` RLS policies.
 
-Migrations are in `supabase/migrations/` (16 files).
+Migrations are in `supabase/migrations/` (17 files, including `20260414000001_enable_realtime_meetings.sql` for Supabase Realtime on the meetings table).
 
 ## Tech Stack
 
 - **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui, React Router v6, TanStack Query, Framer Motion
 - **Backend:** Supabase (PostgreSQL, Auth, Storage, Edge Functions on Deno)
-- **AI:** Sarvam AI (STT + diarization), OpenAI Whisper (fallback STT), GPT-4o-mini (insights)
+- **AI:** Sarvam AI (STT in translate mode — outputs English from any language), OpenAI Whisper (fallback STT), GPT-4o-mini (insights)
 - **Extension:** Chrome MV3, vanilla JS, tabCapture + offscreen API
 - **Integrations:** Google Calendar OAuth, Slack API, Notion OAuth, email delivery
 - **Hosting:** Vercel (frontend), Supabase (backend)
