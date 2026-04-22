@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { processRecallAudio } from "../_shared/recall-pipeline.ts";
+import {
+  getAudioMixedStatus,
+  getRecallBot,
+  processRecallAudio,
+} from "../_shared/recall-pipeline.ts";
 
 const RECALL_API_KEY = Deno.env.get("RECALL_API_KEY")!;
 const RECALL_API_BASE_URL =
@@ -243,18 +247,43 @@ serve(async (req) => {
           .eq("id", meeting.id);
         console.warn(`[recall-webhook] Bot ${botId} call_ended with failure sub_code: ${subCode}`);
       } else if (eventCategory === "bot" && statusCode === "done" && !meeting.sarvam_job_id) {
-        // bot.done fired but no audio was ever processed (no sarvam_job_id).
-        // This can happen when the bot was kicked before recording or audio_mixed
-        // event was never received. If the meeting is already failed, leave it.
+        // bot.done fired but sarvam_job_id isn't in the DB yet. Two possibilities:
+        //   (a) audio_mixed.done fired near-simultaneously and processRecallAudio
+        //       is still mid-flight (it writes sarvam_job_id at the very end).
+        //       Marking failed here would race-overwrite the real run.
+        //   (b) The bot never captured audio (kicked, no participants, etc).
+        //
+        // Distinguish by querying Recall directly for the audio_mixed status.
+        // done/processing → (a), skip. failed/missing → (b), mark failed.
         if (meeting.status !== "failed" && meeting.status !== "completed") {
-          const errorMsg = subCode && FAILURE_SUB_CODES[subCode]
-            ? FAILURE_SUB_CODES[subCode]
-            : "The recording bot finished without capturing any audio. The bot may not have been admitted to the meeting.";
-          await supabase
-            .from("meetings")
-            .update({ status: "failed", error_message: errorMsg })
-            .eq("id", meeting.id);
-          console.warn(`[recall-webhook] Bot ${botId} done with no audio processed — marking as failed`);
+          let audioStatus: Awaited<ReturnType<typeof getAudioMixedStatus>> = "unknown";
+          try {
+            const botData = await getRecallBot(botId);
+            audioStatus = await getAudioMixedStatus(botData);
+          } catch (err) {
+            console.warn(`[recall-webhook] bot.done: failed to query audio_mixed: ${err}`);
+          }
+
+          // Only mark failed on states that definitively mean "no audio will
+          // arrive". "unknown" (transient Recall API blip) defers to check-recall-
+          // status polling and audio_mixed.done/failed webhooks rather than risk
+          // failing a good meeting.
+          if (audioStatus === "failed" || audioStatus === "missing") {
+            const errorMsg = subCode && FAILURE_SUB_CODES[subCode]
+              ? FAILURE_SUB_CODES[subCode]
+              : "The recording bot finished without capturing any audio. The bot may not have been admitted to the meeting.";
+            await supabase
+              .from("meetings")
+              .update({ status: "failed", error_message: errorMsg })
+              .eq("id", meeting.id);
+            console.warn(
+              `[recall-webhook] Bot ${botId} done with no audio (audio_mixed=${audioStatus}) — marking as failed`,
+            );
+          } else {
+            console.log(
+              `[recall-webhook] bot.done for ${botId}: audio_mixed=${audioStatus}, deferring to audio_mixed.done handler`,
+            );
+          }
         }
       } else if (statusMap[statusCode]) {
         await supabase

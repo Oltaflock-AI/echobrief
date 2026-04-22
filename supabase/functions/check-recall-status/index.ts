@@ -216,18 +216,22 @@ serve(async (req) => {
 
         if (sarvamState === "COMPLETED" || sarvamState === "FAILED") {
           // Sarvam is done but the webhook was never processed — trigger it now.
-          // First, atomically mark the meeting so concurrent polls don't re-trigger.
+          // Atomically claim the trigger via a dedicated timestamp column so
+          // concurrent polls can't double-fire the webhook. We intentionally
+          // do NOT touch `status` here: sarvam-webhook skips on
+          // status="transcribing" (its Whisper-fallback guard), which would
+          // cause the very call we're about to make to no-op.
           const { data: updated } = await supabase
             .from("meetings")
-            .update({ status: "transcribing" })
+            .update({ sarvam_webhook_triggered_at: new Date().toISOString() })
             .eq("id", meeting.id)
-            .eq("status", meeting.status) // optimistic lock: only update if status hasn't changed
+            .is("sarvam_webhook_triggered_at", null)
             .select("id")
             .single();
 
           if (!updated) {
             console.log(
-              `[check-recall-status] Meeting ${meeting.id} status already changed — skipping duplicate trigger`,
+              `[check-recall-status] Meeting ${meeting.id} webhook already triggered — skipping duplicate`,
             );
             return new Response(
               JSON.stringify({ status: "processing", recall_status: latestStatus, skipped: true }),
@@ -242,17 +246,36 @@ serve(async (req) => {
             `[check-recall-status] Sarvam job ${meeting.sarvam_job_id} is ${sarvamState} but webhook was not received — triggering now`,
           );
 
-          await fetch(`${supabaseUrl}/functions/v1/sarvam-webhook`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${webhookSecret}`,
-            },
-            body: JSON.stringify({
-              job_id: meeting.sarvam_job_id,
-              job_state: sarvamState,
-            }),
-          });
+          try {
+            const webhookRes = await fetch(
+              `${supabaseUrl}/functions/v1/sarvam-webhook`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${webhookSecret}`,
+                },
+                body: JSON.stringify({
+                  job_id: meeting.sarvam_job_id,
+                  job_state: sarvamState,
+                }),
+              },
+            );
+            if (!webhookRes.ok) {
+              throw new Error(`sarvam-webhook returned ${webhookRes.status}`);
+            }
+          } catch (webhookErr) {
+            // Release the lock so a future poll can retry. Without this
+            // a transient failure would permanently strand the meeting.
+            await supabase
+              .from("meetings")
+              .update({ sarvam_webhook_triggered_at: null })
+              .eq("id", meeting.id);
+            console.error(
+              "[check-recall-status] Webhook trigger failed, released lock:",
+              webhookErr,
+            );
+          }
         }
       } catch (sarvamPollErr) {
         console.error("[check-recall-status] Sarvam status poll error:", sarvamPollErr);

@@ -132,6 +132,47 @@ export interface RecallTranscriptEntry {
   }>;
 }
 
+/**
+ * Returns the current status code of Recall's audio_mixed resource for a bot,
+ * or "missing" if no audio_mixed exists yet. Used to decide whether a bot.done
+ * event should be treated as a failure or whether audio_mixed.done is still
+ * in flight / about to fire.
+ *
+ * Known codes from Recall: "processing", "done", "failed".
+ */
+export async function getAudioMixedStatus(
+  botData: Record<string, any>,
+): Promise<"done" | "processing" | "failed" | "missing" | "unknown"> {
+  const recordings = Array.isArray(botData.recordings)
+    ? botData.recordings
+    : [];
+  const recordingWithId = recordings.find((r: any) => r?.id);
+  if (!recordingWithId?.id) return "missing";
+
+  try {
+    const response = await fetch(
+      `${RECALL_API_URL}/audio_mixed/?recording_id=${recordingWithId.id}`,
+      {
+        headers: {
+          Authorization: RECALL_API_KEY,
+          Accept: "application/json",
+        },
+      },
+    );
+    if (!response.ok) return "unknown";
+    const data = await response.json();
+    const audioResult = data.results?.[0];
+    if (!audioResult) return "missing";
+    const code = audioResult?.status?.code;
+    if (code === "done" || code === "processing" || code === "failed") {
+      return code;
+    }
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 export async function getAudioDownloadUrl(botData: Record<string, any>) {
   const recordings = Array.isArray(botData.recordings)
     ? botData.recordings
