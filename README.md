@@ -302,10 +302,11 @@ meeting_notifications
 |---|---|
 | `upload-recording` | Receives extension audio, stores it, creates meeting rows |
 | `process-meeting` | Main ingest pipeline, Sarvam submitter, Whisper fallback path |
-| `sarvam-webhook` | Handles async Sarvam callbacks and downstream completion |
+| `sarvam-webhook` | Handles async Sarvam callbacks. **Auto-falls-back to Whisper on any Sarvam download failure** (covers the known `KeyError: 'timestamps'` server bug on long audio). |
 | `start-recall-recording` | Creates a Recall bot and starts bot-based meeting capture |
-| `check-recall-status` | Polls Recall API for live bot status, syncs DB, and triggers the Sarvam pipeline as a fallback when webhooks are missed (uses optimistic locking to prevent duplicate triggers) |
-| `recall-webhook` | Receives Recall status events and hands completed audio into the AI pipeline |
+| `check-recall-status` | Polls Recall API for live bot status, syncs DB, and triggers the Sarvam pipeline as a fallback when webhooks are missed. Uses an atomic `sarvam_webhook_triggered_at IS NULL` lock (decoupled from `status` to avoid the `transcribing` deadlock). |
+| `recall-webhook` | Receives Recall status events and hands completed audio into the AI pipeline. `bot.done` queries Recall's `/audio_mixed/` endpoint to avoid race-marking good meetings as failed. |
+| `monitor-stuck-meetings` | Scheduled every 5 min via pg_cron. Detects meetings stuck >15 min in non-terminal status, classifies into a known signature, attempts canonical recovery (force Whisper / re-trigger Sarvam / check Recall / mark failed), logs every detection to `monitor_events`, and emails `amaan@oltaflock.ai` via Resend on recovery failure or unknown signature. |
 | `google-oauth-start` / `google-oauth-callback` / `google-oauth-redirect` | Google Calendar OAuth flow |
 | `sync-google-calendar` / `sync-calendars` / `fetch-calendar-events` | Calendar sync and event retrieval utilities |
 | `send-slack-message` | Delivers summaries to Slack |
@@ -517,7 +518,74 @@ This section is intentionally detailed because the hardest part of this project 
 
 **Why this matters:** this is the kind of edge case that only surfaces in production with real data. Sarvam was behaving correctly — it just had nothing to output. The bug was entirely in the error handling layer, and it created a silent infinite loop with no obvious signal that anything was wrong. Catching it required reading logs across three separate functions and tracing the retry path manually.
 
-### 13. Speaker diarization returned generic labels instead of real participant names
+### 13. Sarvam's `KeyError: 'timestamps'` on audio over ~7 minutes silently broke the pipeline
+
+**Problem:** meetings longer than ~7 minutes started failing transcription. The Sarvam job would mark itself `Completed` at the top level but with `successful_files_count: 0`, and `job_details[0].exception_name: "KeyError"`, `error_message: "'timestamps'"`. Downstream code threw, returned 500, and `check-recall-status` polling tried to recover it forever — leaving the meeting permanently stuck on "Processing".
+
+**Why it happened:** server-side bug in Sarvam's `saaras:v3` model when chunked long audio is recombined for output. Reproduced across 5 different config combinations (translate vs transcribe modes, `language_code: "unknown"` vs `"en-IN"`, `with_timestamps: true` vs `false`, `with_diarization: true` vs `false`). With timestamps off Sarvam returned `successful_files_count: 1` but with completely empty content, which is arguably worse than the loud KeyError. Reported to Sarvam Discord with all 5 job IDs; awaiting their fix.
+
+**What I changed:**
+
+- broadened the `downloadSarvamResults` catch block in `sarvam-webhook` to fall back to Whisper on **any** download error (not just the original 400 "does not exist" path). Empty-transcript Sarvam responses already triggered the fallback.
+- the meeting auto-recovers via Whisper instead of staying stuck.
+
+**Why this matters:** third-party reliability cannot be assumed. The defensive design (loud-error → silent retry → infinite recovery loop) was actually a worse failure mode than just letting the 500 propagate and falling through to Whisper. Catching this required cross-referencing Sarvam's job-status API, our own logs, and a reproducer that submitted the same audio with five different configs to isolate the bug.
+
+### 14. The `bot.done` / `audio_mixed.done` race silently marked good meetings as failed
+
+**Problem:** some real meetings got marked `failed` even though Sarvam transcription was actively succeeding for them. Logs showed `[recall-webhook] Bot ... done with no audio processed — marking as failed` followed seconds later by a successful `recall-pipeline` Sarvam handoff for the same meeting.
+
+**Why it happened:** Recall fires `bot.done` and `audio_mixed.done` within ~16 ms of each other. The two webhook events run as parallel edge function invocations. The `bot.done` handler read the meeting row before the `audio_mixed.done` handler had finished writing `sarvam_job_id`, saw it was null, and incorrectly concluded "this bot finished without producing audio" — so it overwrote `status = failed`. The `audio_mixed.done` handler then quietly completed Sarvam submission, but `status` had already been clobbered.
+
+**What I changed:**
+
+- `bot.done` now queries Recall's `/audio_mixed/` endpoint directly to check the actual audio status before marking failed. Only `failed` or `missing` produce a status update; `done`, `processing`, and `unknown` (transient API blip) defer to the audio_mixed handler.
+- added a `getAudioMixedStatus()` helper in `_shared/recall-pipeline.ts` for this check.
+
+**Why this matters:** webhook race conditions are essentially unreproducible in a single-invocation `supabase functions serve` environment. They only appear in production at concurrent invocation boundaries, which is also why they took two days to surface. The fix was small; the diagnostic work was the engineering.
+
+### 15. The `transcribing` status sentinel deadlocked Sarvam recovery
+
+**Problem:** when `check-recall-status` detected that Sarvam was done but our webhook hadn't been received, it tried to re-fire `sarvam-webhook` directly. The webhook then refused to do anything because the meeting was already in `transcribing` status — the meeting got permanently stuck.
+
+**Why it happened:** two handlers, written on different days, were communicating through the same string column with conflicting meanings. `check-recall-status` set `status = 'transcribing'` as an optimistic lock to prevent two concurrent polls both firing the webhook. `sarvam-webhook` had `'transcribing'` in its idempotency-skip list (added earlier to protect the Whisper-fallback path from being re-entered while Whisper was running). The lock and the skip-guard collided.
+
+**What I changed:**
+
+- added a dedicated `meetings.sarvam_webhook_triggered_at TIMESTAMPTZ` column and migrated to it as the lock primitive.
+- `check-recall-status` now claims the trigger via `.is("sarvam_webhook_triggered_at", null)` instead of touching `status`. The lock is released on webhook failure so future polls can retry.
+- `sarvam-webhook`'s `'transcribing'` skip-guard is preserved unchanged (still protects the Whisper fallback path).
+
+**Why this matters:** this is a textbook anti-pattern: handler-to-handler communication through a shared string column with no enforced semantics. Two well-intentioned authors, two valid uses of the same value, one bug. Replacing the implicit shared meaning with an explicit dedicated column is the structural fix.
+
+### 16. The `meetings.error_message` column didn't exist, so every failure path silently no-op'd
+
+**Problem:** when a bot was kicked from a waiting room, when audio_mixed failed, when any other failure path triggered — meetings stayed stuck in `processing` or whatever their previous state was. The frontend spun forever showing "Processing".
+
+**Why it happened:** four edge functions wrote `error_message` to the `meetings` table on every failure. The column had been referenced in TypeScript types and frontend UI but **never added to the database schema**. PostgREST silently rejects the entire UPDATE when any column is invalid — so `status: "failed"` never persisted either, because it was being submitted in the same statement as the bad column. The Supabase JS client doesn't throw on PostgREST errors unless you check `.error`, which none of the call sites did.
+
+**What I changed:**
+
+- added migration `20260424170000_meetings_error_message.sql` to create the column.
+- the failure paths now succeed; meetings transition to `failed` correctly with a user-readable error message.
+- the pipeline test harness now covers two scenarios that exercise these failure paths (`audio_mixed_failed_marks_meeting_failed`, `bot_kicked_waiting_room`) and would have caught this bug in seconds.
+
+**Why this matters:** the pipeline harness actually found this bug — it had been silently broken for weeks before. Without an automated test that asserts status actually changes after a failure-path UPDATE, this bug class is genuinely invisible.
+
+### 17. Speaker mapping created phantom `SPEAKER_01` entries for solo meetings
+
+**Problem:** in single-participant meetings, transcripts were split between the real participant name and `SPEAKER_01`. The frontend rendered two speakers when there was only one.
+
+**Why it happened:** Sarvam's diarization in translate mode often labels everyone as `speaker_id: 0`, so we mapped speakers using Recall's per-utterance timeline as the source of truth. But Recall's speech detection has a confidence threshold — short utterances ("hmm", "this", a cough) get transcribed by Sarvam but fall outside any Recall `speech_on`/`speech_off` window. Those segments had no Recall name to map to, so they fell back to the synthetic `SPEAKER_XX` label.
+
+**What I changed:**
+
+- added a single-participant fast path: when `recall_participants.length === 1`, every Sarvam segment is attributed to that one participant regardless of timeline overlap.
+- for multi-participant meetings, added a nearest-neighbor fallback (closest Recall timeline entry by midpoint distance) so we never produce phantom acoustic labels when any Recall name is available.
+
+**Why this matters:** the assumption that "no overlap means we don't know who spoke" was wrong when context obviously identifies the speaker. A small product-aware adjustment to the mapping logic eliminates an entire class of incorrect speaker attribution.
+
+### 18. Speaker diarization returned generic labels instead of real participant names
 
 **Problem:** meeting transcripts showed "SPEAKER_00" and "SPEAKER_01" instead of actual participant names like "Amaan" or "Priya", making transcripts hard to follow.
 
@@ -591,8 +659,43 @@ The migration history shows the product growing over time:
 - multi-calendar support
 - onboarding and delivery tracking
 - digest reporting
+- atomic webhook trigger lock + missing `error_message` column (April 2026 reliability sprint)
+- `monitor_events` audit table + pg_cron scheduled stuck-meeting monitor
 
 This is useful signal to recruiters because it shows iterative engineering, not one-shot scaffolding.
+
+### Operational Reliability
+
+After hitting a streak of timing-related production bugs in the webhook pipeline (covered in Engineering Challenges #11 and #14–17), the project added two pieces of operational infrastructure that turn flakiness from "users notice" into "automatically detected and recovered":
+
+**Pipeline test harness** ([`scripts/pipeline-test/harness.py`](scripts/pipeline-test/harness.py))
+
+A self-contained Python script that exercises the real deployed edge functions against the real database in ~90 seconds. It creates `[harness]`-prefixed test meetings, fires real signed webhooks at `recall-webhook`, `sarvam-webhook`, and `check-recall-status`, polls for expected end-state, and cleans up — even on failure. Eight scenarios:
+
+| Scenario | What it protects against |
+|---|---|
+| `happy_path_sarvam` | end-to-end flow: webhook → transcript → insights → completed |
+| `bot_done_defers_on_unknown_audio` | the bot.done race overwriting good meetings |
+| `audio_mixed_failed_marks_meeting_failed` | failure paths actually persist to DB (the missing-column bug) |
+| `bot_kicked_waiting_room` | waiting-room-kicked bots transition to `failed` |
+| `duplicate_sarvam_webhook_idempotency` | replayed Sarvam callbacks don't re-process |
+| `concurrent_sarvam_webhooks` | two parallel callbacks don't double-insert |
+| `monitor_recovers_known_pattern` | monitor classifies + attempts canonical recovery |
+| `monitor_logs_unknown_pattern` | monitor flags new error signatures + emails admin |
+
+Run before every deploy. The harness has already caught two real prod bugs that would have hit users (the `error_message` column being missing, the `transcribing` deadlock).
+
+**Stuck-meeting monitor** (`supabase/functions/monitor-stuck-meetings/`)
+
+Scheduled via `pg_cron` to run every 5 minutes. For every meeting in a non-terminal status older than 15 minutes, it:
+
+1. Classifies the failure into a signature (e.g. `stuck:processing:sarvam_keyerror`, `stuck:transcribing:whisper_died`)
+2. Looks up the canonical recovery action in `KNOWN_PATTERNS` (mirrors [`errors.md`](errors.md))
+3. Attempts the recovery (`force_whisper`, `trigger_sarvam_webhook`, `check_recall_status`, `mark_failed`)
+4. Logs the detection to `monitor_events` with hourly dedup
+5. Emails `amaan@oltaflock.ai` via Resend if recovery fails OR the signature is unrecognized (subject prefix `[ECHOBRIEF NEW ERROR]`)
+
+The pairing of a curated runbook (`errors.md`) with a programmatic mirror (`known-patterns.ts`) means every error pattern has both a human-readable diagnosis and an automated recovery path. New error patterns surface as `[ECHOBRIEF NEW ERROR]` emails so the runbook stays in sync with reality.
 
 ---
 
