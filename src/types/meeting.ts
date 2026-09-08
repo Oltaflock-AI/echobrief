@@ -279,3 +279,19 @@ export interface Contact {
   account_brief: AccountBrief | null;
   account_brief_at: string | null;
 }
+
+/**
+ * A `meetings` row from PostgREST, read as our domain type.
+ *
+ * Every jsonb column generates as `Json`, and TypeScript refuses to compare
+ * `Json` against a declared shape when it sits inside a larger object, so the
+ * assertion has to pass through `unknown`. That assertion is a real assumption
+ * — that `boundaries`, `attendees`, `languages` and `processing_config` hold
+ * what the pipeline writes — and it belongs in one reviewed place rather than
+ * at each of the six reads that need it.
+ */
+export const asMeeting = (row: unknown): Meeting => row as Meeting;
+export const asMeetings = (rows: unknown[]): Meeting[] => rows as Meeting[];
+
+/** A `contacts` row, read as our domain type. See {@link asMeeting}. */
+export const asContacts = (rows: unknown[]): Contact[] => rows as Contact[];

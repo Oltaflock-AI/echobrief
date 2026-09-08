@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { Building2, Check, Copy, Link2, Loader2, Trash2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -16,7 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { formatIST } from '@/lib/time';
 
 // meeting_shares post-dates the generated types.
-const db = supabase as unknown as SupabaseClient;
+const db = supabase;
 
 interface Share {
   id: string;

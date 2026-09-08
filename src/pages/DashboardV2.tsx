@@ -31,7 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { GoogleReconnectBanner } from "@/components/dashboard/GoogleReconnectBanner";
 import { ListSkeleton } from "@/components/dashboard/ListSkeleton";
-import { Meeting } from "@/types/meeting";
+import { Meeting, asMeetings } from "@/types/meeting";
 import {
   Avatar, Badge, Card, CardHeader, Chip, DarkPanel, Divider, PageHeader, StatTile, TwoColumn,
 } from "@/ui";
@@ -144,7 +144,7 @@ export default function DashboardV2() {
         .not("status", "in", `(${[...HIDDEN_STATUSES].join(",")})`)
         .order("start_time", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Meeting[];
+      return asMeetings(data ?? []);
     },
   });
 
@@ -181,7 +181,7 @@ export default function DashboardV2() {
         .gte("start_time", since)
         .order("start_time", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Meeting[];
+      return asMeetings(data ?? []);
     },
   });
 

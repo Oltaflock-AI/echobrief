@@ -15,7 +15,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Check, ExternalLink, Loader2 } from 'lucide-react';
@@ -50,7 +49,7 @@ interface Usage {
 // `usage_events` and `profiles.plan_override` post-date the generated types in
 // src/integrations/supabase/types.ts. Same escape hatch Contacts.tsx uses for
 // `contacts`; regenerating the types is a separate chore.
-const db = supabase as unknown as SupabaseClient;
+const db = supabase;
 
 const STATUS_LABELS: Record<string, string> = {
   none: 'No subscription',

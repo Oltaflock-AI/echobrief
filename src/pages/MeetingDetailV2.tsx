@@ -26,7 +26,7 @@ import { RecordingPlayer } from '@/components/meeting/RecordingPlayer';
 import { RecordingPanelV2, PanelTopic } from '@/components/meeting/RecordingPanelV2';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Meeting, Transcript, MeetingInsights, StrategicInsight, SpeakerHighlight, ActionItem, FollowUp, TimelineEntry, MeetingFacts, CoachingReport, CoachingVerdict, CoachingFlag } from '@/types/meeting';
+import { Meeting, asMeeting, Transcript, MeetingInsights, StrategicInsight, SpeakerHighlight, ActionItem, FollowUp, TimelineEntry, MeetingFacts, CoachingReport, CoachingVerdict, CoachingFlag } from '@/types/meeting';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -417,7 +417,7 @@ export default function MeetingDetailV2() {
 
       if (!meetingData) return null;
 
-      const meeting = meetingData as Meeting;
+      const meeting = asMeeting(meetingData);
       let attendees: Attendee[] = [];
       if (meetingData.attendees && Array.isArray(meetingData.attendees)) {
         attendees = meetingData.attendees as unknown as Attendee[];

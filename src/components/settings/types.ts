@@ -12,7 +12,6 @@ export interface Profile {
   google_calendar_connected: boolean;
   google_needs_reconnect: boolean | null;
   email_summaries_enabled: boolean | null;
-  recording_preference: 'audio_only' | 'audio_video';
   custom_vocabulary: string[] | null;
   webhook_url: string | null;
   webhook_secret: string | null;

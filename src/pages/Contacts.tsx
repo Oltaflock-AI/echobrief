@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { ArrowLeft, Building2, Loader2, Mail, RefreshCw, Search, Sparkles, Users } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,12 +12,13 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import type { AccountBrief, Contact, FactCommitment, FactNumber, MeetingFacts } from '@/types/meeting';
+import { asContacts } from '@/types/meeting';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 // contacts / meeting_contacts postdate the generated Database types, so they
 // are read through an untyped handle and shaped locally. RLS scopes the rows.
-const db = supabase as unknown as SupabaseClient;
+const db = supabase;
 
 interface InsightsRow {
   summary_short: string | null;
@@ -87,7 +87,7 @@ export default function Contacts() {
         .eq('user_id', user!.id)
         .order('last_seen_at', { ascending: false, nullsFirst: false });
       if (error) throw error;
-      return (data ?? []) as Contact[];
+      return asContacts(data ?? []);
     },
   });
 

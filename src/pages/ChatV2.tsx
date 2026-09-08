@@ -21,8 +21,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowUp, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
+import type { Json } from '@/integrations/supabase/types';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -31,7 +31,7 @@ import { Card } from '@/ui';
 import { cn } from '@/lib/utils';
 
 // chat_conversations and chat_messages postdate the generated Database types.
-const db = supabase as unknown as SupabaseClient;
+const db = supabase;
 
 interface Citation {
   meeting_id: string;
@@ -163,7 +163,7 @@ export default function ChatV2() {
       user_id: user.id,
       role,
       content,
-      citations,
+      citations: citations as unknown as Json,
       truncated,
     });
     await db.from('chat_conversations').update({ updated_at: new Date().toISOString() }).eq('id', convId);

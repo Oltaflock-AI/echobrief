@@ -14,7 +14,6 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { CalendarCheck, MessageCircle, Percent, ShieldCheck, Sparkles } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { ListSkeleton } from '@/components/dashboard/ListSkeleton';
@@ -37,7 +36,7 @@ import { Badge, Card, DarkPanel, PageHeader, StatTile, TwoColumn } from '@/ui';
 
 // meeting_insights.coaching postdates the generated Database types, so the join
 // is read through an untyped handle and shaped locally. RLS scopes the rows.
-const db = supabase as unknown as SupabaseClient;
+const db = supabase;
 
 /** Sparkline over the weekly trend — flat line when there is nothing to plot. */
 function Spark({ points, tone }: { points: (number | null)[]; tone: 'accent' | 'green' }) {

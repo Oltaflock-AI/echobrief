@@ -9,7 +9,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Calendar, Loader2, Mail, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { SlackCard } from './SlackCard';
@@ -60,7 +59,7 @@ export function IntegrationsPanel({ profile, setProfile }: PanelProps) {
   const loadMicrosoft = useCallback(async () => {
     if (!user) return;
     // RLS scopes this to the caller; tokens are never selected.
-    const { data } = await (supabase as unknown as SupabaseClient)
+    const { data } = await supabase
       .from('calendar_connections')
       .select('provider, needs_reconnect')
       .eq('user_id', user.id)

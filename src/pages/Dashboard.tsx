@@ -10,7 +10,7 @@ import { GoogleReconnectBanner } from '@/components/dashboard/GoogleReconnectBan
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { Meeting } from '@/types/meeting';
+import { Meeting, asMeetings } from '@/types/meeting';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -116,7 +116,7 @@ export default function Dashboard() {
         .not('status', 'in', `(${[...HIDDEN_STATUSES].join(',')})`)
         .order('start_time', { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Meeting[];
+      return asMeetings(data ?? []);
     },
   });
 
@@ -153,7 +153,7 @@ export default function Dashboard() {
         .gte('start_time', since)
         .order('start_time', { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Meeting[];
+      return asMeetings(data ?? []);
     },
   });
 

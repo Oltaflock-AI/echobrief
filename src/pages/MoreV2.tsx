@@ -26,7 +26,6 @@ import {
   Target,
   Users,
 } from 'lucide-react';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatIST } from '@/lib/time';
@@ -34,7 +33,7 @@ import { fetchUsageMeter, planLabel, type UsageMeter } from '@/lib/usageMeter';
 import { Avatar, Badge, Card, Label as EbLabel } from '@/ui';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 
-const db = supabase as unknown as SupabaseClient;
+const db = supabase;
 
 interface HubState {
   fullName: string | null;

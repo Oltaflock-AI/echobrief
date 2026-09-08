@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { CalendarCheck, MessageCircle, Percent, ShieldCheck, Target } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,7 +11,7 @@ import type { CoachingReport } from '@/types/meeting';
 
 // meeting_insights.coaching postdates the generated Database types, so the
 // join is read through an untyped handle and shaped locally. RLS scopes rows.
-const db = supabase as unknown as SupabaseClient;
+const db = supabase;
 
 const WINDOW_DAYS = 90;
 

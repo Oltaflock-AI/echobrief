@@ -1,13 +1,16 @@
 import { useState } from 'react';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { Download, Loader2 } from 'lucide-react';
 import { Button, Section } from '@/ui';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
 // `contacts` and `usage_events` post-date the generated types; same escape
 // hatch Contacts.tsx and BillingCard.tsx use.
+// The one place that stays on an untyped client: six generated query types in
+// a single Promise.all exceed TypeScript's instantiation depth, and the export
+// dumps every row verbatim without reading a field, so the types buy nothing.
 const db = supabase as unknown as SupabaseClient;
 
 /**

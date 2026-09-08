@@ -22,7 +22,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, ChevronRight, Loader2, Mail, RefreshCw, Search, Sparkles, Users } from 'lucide-react';
 import { formatIST } from '@/lib/time';
-import { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -37,7 +36,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 // `contacts` and `meeting_contacts` are missing from the checked-in generated
 // types (they are ~40 tables behind the deployed schema), so these reads go
 // through an untyped client the way Contacts.tsx does.
-const db = supabase as unknown as SupabaseClient;
+const db = supabase;
 
 interface InsightsRow {
   summary_short: string | null;
