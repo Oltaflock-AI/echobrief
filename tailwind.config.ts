@@ -212,6 +212,7 @@ export default {
         pill: "var(--eb-r-pill)",
         card: "var(--eb-r-card)",
         input: "var(--eb-r-input)",
+        "input-lg": "var(--eb-r-input-lg)",
         tile: "var(--eb-r-tile)",
         code: "var(--eb-r-code)",
       },

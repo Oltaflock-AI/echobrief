@@ -78,6 +78,18 @@
     "control-edge": {
       "hex": "#CFC6BC",
       "role": "Unchecked checkbox / radio border"
+    },
+    "auth-panel-1": {
+      "hex": "#F8F3EE",
+      "role": "Auth brand panel gradient, top stop"
+    },
+    "auth-panel-2": {
+      "hex": "#F5EDE6",
+      "role": "Auth brand panel gradient, middle stop"
+    },
+    "auth-panel-3": {
+      "hex": "#F3E6DD",
+      "role": "Auth brand panel gradient, bottom stop"
     }
   },
   "text": {

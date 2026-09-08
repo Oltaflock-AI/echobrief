@@ -1058,6 +1058,10 @@
   --eb-control-edge: #CFC6BC;  /* unchecked checkbox border */
   --eb-sidebar: #1F1B18;
   --eb-sidebar-raised: #2A2521;
+  /* auth brand panel gradient, top → bottom */
+  --eb-auth-panel-1: #F8F3EE;
+  --eb-auth-panel-2: #F5EDE6;
+  --eb-auth-panel-3: #F3E6DD;
 
   /* text */
   --eb-text: #1C1917;
@@ -1103,6 +1107,7 @@
   --eb-r-pill: 999px;
   --eb-r-card: 14px;
   --eb-r-input: 9px;
+  --eb-r-input-lg: 12px;       /* inputs inside dialogs and on auth */
   --eb-r-tile: 9px;
   --eb-r-code: 10px;
 

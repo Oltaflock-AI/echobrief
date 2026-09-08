@@ -18,6 +18,7 @@ import { PreMeetingNotification } from "@/components/dashboard/PreMeetingNotific
 // the meeting detail page and the charting library) before anything rendered.
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
+import AuthV2 from "./pages/AuthV2";
 import NotFound from "./pages/NotFound";
 
 const Onboarding = lazy(() => import("./pages/Onboarding"));
@@ -89,7 +90,7 @@ function AppRoutes() {
     return (
       <Suspense fallback={<RouteFallback />}>
         <Routes>
-          <Route path="*" element={<Auth />} />
+          <Route path="*" element={<V2Route v1={<Auth />} v2={<AuthV2 />} />} />
         </Routes>
       </Suspense>
     );
@@ -100,7 +101,7 @@ function AppRoutes() {
       <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
-        <Route path="/auth" element={<Auth />} />
+        <Route path="/auth" element={<V2Route v1={<Auth />} v2={<AuthV2 />} />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<Terms />} />
