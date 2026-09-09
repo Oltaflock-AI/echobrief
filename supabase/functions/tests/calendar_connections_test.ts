@@ -251,3 +251,17 @@ Deno.test("a provider error is reported, not thrown", async () => {
     globalThis.fetch = original;
   }
 });
+
+Deno.test("extractMeetingLink finds a Zoom tenant link in the location field", () => {
+  // The real event that shipped as "In person": sync-google-calendar had a
+  // regex requiring zoom.us straight after the scheme, so us05web.zoom.us in
+  // `location` matched nothing and the card had no link to show.
+  const url = "https://us05web.zoom.us/j/88551178650?pwd=byjGPryJ5aFzUaBiIAW0WhIGvnvcW6.1";
+  assertEquals(extractMeetingLink([undefined, undefined, url, null]), url);
+});
+
+Deno.test("extractMeetingLink reads a Zoom link out of an HTML anchor description", () => {
+  const url = "https://us05web.zoom.us/j/88551178650?pwd=byjGPryJ5aFzUaBiIAW0WhIGvnvcW6.1";
+  const description = `<a href="${url}" target="_blank">https://us05web.zoom.us/j/<wbr />88551178650</a><br>`;
+  assertEquals(extractMeetingLink([null, null, null, description]), url);
+});

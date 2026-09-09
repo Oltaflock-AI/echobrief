@@ -3,31 +3,23 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
 import { pickChangedEvents } from "../_shared/calendar-diff.ts";
 import { openGoogleTokens, sealGoogleTokens } from "../_shared/oauth-tokens.ts";
+import { extractMeetingLink } from "../_shared/calendar-connections.ts";
 
 function extractMeetingUrl(event: Record<string, unknown>): string | null {
   const conferenceData = event.conferenceData as
     | { entryPoints?: { entryPointType?: string; uri?: string }[] }
     | undefined;
-  if (conferenceData?.entryPoints) {
-    const videoEntry = conferenceData.entryPoints.find(
-      (e) => e.entryPointType === "video",
-    );
-    if (videoEntry?.uri) return videoEntry.uri;
-  }
-  if (typeof event.hangoutLink === "string") return event.hangoutLink;
-  if (typeof event.location === "string") {
-    const m = event.location.match(
-      /https?:\/\/(meet\.google\.com|zoom\.us|teams\.microsoft\.com|webex\.com)[^\s]*/i,
-    );
-    if (m) return m[0];
-  }
-  if (typeof event.description === "string") {
-    const m = event.description.match(
-      /https?:\/\/(meet\.google\.com|zoom\.us|teams\.microsoft\.com|webex\.com)[^\s<"]*/i,
-    );
-    if (m) return m[0];
-  }
-  return null;
+  const videoEntry = conferenceData?.entryPoints?.find(
+    (e) => e.entryPointType === "video",
+  );
+  // One shared matcher: it accepts tenant subdomains (us05web.zoom.us) and
+  // refuses lookalike hosts, which the local regex this replaced did neither of.
+  return extractMeetingLink([
+    videoEntry?.uri,
+    event.hangoutLink as string | undefined,
+    event.location as string | undefined,
+    event.description as string | undefined,
+  ]);
 }
 
 serve(async (req) => {
@@ -286,7 +278,7 @@ serve(async (req) => {
               start_time: event.start?.dateTime || event.start?.date,
               end_time: event.end?.dateTime || event.end?.date,
               location: event.location,
-              meeting_link: event.hangoutLink || event.conferenceData?.entryPoints?.[0]?.uri,
+              meeting_link: extractMeetingUrl(event),
               organizer_name: event.organizer?.displayName,
               organizer_email: event.organizer?.email,
               attendees: event.attendees || [],
