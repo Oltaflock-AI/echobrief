@@ -14,6 +14,11 @@
  *    directions.
  *  - Slack and Zoho are rows inside Delivery and CRM rather than cards of their
  *    own, because a card inside a card is the one thing DESIGN_SPEC §5 forbids.
+ *
+ * Below md the page follows mockup 13: an Accounts group above Calendars, and
+ * every account-level action as a 30px chip on a second line under its row
+ * rather than a full-width button stacked inside it. Desktop keeps the button
+ * row it already had.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -22,6 +27,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Badge, BrandTile, Button, EmailTile, Section, Select, Toggle } from "@/ui";
+import { cn } from "@/lib/utils";
 import type { Profile } from "./types";
 
 interface PanelProps {
@@ -35,6 +41,7 @@ type CalendarRow = {
   email: string;
   is_active: boolean;
   is_primary: boolean;
+  provider: string;
 };
 
 type SlackStatus = {
@@ -71,7 +78,7 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
     if (!user) return;
     const { data, error } = await supabase
       .from("calendars")
-      .select("id, email, calendar_name, is_primary, is_active")
+      .select("id, email, calendar_name, is_primary, is_active, provider")
       .eq("user_id", user.id)
       .order("is_primary", { ascending: false });
     if (error || !data) return;
@@ -82,6 +89,7 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
         email: String(cal.email || ""),
         is_active: cal.is_active !== false,
         is_primary: !!cal.is_primary,
+        provider: String(cal.provider || "google"),
       })),
     );
   }, [user]);
@@ -267,10 +275,119 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const disconnectSlack = () => {
+    void callSlack({ action: "disconnect" })
+      .then(() => {
+        setSlack({ connected: false });
+        setSlackChannels(null);
+        toast({ title: "Slack disconnected" });
+      })
+      .catch((error: Error) =>
+        toast({ title: "Could not disconnect", description: error.message, variant: "destructive" }),
+      );
+  };
+
   const googleConnected = !!profile?.google_calendar_connected || calendars.length > 0;
+  const googleAccount = calendars.find((c) => c.provider === "google" && c.is_primary) ?? calendars[0];
+  const accountEmails = new Set(calendars.map((c) => c.email).filter(Boolean));
+
+  /**
+   * Provider, then what kind of calendar it is — never the raw id.
+   *
+   * Google encodes that in the address it gives a calendar: a public feed you
+   * subscribed to (holidays, sports) lives at `@group.v.calendar.google.com`,
+   * a calendar someone shared with you at `@group.calendar.google.com`, and
+   * your own calendars carry an actual account address. That is why the first
+   * version of this row printed
+   * `c_9d2520a97bb284e18607cd1467def241748a222abf73139ba6509da7d7f13def@group.calendar.google.com`
+   * at a reader: the id was being shown where the answer already was.
+   */
+  const calendarSubtitle = (cal: CalendarRow) => {
+    const provider = cal.provider === "microsoft" ? "Outlook" : "Google";
+    const address = cal.email ?? "";
+    // Any address Google generated for a calendar rather than for a person.
+    const generated = /\.calendar\.google\.com$/.test(address);
+    const parts = [provider];
+    if (/@(group\.v|import)\.calendar\.google\.com$/.test(address)) parts.push("subscribed");
+    else if (address.endsWith("@group.calendar.google.com")) parts.push("shared");
+    else if (cal.is_primary) parts.push("primary");
+    // Name the account only when more than one is connected, and never with an
+    // id: an address the reader cannot recognise says less than nothing.
+    else if (accountEmails.size > 1 && address && !generated) parts.push(address);
+    return parts.join(" · ");
+  };
 
   return (
     <>
+      {/* Mockup 13, below md only: the accounts themselves, then their calendars. */}
+      {(googleConnected || microsoft?.connected) && (
+        <Section title="Accounts" className="md:hidden">
+          <div className="-mx-5 -mt-2">
+            {googleConnected && (
+              <div className="border-b border-eb-divider px-5 py-3 last:border-0">
+                <div className="flex items-center gap-3">
+                  <BrandTile brand="gcal" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-dmsans text-sm font-medium">Google</span>
+                      <Badge tone={profile?.google_needs_reconnect ? "amber" : "green"} dot>
+                        {profile?.google_needs_reconnect ? "Reconnect" : "Connected"}
+                      </Badge>
+                    </div>
+                    <div className="truncate font-dmsans text-[12.5px] text-eb-secondary">
+                      {googleAccount?.email || profile?.email || user?.email}
+                      {calendars.length > 0 &&
+                        ` · ${calendars.length} calendar${calendars.length === 1 ? "" : "s"}`}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2.5 flex flex-wrap gap-2 pl-[48px]">
+                  <ChipButton
+                    onClick={() => startOAuth("google-oauth-start", setConnectingGoogle, "Google")}
+                    disabled={connectingGoogle}
+                  >
+                    {profile?.google_needs_reconnect ? "Reconnect" : "Add calendar"}
+                  </ChipButton>
+                  <ChipButton danger onClick={disconnectGoogle}>
+                    Revoke access
+                  </ChipButton>
+                </div>
+              </div>
+            )}
+
+            {microsoft?.connected && (
+              <div className="px-5 py-3">
+                <div className="flex items-center gap-3">
+                  <BrandTile brand="outlook" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-dmsans text-sm font-medium">Outlook</span>
+                      <Badge tone={microsoft.needsReconnect ? "amber" : "green"} dot>
+                        {microsoft.needsReconnect ? "Reconnect" : "Connected"}
+                      </Badge>
+                    </div>
+                    <div className="truncate font-dmsans text-[12.5px] text-eb-secondary">
+                      Microsoft 365
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2.5 flex flex-wrap gap-2 pl-[48px]">
+                  <ChipButton
+                    onClick={() => startOAuth("microsoft-oauth-start", setConnectingMicrosoft, "Outlook")}
+                    disabled={connectingMicrosoft}
+                  >
+                    Reconnect
+                  </ChipButton>
+                  <ChipButton danger onClick={disconnectMicrosoft}>
+                    Disconnect
+                  </ChipButton>
+                </div>
+              </div>
+            )}
+          </div>
+        </Section>
+      )}
+
       <Section
         title="Calendars"
         description="EchoBrief watches these calendars and sends the bot to meetings with a video link."
@@ -290,7 +407,7 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
                     <Badge tone="green" dot>Connected</Badge>
                   </div>
                   <div className="truncate font-dmsans text-[12.5px] text-eb-secondary">
-                    {cal.email} · Google
+                    {calendarSubtitle(cal)}
                   </div>
                 </div>
                 <Toggle
@@ -302,7 +419,7 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
             ))}
 
             {microsoft?.connected && (
-              <div className="flex items-center gap-3 border-b border-eb-divider px-5 py-3 last:border-0">
+              <div className="hidden items-center gap-3 border-b border-eb-divider px-5 py-3 last:border-0 md:flex">
                 <BrandTile brand="outlook" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -335,7 +452,7 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
           </div>
         )}
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 hidden flex-wrap gap-2 md:flex">
           <Button
             onClick={() => startOAuth("google-oauth-start", setConnectingGoogle, "Google")}
             disabled={connectingGoogle}
@@ -399,21 +516,11 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
                     : "Not connected"}
                 </div>
               </div>
-              <div className="flex flex-none items-center gap-2">
+              <div className="hidden flex-none items-center gap-2 md:flex">
                 {slack?.connected && (
                   <Button
                     size="sm"
-                    onClick={() => {
-                      void callSlack({ action: "disconnect" })
-                        .then(() => {
-                          setSlack({ connected: false });
-                          setSlackChannels(null);
-                          toast({ title: "Slack disconnected" });
-                        })
-                        .catch((error: Error) =>
-                          toast({ title: "Could not disconnect", description: error.message, variant: "destructive" }),
-                        );
-                    }}
+                    onClick={disconnectSlack}
                   >
                     Disconnect
                   </Button>
@@ -429,6 +536,17 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
                 </Button>
               </div>
             </div>
+
+            {slack?.connected && (
+              <div className="mt-2.5 flex flex-wrap gap-2 pl-[48px] md:hidden">
+                <ChipButton onClick={loadSlackChannels}>
+                  {slack.channel_name ? "Change channel" : "Choose a channel"}
+                </ChipButton>
+                <ChipButton danger onClick={disconnectSlack}>
+                  Disconnect
+                </ChipButton>
+              </div>
+            )}
 
             {slack?.connected && (
               <div className="mt-3 flex items-center gap-2 pl-[48px]">
@@ -460,7 +578,7 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
                     ))}
                   </Select>
                 ) : (
-                  <Button size="sm" onClick={loadSlackChannels}>
+                  <Button size="sm" className="hidden md:inline-flex" onClick={loadSlackChannels}>
                     {slack.channel_name ? "Change channel" : "Choose a channel"}
                   </Button>
                 )}
@@ -483,11 +601,14 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
                 {zoho?.connected ? (zoho.needs_reconnect ? "Needs reconnect" : "Connected") : "Not connected"}
               </Badge>
             </div>
-            <div className="font-dmsans text-[12.5px] text-eb-secondary">
+            <div className="font-dmsans text-[12.5px] text-eb-secondary max-md:hidden">
               Matches attendees by email. Attaches a note when insights are ready — never creates or edits a record.
             </div>
+            <div className="font-dmsans text-[12.5px] leading-[1.45] text-eb-secondary md:hidden">
+              Logs meetings to contacts and deals
+            </div>
           </div>
-          <div className="flex flex-none items-center gap-2">
+          <div className="hidden flex-none items-center gap-2 md:flex">
             {zoho?.connected && (
               <>
                 <Button
@@ -529,8 +650,86 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
               {zoho?.connected ? "Reconnect" : "Connect"}
             </Button>
           </div>
+
+          {/* Below md: a 34px Connect on the row, and the rest as chips under it. */}
+          <Button
+            variant={zoho?.connected ? "secondary" : "primary"}
+            size="sm"
+            disabled={connectingZoho}
+            className="h-[34px] flex-none md:hidden"
+            onClick={() => startOAuth("zoho-oauth-start", setConnectingZoho, "Zoho")}
+          >
+            {connectingZoho && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {zoho?.connected ? "Reconnect" : "Connect"}
+          </Button>
         </div>
+
+        {zoho?.connected && (
+          <div className="mt-2.5 flex flex-wrap gap-2 pl-[48px] md:hidden">
+            <ChipButton
+              onClick={() => {
+                void callZoho({ action: "test" })
+                  .then(() => toast({ title: "Zoho connection is healthy" }))
+                  .catch((error: Error) =>
+                    toast({ title: "Zoho check failed", description: error.message, variant: "destructive" }),
+                  );
+              }}
+            >
+              Test
+            </ChipButton>
+            <ChipButton
+              danger
+              onClick={() => {
+                void callZoho({ action: "disconnect" })
+                  .then(() => {
+                    setZoho({ connected: false });
+                    toast({ title: "Zoho CRM disconnected" });
+                  })
+                  .catch((error: Error) =>
+                    toast({ title: "Could not disconnect", description: error.message, variant: "destructive" }),
+                  );
+              }}
+            >
+              Disconnect
+            </ChipButton>
+          </div>
+        )}
       </Section>
     </>
+  );
+}
+
+/**
+ * A 30px account-level action — mockup 13. These sit on a second line under
+ * the account they act on: three full-width buttons stacked inside a list row
+ * read as three separate settings rather than as one account's options.
+ */
+function ChipButton({
+  children,
+  onClick,
+  disabled,
+  danger,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex h-[30px] items-center gap-1.5 rounded-pill border bg-white px-3",
+        "font-dmsans text-[12.5px] font-medium shadow-eb-btn transition-colors",
+        "disabled:opacity-50 disabled:pointer-events-none",
+        danger
+          ? "border-eb-red-border text-eb-red hover:bg-eb-red-bg"
+          : "border-eb-border text-eb-text hover:bg-eb-row-hover",
+      )}
+    >
+      {children}
+    </button>
   );
 }
