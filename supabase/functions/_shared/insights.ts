@@ -1,5 +1,8 @@
 import OpenAI from "https://esm.sh/openai@4.20.1";
 import { resolveAllowlistedRecipients } from "./summary-recipients.ts";
+// The labeled-transcript formatter lives in anchor.ts, so facts.ts can use it
+// without importing this module back (that would be a cycle).
+import { formatClock, formatLabeledTranscript } from "./anchor.ts";
 import {
   extractFacts,
   MeetingFacts,
@@ -72,31 +75,8 @@ function emptyInsights() {
   };
 }
 
-/** `[m:ss]` clock used in the transcript we send to the model. */
-export function formatClock(seconds: number): string {
-  const total = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `[${m}:${String(s).padStart(2, "0")}]`;
-}
-
-/**
- * Timestamped, speaker-labeled transcript. Fireflies/Read.ai chapter times
- * are only as good as the times in the source; without them the model guesses.
- */
-export function formatLabeledTranscript(
-  segments: SpeakerSegment[],
-  fallback: string,
-): string {
-  if (!Array.isArray(segments) || segments.length === 0) return fallback;
-  return segments
-    .map((s) => {
-      const start = Number(s.start);
-      const clock = Number.isFinite(start) ? `${formatClock(start)} ` : "";
-      return `${clock}${s.speaker || "Unknown"}: ${s.text ?? ""}`.trimEnd();
-    })
-    .join("\n");
-}
+// Re-exported because every call site has always imported it from here.
+export { formatClock, formatLabeledTranscript };
 
 /** Snap a model timestamp onto the nearest real segment start. */
 export function snapTimestamp(raw: unknown, segments: SpeakerSegment[]): number {
@@ -543,7 +523,7 @@ export async function generateInsights(
   let facts: MeetingFacts | null = null;
   let normalized: Record<string, any> | null = null;
   try {
-    facts = await extractFacts(openai, meeting, labeled, options.vocabulary ?? []);
+    facts = await extractFacts(openai, meeting, labeled, options.vocabulary ?? [], speakerSegments);
     const synth = await synthesizeFromFacts(openai, meeting, facts, options.summaryLanguage);
     normalized = assembleInsights(facts, synth, speakerSegments);
     if (!normalized.summary_short) {
