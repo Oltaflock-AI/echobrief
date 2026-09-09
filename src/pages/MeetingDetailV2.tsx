@@ -18,7 +18,7 @@ import { formatIST } from '@/lib/time';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
-import { EmailReportSelector } from '@/components/dashboard/EmailReportSelector';
+import { EmailReportDialogV2 } from '@/components/meeting/EmailReportDialogV2';
 import { MeetingMetrics } from '@/components/meeting/MeetingMetrics';
 import { ShareLinkDialogV2 } from '@/components/meeting/ShareLinkDialogV2';
 import { InsightSection, InsightItem } from '@/components/meeting/InsightSection';
@@ -597,11 +597,12 @@ export default function MeetingDetailV2() {
         }),
       });
       const data = await response.json();
-      if (data.success) {
-        toast({ title: 'Sent', description: `Report sent to ${emailAddress}` });
-      } else throw new Error(data.error || 'Failed to send');
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message || 'Failed to send email', variant: 'destructive' });
+      if (!data.success) throw new Error(data.error || 'Failed to send');
+      toast({ title: 'Sent', description: `Report sent to ${emailAddress}` });
+    } catch (error: unknown) {
+      // Rethrown so the dialog stays open on failure: swallowing it here left
+      // the dialog closing on a send that never happened.
+      throw error instanceof Error ? error : new Error('Failed to send email');
     }
   };
 
@@ -952,11 +953,13 @@ export default function MeetingDetailV2() {
         )}
       </div>
 
-      <EmailReportSelector
+      <EmailReportDialogV2
         open={emailDialogOpen}
         onOpenChange={setEmailDialogOpen}
         meetingTitle={meeting.title}
+        meetingDate={meeting.start_time ? formatIST(new Date(meeting.start_time), 'EEE, MMM d') : undefined}
         userEmail={user?.email || undefined}
+        attendees={attendees}
         onSend={handleSendEmail}
       />
       <ShareLinkDialogV2 meetingId={meeting.id} open={shareDialogOpen} onOpenChange={setShareDialogOpen} />

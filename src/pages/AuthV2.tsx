@@ -227,7 +227,7 @@ export default function AuthV2() {
         <div aria-hidden className="pointer-events-none absolute right-10 top-[100px] h-20 w-20 rounded-full bg-[color-mix(in_srgb,var(--eb-accent)_8%,transparent)]" />
 
         <div className="relative flex items-center justify-between">
-          <Logo size="md" linkTo="/" />
+          <Logo variant="console" size="md" linkTo="/" />
           <Link
             to="/"
             className="inline-flex items-center gap-1.5 font-dmsans text-[13px] text-eb-secondary no-underline hover:text-eb-text"
@@ -296,7 +296,7 @@ export default function AuthV2() {
 
         <div className="w-full max-w-[400px]">
           <div className="mb-8 flex justify-center lg:hidden">
-            <Logo size="md" linkTo="/" />
+            <Logo variant="console" size="md" linkTo="/" />
           </div>
 
           {emailSent ? (

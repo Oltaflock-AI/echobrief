@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { displayNameFromUserMetadata } from "@/lib/userDisplayName";
 import { fetchUsageMeter, planLabel, type UsageMeter } from "@/lib/usageMeter";
 import { cn } from "@/lib/utils";
+import { Logo } from "@/components/ui/Logo";
 
 type NavItem = { icon: LucideIcon; label: string; path: string };
 
@@ -169,9 +170,7 @@ export function SidebarV2({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full w-[232px] flex-col bg-eb-sidebar">
       <div className="flex h-[60px] flex-none items-center justify-between px-4">
-        <Link to="/dashboard" className="font-[family-name:var(--eb-font-logo)] text-[19px] leading-none text-white no-underline">
-          echo<span className="italic text-eb-accent-sidebar">brief</span>
-        </Link>
+        <Logo variant="console" tone="dark" size="md" linkTo="/dashboard" />
         <ChevronDown size={15} strokeWidth={1.75} className="text-eb-nav-icon" />
       </div>
 

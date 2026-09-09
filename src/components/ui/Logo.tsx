@@ -2,6 +2,16 @@ import { useId } from 'react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
+/**
+ * The one wordmark.
+ *
+ * Two brand systems are live at once (see BRAND.md), and the wordmark is the
+ * place that showed: the landing page and V1 drew it in DM Serif Display with
+ * an ember "brief", while the Console sidebar hand-rolled its own in Instrument
+ * Serif with no logomark at all — a different logo on adjacent screens. The
+ * split is real and deliberate, so it is a prop here rather than two
+ * components, and every surface now renders the same geometry either way.
+ */
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   showText?: boolean;
@@ -9,6 +19,16 @@ interface LogoProps {
   className?: string;
   /** Subtle ripple animation on the logomark (sound-wave metaphor) */
   animated?: boolean;
+  /**
+   * Which brand system to draw in. `legacy` is Warm Dispatch (DM Serif
+   * Display + ember) for the landing page, emails and V1; `console` is the
+   * UI v2 palette (Instrument Serif + terracotta). Explicit rather than read
+   * from UiVersionContext, because the landing page stays Warm Dispatch even
+   * for a user whose app is on the Console.
+   */
+  variant?: 'legacy' | 'console';
+  /** `dark` is for the sidebar and other dark panels, where the ink flips to white. */
+  tone?: 'light' | 'dark';
 }
 
 const sizes = {
@@ -18,7 +38,11 @@ const sizes = {
   xl: { svg: 48, text: 'text-[32px]' },
 };
 
-function LogoMark({ size = 'md', animated = true }: { size?: LogoProps['size']; animated?: boolean }) {
+function LogoMark({
+  size = 'md',
+  animated = true,
+  variant = 'legacy',
+}: { size?: LogoProps['size']; animated?: boolean; variant?: LogoProps['variant'] }) {
   const s = sizes[size!].svg;
   const uid = useId().replace(/:/g, '');
   const gradId = `echobrief-grad-${uid}`;
@@ -33,8 +57,8 @@ function LogoMark({ size = 'md', animated = true }: { size?: LogoProps['size']; 
     >
       <defs>
         <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" style={{ stopColor: 'var(--ember)' }} />
-          <stop offset="100%" style={{ stopColor: 'var(--gold)' }} />
+          <stop offset="0%" style={{ stopColor: variant === 'console' ? 'var(--eb-accent)' : 'var(--ember)' }} />
+          <stop offset="100%" style={{ stopColor: variant === 'console' ? 'var(--eb-gold, var(--gold))' : 'var(--gold)' }} />
         </linearGradient>
       </defs>
       <circle
@@ -45,6 +69,7 @@ function LogoMark({ size = 'md', animated = true }: { size?: LogoProps['size']; 
         fill="none"
         stroke={`url(#${gradId})`}
         strokeWidth="1.2"
+        opacity="0.28"
       />
       <circle
         className="logo-ring logo-ring-mid"
@@ -54,6 +79,7 @@ function LogoMark({ size = 'md', animated = true }: { size?: LogoProps['size']; 
         fill="none"
         stroke={`url(#${gradId})`}
         strokeWidth="1.2"
+        opacity="0.52"
       />
       <circle className="logo-core" cx="16" cy="16" r="4.5" fill={`url(#${gradId})`} />
     </svg>
@@ -66,17 +92,30 @@ export function Logo({
   linkTo,
   className,
   animated = true,
+  variant = 'legacy',
+  tone = 'light',
 }: LogoProps) {
+  const console_ = variant === 'console';
+  const inkColor = tone === 'dark' ? '#FFFFFF' : console_ ? 'var(--eb-text)' : 'var(--ink)';
+  const accentColor = console_
+    ? tone === 'dark'
+      ? 'var(--eb-accent-sidebar)'
+      : 'var(--eb-accent)'
+    : 'var(--ember)';
+
   const content = (
     <span className={cn('inline-flex items-center gap-2.5', className)}>
-      <LogoMark size={size} animated={animated} />
+      <LogoMark size={size} animated={animated} variant={variant} />
       {showText && (
         <span
           className={cn('leading-none', sizes[size].text)}
-          style={{ fontFamily: 'var(--font-brand-serif)', letterSpacing: '-0.04em' }}
+          style={{
+            fontFamily: console_ ? 'var(--eb-font-logo)' : 'var(--font-brand-serif)',
+            letterSpacing: '-0.04em',
+          }}
         >
-          <span style={{ color: 'var(--ink)', fontStyle: 'normal' }}>echo</span>
-          <em style={{ color: 'var(--ember)', fontStyle: 'italic' }}>brief</em>
+          <span style={{ color: inkColor, fontStyle: 'normal' }}>echo</span>
+          <em style={{ color: accentColor, fontStyle: 'italic' }}>brief</em>
         </span>
       )}
     </span>
