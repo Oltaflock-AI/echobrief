@@ -11,14 +11,18 @@
  * The mockup's per-row bot toggle is NOT here. Auto-join is a single per-user
  * flag (`profiles.auto_join_enabled`) and `calendar_events` has no per-event
  * opt-out column, so a switch per row would be a picture of a control. The row
- * states what is actually true — the bot will join, or there is no link to join
- * — and offers the one action that does exist: record this meeting now.
+ * states what is actually true — the bot will join, auto-join is off, the event
+ * is in person, or it carries a link we cannot join — and offers the one action
+ * that does exist, on the rows where it exists: record this meeting now.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isToday, isTomorrow, parseISO } from 'date-fns';
-import { CalendarDays, Loader2, RefreshCw, Video, Mic } from 'lucide-react';
+import { CalendarDays, Loader2, RefreshCw, Users, Video, Mic } from 'lucide-react';
 import { GoogleMeetIcon } from '@/components/icons/GoogleMeetIcon';
+import { ZoomIcon } from '@/components/icons/ZoomIcon';
+import { TeamsIcon } from '@/components/icons/TeamsIcon';
+import { describeMeetingLink } from '@/lib/meetingUrl';
 import { useNavigate } from 'react-router-dom';
 import { formatIST } from '@/lib/time';
 import { supabase } from '@/integrations/supabase/client';
@@ -49,17 +53,18 @@ interface Row {
   calendarName: string;
 }
 
-/** Google Meet / Zoom / Teams from the link itself — no icon pack needed. */
-function isGoogleMeet(link: string | null): boolean {
-  return !!link && link.includes('meet.google');
-}
-
-function platformOf(link: string | null): string {
-  if (!link) return 'In person';
-  if (isGoogleMeet(link)) return 'Google Meet';
-  if (link.includes('zoom.')) return 'Zoom';
-  if (link.includes('teams.microsoft') || link.includes('teams.live')) return 'Teams';
-  return 'Video call';
+/**
+ * The mark for a row: the platform's own logo when we recognise the link, the
+ * people glyph when there is none, and a plain camera when the event carries a
+ * link we cannot join — a Webex invite, a booking page, a lookalike host. The
+ * three cases have to look different, because they behave differently.
+ */
+function PlatformIcon({ platform, hasLink }: { platform: string | null; hasLink: boolean }) {
+  if (platform === 'google_meet') return <GoogleMeetIcon size={16} />;
+  if (platform === 'zoom') return <ZoomIcon size={16} />;
+  if (platform === 'teams') return <TeamsIcon size={16} />;
+  if (hasLink) return <Video size={15} strokeWidth={1.75} />;
+  return <Users size={15} strokeWidth={1.75} />;
 }
 
 function durationLabel(start: string, end: string | null): string | null {
@@ -294,7 +299,11 @@ export default function Calendar() {
 
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 {day.items.map((row) => {
-                  const willJoin = autoJoin && !!row.meetingLink;
+                  // Joinability is `parseMeetingUrl`, the mirror of the check
+                  // start-recall-recording runs — not a substring test. A row
+                  // only promises a bot where one can actually be sent.
+                  const link = describeMeetingLink(row.meetingLink);
+                  const willJoin = autoJoin && link.joinable;
                   const duration = durationLabel(row.start, row.end);
                   return (
                     <div
@@ -316,14 +325,10 @@ export default function Calendar() {
                       <span
                         className={cn(
                           'flex h-8 w-8 flex-none items-center justify-center rounded-input border border-eb-border',
-                          row.meetingLink ? 'text-eb-accent' : 'text-eb-muted',
+                          link.joinable ? 'text-eb-accent' : 'text-eb-muted',
                         )}
                       >
-                        {isGoogleMeet(row.meetingLink) ? (
-                          <GoogleMeetIcon size={16} />
-                        ) : (
-                          <Video size={15} strokeWidth={1.75} />
-                        )}
+                        <PlatformIcon platform={link.platform} hasLink={link.hasLink} />
                       </span>
 
                       <span className="min-w-0 flex-1">
@@ -331,7 +336,7 @@ export default function Calendar() {
                           {row.title}
                         </span>
                         <span className="block truncate font-dmsans text-[12.5px] text-eb-secondary">
-                          {[duration, platformOf(row.meetingLink), row.calendarName]
+                          {[duration, link.label, row.calendarName]
                             .filter(Boolean)
                             .join(' · ')}
                         </span>
@@ -339,7 +344,7 @@ export default function Calendar() {
 
                       {/* Second line on a phone, part of the flex row from sm up. */}
                       <div className="col-span-3 flex items-center justify-between gap-2 sm:contents">
-                        {row.meetingLink && (
+                        {link.joinable && (
                           <EbButton
                             size="sm"
                             onClick={() => recordNow(row)}
@@ -360,8 +365,18 @@ export default function Calendar() {
                           </EbButton>
                         )}
 
-                        <Badge tone={willJoin ? 'green' : 'neutral'} dot={willJoin} className="flex-none">
-                          {row.meetingLink ? (willJoin ? 'Bot will join' : 'Auto-join off') : 'No video link'}
+                        <Badge
+                          tone={willJoin ? 'green' : link.hasLink && !link.joinable ? 'amber' : 'neutral'}
+                          dot={willJoin}
+                          className="flex-none"
+                        >
+                          {!link.hasLink
+                            ? 'In person'
+                            : !link.joinable
+                              ? "Bot can't join"
+                              : willJoin
+                                ? 'Bot will join'
+                                : 'Auto-join off'}
                         </Badge>
                       </div>
                     </div>

@@ -63,3 +63,37 @@ export function parseMeetingUrl(raw: string): MeetingUrlResult {
     error: 'That link is not one we can join. Use a Google Meet, Zoom or Microsoft Teams link.',
   };
 }
+
+/**
+ * What a calendar row should say about a meeting, from its link alone.
+ *
+ * The point of `joinable` is that it is decided by `parseMeetingUrl` — the same
+ * check the server runs before it will create a bot — and not by a substring
+ * test. A calendar can carry any link at all (Webex, a booking page, a
+ * lookalike host), and a row that offered "Record now" for one of those was
+ * promising something the API would refuse.
+ */
+export interface MeetingLinkDescription {
+  /** Null when there is no link, or the link is one we cannot join. */
+  platform: MeetingPlatform | null;
+  /** What to print: 'Google Meet', 'Zoom', 'Teams', 'In person', 'Video link'. */
+  label: string;
+  /** True only when a bot can actually be sent to this link. */
+  joinable: boolean;
+  /** True when the event carries a link at all, joinable or not. */
+  hasLink: boolean;
+}
+
+export function describeMeetingLink(link: string | null | undefined): MeetingLinkDescription {
+  if (!link) return { platform: null, label: 'In person', joinable: false, hasLink: false };
+  const parsed = parseMeetingUrl(link);
+  if (parsed.ok && parsed.platform) {
+    return {
+      platform: parsed.platform,
+      label: parsed.platform === 'teams' ? 'Teams' : PLATFORM_LABELS[parsed.platform],
+      joinable: true,
+      hasLink: true,
+    };
+  }
+  return { platform: null, label: 'Video link', joinable: false, hasLink: true };
+}
