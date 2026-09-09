@@ -18,6 +18,7 @@ import {
 import { authenticate, json } from "../_shared/auth.ts";
 import { notifyRecentFailures } from "../_shared/failure-notice.ts";
 import { buildAlertHtml, buildAlertSubject } from "./alert-template.ts";
+import { COMPLETED_WITHOUT_TRANSCRIPT, completedWithoutTranscript } from "./integrity.ts";
 import { KNOWN_PATTERNS, isKnown, RecoveryAction } from "./known-patterns.ts";
 import { isLongMeeting } from "../_shared/whisper-chunked.ts";
 import { captureError, withObservability } from "../_shared/observability.ts";
@@ -36,6 +37,9 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SARVAM_KEY = Deno.env.get("SARVAM_API_KEY")!;
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY")!;
 const SARVAM_WEBHOOK_SECRET = Deno.env.get("SARVAM_WEBHOOK_SECRET")!;
+
+/** How far back the terminal-status integrity check looks each tick. */
+const INTEGRITY_WINDOW_HOURS = 48;
 
 // Terminal statuses we DON'T watch — anything else is potentially stuck.
 // Excluding by terminal-set means a future code path that introduces a new
@@ -572,6 +576,82 @@ serve(withObservability("monitor-stuck-meetings", async (req) => {
       });
     }
 
+    // Terminal-status integrity. The sweep above only queries NON-terminal
+    // statuses, so a meeting that finished with the WRONG status is invisible to
+    // it — which is how nine meetings sat as `completed` with no transcript for
+    // seven weeks (see integrity.ts). Bounded to a recent window: the point is
+    // catching a regression as it happens, not re-reporting history every tick.
+    const integritySince = new Date(Date.now() - INTEGRITY_WINDOW_HOURS * 3600 * 1000).toISOString();
+    const integrityFindings: any[] = [];
+    try {
+      const { data: recentCompleted } = await supabase
+        .from("meetings")
+        .select("id,title,status,content_pruned_at,created_at")
+        .eq("status", "completed")
+        .gte("updated_at", integritySince)
+        .limit(100);
+
+      const candidates = recentCompleted ?? [];
+      if (candidates.length > 0) {
+        const { data: haveTranscripts } = await supabase
+          .from("transcripts")
+          .select("meeting_id")
+          .in("meeting_id", candidates.map((m: any) => m.id));
+        const withTranscript = new Set(
+          (haveTranscripts ?? []).map((t: any) => t.meeting_id as string),
+        );
+
+        for (const m of completedWithoutTranscript(candidates, withTranscript)) {
+          const details = {
+            title: m.title,
+            created_at: m.created_at,
+            note:
+              "completed with no transcripts row and content_pruned_at IS NULL — a writer marked " +
+              "an empty transcription as success instead of failed",
+          };
+          const { data: inserted } = await supabase
+            .from("monitor_events")
+            .insert({
+              meeting_id: m.id,
+              error_signature: COMPLETED_WITHOUT_TRANSCRIPT,
+              is_new_pattern: false,
+              recovery_attempted: "none",
+              recovery_succeeded: null,
+              email_sent: false,
+              details,
+            })
+            .select("id")
+            .maybeSingle();
+
+          let emailed = false;
+          if (inserted?.id) {
+            emailed = await sendAlertEmail(
+              m as Meeting,
+              {
+                signature: COMPLETED_WITHOUT_TRANSCRIPT,
+                // Age of the meeting, not of a stall — this one is not stuck, it
+                // is finished and wrong.
+                age_minutes: m.created_at
+                  ? Math.round((Date.now() - new Date(m.created_at).getTime()) / 60000)
+                  : 0,
+                details,
+              },
+              "No automatic recovery: the audio is pruned after 30 days, so the meeting cannot be re-transcribed.",
+              false,
+              false,
+            );
+            if (emailed) {
+              await supabase.from("monitor_events").update({ email_sent: true }).eq("id", inserted.id);
+            }
+          }
+          integrityFindings.push({ meeting_id: m.id, signature: COMPLETED_WITHOUT_TRANSCRIPT, email_sent: emailed });
+        }
+      }
+    } catch (err) {
+      // A failure here must not cost the tick its stuck-meeting detection.
+      console.error("[monitor] integrity check failed:", err);
+    }
+
     // Second pass: tell users about their own failed meetings. Until now the
     // only failure email in the system went to ALERT_EMAIL_TO — us — and the
     // person whose meeting failed was never told anything. Runs here rather
@@ -583,6 +663,7 @@ serve(withObservability("monitor-stuck-meetings", async (req) => {
     return new Response(
       JSON.stringify({
         ok: true,
+        integrity: integrityFindings,
         scanned: meetings?.length || 0,
         events: summary.length,
         summary,

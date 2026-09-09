@@ -25,6 +25,24 @@ export interface KnownPattern {
 }
 
 export const KNOWN_PATTERNS: Record<string, KnownPattern> = {
+  // -- Data-integrity patterns --
+  // Not a stuck meeting: a TERMINAL one that lies. The monitor's main sweep only
+  // looks at non-terminal statuses, so this state was invisible for months.
+  "data:completed_without_transcript": {
+    signature: "data:completed_without_transcript",
+    recovery: "none",
+    description:
+      "A meeting is status=completed but has no row in `transcripts`, and prune-content did not " +
+      "remove it (content_pruned_at IS NULL). Nine of these were found on 2026-09-09, all dated " +
+      "2026-07-22 to 08-19: Sarvam returned an empty transcript, the pipeline wrote the " +
+      "'No clear speech was detected' placeholder insights and marked the meeting completed. It then " +
+      "looked successful on the dashboard, consumed quota, and could not be regenerated. Both writers " +
+      "have since been fixed to mark such a run FAILED (sarvam-webhook's empty-transcript branch, " +
+      "process-meeting's noUsableTranscript branch), so a fresh occurrence means one of those guards " +
+      "has regressed or a new writer skipped them. The meeting itself is usually unrecoverable — the " +
+      "archived audio is pruned after 30 days and Recall drops its copy after 7.",
+  },
+
   // -- Instance / platform patterns --
   // Not a meeting signature: the monitor raises this from instance telemetry,
   // with a NULL meeting_id. Listed here so it is never reported as a NEW

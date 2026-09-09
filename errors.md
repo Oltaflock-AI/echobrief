@@ -297,6 +297,41 @@ Five separate failures chained, every one of them silent. The bucket being full 
 
 ---
 
+## Data integrity errors
+
+### `data:completed_without_transcript`
+
+**Symptom:** A meeting reads `status = completed` on the dashboard, its Transcript tab
+is empty, and Regenerate fails with `Meeting has no transcript to regenerate from`.
+Its summary is the placeholder: *"No clear speech was detected in this recording…"*.
+
+**Detection:** `monitor-stuck-meetings` checks the last 48 h of completed meetings
+against `transcripts` on every tick (`integrity.ts`). This is deliberately separate
+from the stuck sweep, which queries only NON-terminal statuses — `completed` is
+terminal, so a meeting that finishes with the wrong status is invisible to it.
+
+**Root cause:** Sarvam returned an empty transcript (`sarvam:silent_empty_output`)
+and the pipeline treated "nothing to transcribe" as success: it wrote the
+placeholder insights, skipped the transcript row, and marked the meeting complete.
+The meeting then looked healthy, consumed plan quota, and could not be regenerated
+— there is nothing to regenerate from.
+
+**Found:** 2026-09-09, while backfilling insights after the timestamp-anchoring fix.
+Nine meetings, all dated 2026-07-22 to 08-19, i.e. before the guards below existed.
+Six of them were three calls × two bots: two users on the same invite each get their
+own bot, so one bad call produces two bad meetings.
+
+**Recovery:** None automatic, and usually none at all. The archived audio is cleared
+by `prune-recordings` after 30 days and Recall drops its own copy after 7, so by the
+time anyone notices there is nothing left to re-transcribe. Inside those windows,
+re-run `process-meeting` with `forceWhisper: true`.
+
+**Status:** FIXED at both writers — `sarvam-webhook`'s empty-transcript branch marks
+the meeting `failed` (or falls back to Whisper), and `process-meeting`'s
+`noUsableTranscript` branch does the same. **A fresh occurrence means one of those
+guards has regressed, or a new writer skipped them.** Covered by
+`supabase/functions/tests/integrity_test.ts`.
+
 ## How this file is maintained
 
 1. The `monitor-stuck-meetings` cron carries a `KNOWN_SIGNATURES` set in code. When it detects a stuck meeting whose signature is **not** in that set, it sends an email to `ALERT_EMAIL_TO` (default `admin@oltaflock.ai`) with subject `[ECHOBRIEF NEW ERROR] <signature>`.
