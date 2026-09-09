@@ -1177,6 +1177,22 @@
 .ui-v2 {
   color-scheme: light;
 
+  /* The Warm Dispatch ink/paper set, not just the shadcn tokens. `.dark` maps
+     --ink onto --bone, and anything still reading it renders bone on Console
+     paper — that is why the "echo" half of the wordmark vanished while the
+     ember "brief" stayed (reported 2026-09-09). Pinning them here fixes every
+     V1-token consumer rendered inside the Console at once. */
+  --paper: var(--eb-bg);
+  --paper-raised: var(--eb-card-alt);
+  --paper-deep: var(--eb-chip);
+  --paper-card: var(--eb-card);
+  --ink: var(--eb-text);
+  --ink-mid: var(--eb-text-prose);
+  --ink-soft: var(--eb-text-secondary);
+  --ink-faint: var(--eb-text-muted);
+  --rule: var(--eb-border);
+  --rule-soft: var(--eb-divider);
+
   --background: 36 25% 95%;          /* --eb-bg   #F5F1EC */
   --foreground: 24 9% 10%;           /* --eb-text #1C1917 */
 

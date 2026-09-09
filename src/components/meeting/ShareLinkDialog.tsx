@@ -10,24 +10,9 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useMeetingShares, type Share } from '@/hooks/useMeetingShares';
 import { formatIST } from '@/lib/time';
-
-// meeting_shares post-dates the generated types.
-const db = supabase;
-
-interface Share {
-  id: string;
-  token_prefix: string | null;
-  expires_at: string | null;
-  revoked_at: string | null;
-  view_count: number;
-  last_viewed_at: string | null;
-  created_at: string;
-  include_transcript: boolean;
-  include_recording: boolean;
-}
 
 const EXPIRY_CHOICES: Array<{ label: string; days: number | null }> = [
   { label: '24 hours', days: 1 },
@@ -46,11 +31,19 @@ export function ShareLinkDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { toast } = useToast();
-  const [shares, setShares] = useState<Share[]>([]);
-  const [inWorkspace, setInWorkspace] = useState(false);
-  const [sharedToOrg, setSharedToOrg] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [working, setWorking] = useState(false);
+  // The calls live in useMeetingShares, which the Console dialog also uses.
+  const {
+    live,
+    inWorkspace,
+    sharedToOrg,
+    loading,
+    working,
+    create,
+    revoke: revokeShare,
+    setCarries: setShareCarries,
+    toggleOrgShare,
+  } = useMeetingShares(meetingId, open);
+
   const [expiryDays, setExpiryDays] = useState<number | null>(7);
   // What the next link will carry. Off by default in both cases: the summary is
   // what a forwarded link is usually for, and the two extras are each somebody's
@@ -62,55 +55,22 @@ export function ShareLinkDialog({
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const call = useCallback(
-    async (body: Record<string, unknown>) => {
-      const { data, error } = await supabase.functions.invoke('manage-meeting-share', {
-        body: { meeting_id: meetingId, ...body },
-      });
-      if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
-      return data;
-    },
-    [meetingId],
-  );
-
-  const refresh = useCallback(async () => {
-    try {
-      const data = await call({ action: 'list' });
-      setShares(data?.shares ?? []);
-      setInWorkspace(Boolean(data?.in_workspace));
-      setSharedToOrg(Boolean(data?.shared_to_org));
-    } catch {
-      // A listing failure should not blank the dialog the user just opened.
-      setShares([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [call]);
-
   useEffect(() => {
-    if (!open) {
-      setFreshUrl(null);
-      setCopied(false);
-      return;
-    }
-    setLoading(true);
-    refresh();
-  }, [open, refresh]);
+    if (open) return;
+    setFreshUrl(null);
+    setCopied(false);
+  }, [open]);
 
   const createLink = async () => {
-    setWorking(true);
     try {
-      const data = await call({
-        action: 'create',
-        expires_in_days: expiryDays,
-        include_transcript: includeTranscript,
-        include_recording: includeRecording,
+      const url = await create({
+        expiresInDays: expiryDays,
+        includeTranscript,
+        includeRecording,
       });
-      setFreshUrl(data.url);
-      await navigator.clipboard.writeText(data.url).catch(() => {});
+      setFreshUrl(url);
+      await navigator.clipboard.writeText(url).catch(() => {});
       setCopied(true);
-      await refresh();
       toast({ title: 'Link created and copied' });
     } catch (err) {
       toast({
@@ -118,16 +78,12 @@ export function ShareLinkDialog({
         description: err instanceof Error ? err.message : 'Something went wrong.',
         variant: 'destructive',
       });
-    } finally {
-      setWorking(false);
     }
   };
 
   const revoke = async (shareId: string) => {
-    setWorking(true);
     try {
-      await call({ action: 'revoke', share_id: shareId });
-      await refresh();
+      await revokeShare(shareId);
       toast({ title: 'Link revoked', description: 'Anyone holding it now sees an expired page.' });
     } catch (err) {
       toast({
@@ -135,31 +91,21 @@ export function ShareLinkDialog({
         description: err instanceof Error ? err.message : 'Something went wrong.',
         variant: 'destructive',
       });
-    } finally {
-      setWorking(false);
     }
   };
 
   /** Change what an existing link carries. The URL keeps working either way. */
   const setCarries = async (share: Share, patch: Partial<Pick<Share, 'include_transcript' | 'include_recording'>>) => {
-    setWorking(true);
     try {
-      await call({ action: 'update', share_id: share.id, ...patch });
-      await refresh();
+      await setShareCarries(share.id, patch);
     } catch (err) {
       toast({
         title: 'Could not change that link',
         description: err instanceof Error ? err.message : 'Something went wrong.',
         variant: 'destructive',
       });
-    } finally {
-      setWorking(false);
     }
   };
-
-  const live = shares.filter(
-    (s) => !s.revoked_at && (!s.expires_at || Date.parse(s.expires_at) > Date.now()),
-  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -217,10 +163,8 @@ export function ShareLinkDialog({
               variant={sharedToOrg ? 'outline' : 'default'}
               disabled={working}
               onClick={async () => {
-                setWorking(true);
                 try {
-                  await call({ action: sharedToOrg ? 'unshare_from_org' : 'share_to_org' });
-                  await refresh();
+                  await toggleOrgShare(sharedToOrg);
                   toast({ title: sharedToOrg ? 'Removed from workspace' : 'Shared with workspace' });
                 } catch (err) {
                   toast({
@@ -228,8 +172,6 @@ export function ShareLinkDialog({
                     description: err instanceof Error ? err.message : 'Something went wrong.',
                     variant: 'destructive',
                   });
-                } finally {
-                  setWorking(false);
                 }
               }}
             >

@@ -20,7 +20,7 @@ import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { EmailReportSelector } from '@/components/dashboard/EmailReportSelector';
 import { MeetingMetrics } from '@/components/meeting/MeetingMetrics';
-import { ShareLinkDialog } from '@/components/meeting/ShareLinkDialog';
+import { ShareLinkDialogV2 } from '@/components/meeting/ShareLinkDialogV2';
 import { InsightSection, InsightItem } from '@/components/meeting/InsightSection';
 import { RecordingPlayer } from '@/components/meeting/RecordingPlayer';
 import { RecordingPanelV2, PanelTopic } from '@/components/meeting/RecordingPanelV2';
@@ -959,7 +959,7 @@ export default function MeetingDetailV2() {
         userEmail={user?.email || undefined}
         onSend={handleSendEmail}
       />
-      <ShareLinkDialog meetingId={meeting.id} open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
+      <ShareLinkDialogV2 meetingId={meeting.id} open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
 
       <AlertDialog open={draftOpen} onOpenChange={setDraftOpen}>
         <AlertDialogContent className={cn('max-w-2xl', EB_DIALOG)}>
