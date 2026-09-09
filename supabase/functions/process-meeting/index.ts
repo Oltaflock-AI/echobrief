@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import OpenAI from "https://esm.sh/openai@4.20.1";
 import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
 import { authenticate } from "../_shared/auth.ts";
+import { resolveDurationSeconds } from "../_shared/duration.ts";
 import {
   createSarvamJob,
   uploadToSarvamJob,
@@ -267,10 +268,10 @@ Only include segments where you can make a reasonable attribution.`;
   }
 
   const startTime = new Date(meeting.start_time);
-  // Same precedence as sarvam-webhook: real audio duration (written by the
-  // split path) first, then the last transcript segment's end time, and only
-  // then wall-clock — which counts processing time and is wildly wrong for
-  // meetings recovered hours later. Computed before saveInsights because
+  // Same precedence as sarvam-webhook, in the one shared helper: real audio
+  // duration first, then the last transcript segment's end, and only then wall
+  // clock — which counts processing time and is refused outright when it is
+  // implausible (see _shared/duration.ts). Computed before saveInsights because
   // silence_percentage is measured against this duration.
   const audioDuration =
     Number(meeting.processing_config?.audio_duration_seconds) || 0;
@@ -278,11 +279,12 @@ Only include segments where you can make a reasonable attribution.`;
     (max, seg) => Math.max(max, Number(seg.end) || 0),
     0,
   );
-  const durationSeconds = Math.round(
-    audioDuration ||
-      lastSegmentEnd ||
-      (endTime.getTime() - startTime.getTime()) / 1000,
-  );
+  const durationSeconds = resolveDurationSeconds({
+    audioDurationSeconds: audioDuration,
+    lastSegmentEnd,
+    startTime,
+    endTime,
+  });
 
   // Post-transcription passes (shared with sarvam-webhook and
   // regenerate-insights). The transcript row was inserted above with the raw
@@ -294,7 +296,7 @@ Only include segments where you can make a reasonable attribution.`;
     transcript,
     segments: speakerSegments,
     recallTimeline: meeting.processing_config?.recall_speaker_timeline || [],
-    durationSeconds,
+    durationSeconds: durationSeconds ?? 0,
   });
   if (passes.zonedSegments.length > 0 || passes.correctedTranscript !== transcript) {
     await supabase
@@ -315,7 +317,13 @@ Only include segments where you can make a reasonable attribution.`;
     })
     .eq("id", meetingId);
 
-  await afterInsightsSaved(supabase, meeting, insights, "meeting.insights_ready", durationSeconds);
+  await afterInsightsSaved(
+    supabase,
+    meeting,
+    insights,
+    "meeting.insights_ready",
+    durationSeconds ?? undefined,
+  );
 
   const { emailSent } = await deliverResults(
     supabase,

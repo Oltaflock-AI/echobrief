@@ -6,6 +6,7 @@ import {
   downloadSarvamResults,
 } from "../_shared/sarvam.ts";
 import { stitchChunkResults } from "../_shared/stitch.ts";
+import { resolveDurationSeconds } from "../_shared/duration.ts";
 import { fetchSpeakerContext } from "../_shared/recall-pipeline.ts";
 import {
   isLikelyHallucination,
@@ -521,11 +522,12 @@ serve(withObservability("sarvam-webhook", async (req) => {
         (max, seg) => Math.max(max, Number(seg.end) || 0),
         0,
       );
-      const durationSeconds = Math.round(
-        audioDuration ||
-          lastSegmentEnd ||
-          (endTime.getTime() - startTime.getTime()) / 1000,
-      );
+      const durationSeconds = resolveDurationSeconds({
+        audioDurationSeconds: audioDuration,
+        lastSegmentEnd,
+        startTime,
+        endTime,
+      });
 
       const insights = passes.insights;
       await saveInsights(supabase, meeting.id, insights);
@@ -543,7 +545,13 @@ serve(withObservability("sarvam-webhook", async (req) => {
         })
         .eq("id", meeting.id);
 
-      await afterInsightsSaved(supabase, meeting, insights, "meeting.insights_ready", durationSeconds);
+      await afterInsightsSaved(
+        supabase,
+        meeting,
+        insights,
+        "meeting.insights_ready",
+        durationSeconds ?? undefined,
+      );
 
       await deliverResults(supabase, meeting, insights, {
         sendEmail: config.sendEmail,
