@@ -1,14 +1,29 @@
+/**
+ * Meeting detail — Console (UI v2).
+ *
+ * The data layer is MeetingDetail.tsx's, moved across untouched: the one query
+ * that fetches meeting + transcript + insights + email messages, the realtime
+ * subscription with its single check-recall-status fallback, and every handler
+ * (regenerate, draft follow-up, add to calendar, rename speaker, delete, send
+ * email). Only the render is new.
+ *
+ * One control did not come across. V1's summary-language dropdown set a piece
+ * of state that nothing ever read — ten languages that changed nothing. The
+ * real control now lives in Settings -> Account and is read by the pipeline, so
+ * this page does not offer a second, fake one.
+ */
+
 import { useEffect, useState } from 'react';
 import { formatIST } from '@/lib/time';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { SectionTabs } from '@/components/ui/SectionTabs';
-import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
-import { EmailReportSelector } from '@/components/dashboard/EmailReportSelector';
+import { AppShell } from '@/components/shell/AppShell';
+import { EmailReportDialog } from '@/components/meeting/EmailReportDialog';
 import { MeetingMetrics } from '@/components/meeting/MeetingMetrics';
 import { ShareLinkDialog } from '@/components/meeting/ShareLinkDialog';
 import { InsightSection, InsightItem } from '@/components/meeting/InsightSection';
 import { RecordingPlayer } from '@/components/meeting/RecordingPlayer';
+import { RecordingPanel, PanelTopic } from '@/components/meeting/RecordingPanel';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Meeting, asMeeting, Transcript, MeetingInsights, StrategicInsight, SpeakerHighlight, ActionItem, FollowUp, TimelineEntry, MeetingFacts, CoachingReport, CoachingVerdict, CoachingFlag } from '@/types/meeting';
@@ -32,6 +47,20 @@ import {
   CalendarPlus, PenLine, Copy, ExternalLink, Pencil, Link2
 } from 'lucide-react';
 
+import {
+  Avatar as EbAvatar,
+  Badge as EbBadge,
+  Button as EbButton,
+  Card as EbCard,
+  CardHeader as EbCardHeader,
+  ChipGroup as EbChipGroup,
+  DarkPanel as EbDarkPanel,
+  Label as EbLabel,
+  TwoColumn as EbTwoColumn,
+  Dialog as EbDialog,
+  DialogNote,
+} from '@/ui';
+import { Flag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -69,6 +98,10 @@ interface MeetingDetailData {
 const IN_PROGRESS_STATUSES = ['joining', 'in_call', 'recording', 'processing', 'transcribing'];
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+
+// Console dialog surface. shadcn's AlertDialogContent paints `bg-background`,
+// which is still the V1 theme value — these dialogs sit on eb paper instead.
+const EB_DIALOG = 'bg-eb-bg border-eb-border text-eb-text';
 
 // ─── Clean modern badges ───
 function StatusBadge({ status }: { status: string }) {
@@ -218,6 +251,37 @@ function GradientBar() {
   return null;
 }
 
+
+const SOURCE_LABELS: Record<string, string> = {
+  google_meet: 'Google Meet',
+  zoom: 'Zoom',
+  teams: 'Teams',
+  manual: 'Recording',
+};
+
+const COACH_METRIC_LABELS: Record<string, string> = {
+  talk_ratio: 'Talk ratio',
+  longest_monologue: 'Longest monologue',
+  questions: 'Questions asked',
+  hedge_density: 'Hedge words / 100',
+};
+
+const COACH_FLAG_LABELS: Record<string, string> = {
+  pitched_before_discovery_complete: 'Pitched before discovery finished',
+  objection_ignored: 'Objection ignored',
+  numbers_mismatch: 'Used hypothetical numbers',
+};
+
+/** The quoted extraction object, rendered group by group. */
+const FACT_GROUPS: Array<{ key: string; title: string; primary: string; secondary?: string }> = [
+  { key: 'numbers', title: 'Numbers', primary: 'metric', secondary: 'value' },
+  { key: 'explicit_asks', title: 'Explicit asks', primary: 'ask' },
+  { key: 'objections', title: 'Objections', primary: 'objection' },
+  { key: 'commitments', title: 'Commitments', primary: 'what', secondary: 'who' },
+  { key: 'decisions', title: 'Decisions', primary: 'decision' },
+  { key: 'topics', title: 'Topics', primary: 'topic' },
+];
+
 export default function MeetingDetail() {
   const { id } = useParams<{ id: string }>();
   const { user, session } = useAuth();
@@ -237,7 +301,6 @@ export default function MeetingDetail() {
     return Number.isFinite(t) && t >= 0 ? Math.floor(t) : null;
   })();
   const [activeTab, setActiveTab] = useState(initialSeek !== null ? 'recording' : 'summary');
-  const [summaryLang, setSummaryLang] = useState('English');
   const [seekSeconds, setSeekSeconds] = useState<number | null>(initialSeek);
   const [showInternal, setShowInternal] = useState(false);
 
@@ -272,6 +335,7 @@ export default function MeetingDetail() {
   const [inviteAttendees, setInviteAttendees] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ from: string; value: string } | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const [regenOpen, setRegenOpen] = useState(false);
 
   const refreshMeeting = () => queryClient.invalidateQueries({ queryKey: ['meeting-detail', id, user?.id] });
 
@@ -536,11 +600,12 @@ export default function MeetingDetail() {
         }),
       });
       const data = await response.json();
-      if (data.success) {
-        toast({ title: 'Sent', description: `Report sent to ${emailAddress}` });
-      } else throw new Error(data.error || 'Failed to send');
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message || 'Failed to send email', variant: 'destructive' });
+      if (!data.success) throw new Error(data.error || 'Failed to send');
+      toast({ title: 'Sent', description: `Report sent to ${emailAddress}` });
+    } catch (error: unknown) {
+      // Rethrown so the dialog stays open on failure: swallowing it here left
+      // the dialog closing on a send that never happened.
+      throw error instanceof Error ? error : new Error('Failed to send email');
     }
   };
 
@@ -560,890 +625,811 @@ export default function MeetingDetail() {
 
   if (loading) {
     return (
-      <DashboardLayout>
-        <div className="mx-auto max-w-[960px] px-4 py-8 sm:px-6 md:px-10 md:py-14">
-          <Skeleton className="mb-6 h-4 w-32" />
-          <Skeleton className="mb-3 h-4 w-64" />
-          <Skeleton className="mb-6 h-12 w-[80%]" />
-          <Skeleton className="mb-2 h-4 w-48" />
-          <div className="mt-10 space-y-4">
-            <Skeleton className="h-32 rounded-xl" />
-            <Skeleton className="h-48 rounded-xl" />
-            <Skeleton className="h-24 rounded-xl" />
-          </div>
-        </div>
-      </DashboardLayout>
+      <AppShell>
+        <Skeleton className="mb-4 h-4 w-32" />
+        <Skeleton className="mb-3 h-9 w-[60%]" />
+        <Skeleton className="mb-6 h-4 w-72" />
+        <Skeleton className="h-64 rounded-card" />
+      </AppShell>
     );
   }
 
   if (!meeting) {
     return (
-      <DashboardLayout>
-        <div className="mx-auto max-w-[960px] px-4 py-16 sm:px-6 md:px-8">
-          <h1 className="text-[24px] font-semibold" style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}>
-            Meeting not found
-          </h1>
-          <p className="mt-2 text-[14.5px]" style={{ color: 'var(--ink-mid)' }}>
-            The meeting may have been deleted or the link is wrong.
-          </p>
-          <Link
-            to="/dashboard"
-            className="mt-5 inline-flex items-center gap-1.5 text-[13.5px] font-medium no-underline"
-            style={{ color: 'var(--ember-deep)' }}
-          >
-            <ArrowLeft size={14} strokeWidth={1.75} /> Back to meetings
-          </Link>
-        </div>
-      </DashboardLayout>
+      <AppShell>
+        <h1 className="font-outfit text-[26px] font-semibold tracking-[-.02em] text-eb-text">Meeting not found</h1>
+        <p className="mt-2 font-dmsans text-sm text-eb-secondary">
+          The meeting may have been deleted, or the link is wrong.
+        </p>
+        <Link to="/dashboard" className="mt-5 inline-flex items-center gap-1.5 font-dmsans text-[13.5px] font-medium text-eb-accent no-underline">
+          <ArrowLeft size={14} strokeWidth={1.75} /> Back to meetings
+        </Link>
+      </AppShell>
     );
   }
 
   const actionItemCount = insights?.action_items?.length || 0;
+  const facts = insights?.facts;
+  const coaching = insights?.coaching as CoachingReport | undefined;
 
-  const tabs = [
-    { id: 'summary', label: 'Summary', icon: <Zap size={14} /> },
-    { id: 'actions', label: `Actions (${actionItemCount})`, icon: <CheckCircle2 size={14} /> },
-    ...(insights?.coaching ? [{ id: 'coaching', label: 'Coaching', icon: <Target size={14} /> }] : []),
-    { id: 'transcript', label: 'Transcript', icon: <FileText size={14} /> },
-    { id: 'recording', label: 'Recording', icon: <Video size={14} /> },
-    { id: 'delivery', label: 'Delivery', icon: <Mail size={14} /> },
+  const tabs: Array<{ value: string; label: string }> = [
+    { value: 'summary', label: 'Summary' },
+    { value: 'actions', label: `Actions${actionItemCount ? ` (${actionItemCount})` : ''}` },
+    { value: 'recording', label: 'Recording' },
+    { value: 'transcript', label: 'Transcript' },
+    ...(coaching ? [{ value: 'coaching', label: 'Coaching' }] : []),
+    ...(facts ? [{ value: 'facts', label: 'Facts' }] : []),
+    { value: 'delivery', label: 'Delivery' },
   ];
 
-  return (
-    <DashboardLayout>
-      <div className="mx-auto max-w-[960px] px-4 py-6 sm:px-6 md:px-8 md:py-10">
-        <div className="mb-8">
-          <Link
-            to="/dashboard"
-            className="mb-5 inline-flex items-center gap-1.5 text-[13px] no-underline transition-colors"
-            style={{ color: 'var(--ink-mid)' }}
-          >
-            <ArrowLeft size={14} strokeWidth={1.75} />
-            Back to meetings
-          </Link>
+  const inProgress = IN_PROGRESS_STATUSES.includes(meeting.status);
+  const internalCount = speakerSegments.filter((s) => (s.zone ?? 'meeting') !== 'meeting').length;
+  const visibleSegments = showInternal
+    ? speakerSegments
+    : speakerSegments.filter((s) => (s.zone ?? 'meeting') === 'meeting');
 
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <h1
-                className="text-[28px] font-semibold leading-tight"
-                style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
-              >
-                {meeting.title}
-              </h1>
-              <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px]" style={{ color: 'var(--ink-mid)' }}>
-                <StatusBadge status={meeting.status || 'scheduled'} />
-                <span aria-hidden>·</span>
-                <SourceBadge source={meeting.source || 'manual'} />
-                <span aria-hidden>·</span>
-                <span>{formatIST(new Date(meeting.start_time), 'MMM d, yyyy')}</span>
-                <span aria-hidden>·</span>
-                <span>{formatIST(new Date(meeting.start_time), 'h:mm a')}</span>
-                {meeting.duration_seconds && (
-                  <>
-                    <span aria-hidden>·</span>
-                    <span>{formatDuration(meeting.duration_seconds)}</span>
-                  </>
-                )}
-                {(meeting.languages && Object.keys(meeting.languages).length > 0) ? (
-                  <>
-                    <span aria-hidden>·</span>
-                    <span>{formatLanguageMix(meeting.languages)}</span>
-                  </>
-                ) : meeting.language ? (
-                  <>
-                    <span aria-hidden>·</span>
-                    <span>{meeting.language}</span>
-                  </>
-                ) : null}
-                {insights?.facts?.meeting_type && insights.facts.meeting_type !== 'other' && (
-                  <>
-                    <span aria-hidden>·</span>
-                    <span className="capitalize">{insights.facts.meeting_type.replace(/_/g, ' ')}</span>
-                  </>
-                )}
+  const summaryRail = (
+    <div className="flex flex-col gap-4">
+      <EbCard padded={false}>
+        <EbCardHeader title="Action items" count={actionItemCount || undefined} />
+        {actionItemCount === 0 ? (
+          <p className="px-[18px] py-4 font-dmsans text-[12.5px] text-eb-secondary">None from this meeting.</p>
+        ) : (
+          <div className="py-1">
+            {(insights!.action_items as ActionItem[]).slice(0, 5).map((item, i) => (
+              <div key={i} className="flex items-baseline gap-2.5 px-[18px] py-2">
+                <span className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-eb-accent" />
+                <span className="flex-1 font-dmsans text-[13px] leading-[1.45]">
+                  {typeof item === 'string' ? item : item.task}
+                  {item.owner && <span className="text-eb-secondary"> — {item.owner}</span>}
+                </span>
               </div>
-              {(meeting.status === 'failed' || meeting.status === 'cancelled') && meeting.error_message && (
-                <p className="mt-2 text-[13px]" style={{ color: 'hsl(var(--destructive))' }}>
-                  {meeting.error_message}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {insights && (
-                <>
-                  <ShareButton icon={Mail} label="Email" onClick={() => setEmailDialogOpen(true)} />
-                  <ShareButton icon={Link2} label="Share link" onClick={() => setShareDialogOpen(true)} />
-                  {insights.facts && (
-                    <ShareButton icon={PenLine} label="Draft follow-up" onClick={() => handleDraft(false)} />
-                  )}
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <button
-                        type="button"
-                        disabled={regenerating}
-                        className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors disabled:opacity-60"
-                        style={{ border: '1px solid var(--rule)', background: 'var(--paper-card)', color: 'var(--ink)' }}
-                      >
-                        {regenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} strokeWidth={1.75} />}
-                        {regenerating ? 'Regenerating…' : 'Regenerate'}
-                      </button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Regenerate insights?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Rebuilds the summary, extracted facts, action items and coaching from the stored transcript
-                          using the current pipeline (no re-transcription). Speaker renames are kept. Takes about a minute.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleRegenerate}>Regenerate</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </>
-              )}
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <button
-                    type="button"
-                    className="danger-hover inline-flex h-11 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium md:h-auto md:py-1.5"
-                    style={{ color: 'var(--ink-soft)' }}
-                  >
-                    <Trash2 size={13} strokeWidth={1.75} /> Delete
-                  </button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Meeting</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will permanently delete this meeting, including its transcript, insights, and audio recording. This action cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                      {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                      Delete
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setActiveTab('actions')}
+              className="px-[18px] pb-3 pt-1 font-dmsans text-[12.5px] text-eb-accent hover:underline"
+            >
+              All action items →
+            </button>
           </div>
-        </div>
+        )}
+      </EbCard>
 
-        {/* Follow-up email draft (facts-grounded) */}
-        <AlertDialog open={draftOpen} onOpenChange={setDraftOpen}>
-          <AlertDialogContent className="max-w-2xl">
-            <AlertDialogHeader>
-              <AlertDialogTitle>Follow-up email draft</AlertDialogTitle>
-              <AlertDialogDescription>
-                Written from the extracted facts only — their own words for what they need, the commitments both ways, and the follow-up time. Edit before sending.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            {drafting || !draft ? (
-              <div className="flex items-center justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-            ) : (
-              <div className="space-y-3">
-                <div className="text-sm"><span className="text-muted-foreground">To:</span> {draft.to?.join(', ') || '—'}</div>
-                <div className="text-sm font-medium text-foreground">{draft.subject}</div>
-                <textarea
-                  readOnly
-                  value={draft.body}
-                  rows={12}
-                  className="w-full rounded-md p-3 text-sm leading-relaxed outline-none"
-                  style={{ border: '1px solid var(--rule)', background: 'var(--paper-card)', color: 'var(--ink)' }}
-                />
-              </div>
-            )}
-            <AlertDialogFooter className="flex-wrap gap-2">
-              <AlertDialogCancel>Close</AlertDialogCancel>
-              {draft && !drafting && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => handleDraft(true)}
-                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium"
-                    style={{ border: '1px solid var(--rule)', background: 'var(--paper-card)', color: 'var(--ink)' }}
-                  >
-                    <RefreshCw size={13} strokeWidth={1.75} /> Redraft
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => { await navigator.clipboard.writeText(`Subject: ${draft.subject}\n\n${draft.body}`); toast({ title: 'Copied to clipboard' }); }}
-                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium"
-                    style={{ border: '1px solid var(--rule)', background: 'var(--paper-card)', color: 'var(--ink)' }}
-                  >
-                    <Copy size={13} strokeWidth={1.75} /> Copy
-                  </button>
-                  <a
-                    href={`mailto:${encodeURIComponent((draft.to ?? []).filter((t) => t.includes('@')).join(','))}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`}
-                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium text-white"
-                    style={{ background: 'var(--ember)' }}
-                  >
-                    <Mail size={13} strokeWidth={1.75} /> Open in mail
-                  </a>
-                </>
-              )}
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {/* Email Report Selector */}
-        <EmailReportSelector
-          open={emailDialogOpen}
-          onOpenChange={setEmailDialogOpen}
-          meetingTitle={meeting.title}
-          userEmail={user?.email || undefined}
-          onSend={handleSendEmail}
-        />
-
-        <ShareLinkDialog
-          meetingId={meeting.id}
-          open={shareDialogOpen}
-          onOpenChange={setShareDialogOpen}
-        />
-        {insights && (
-          <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              { label: 'Speakers', value: attendees.length || 0 },
-              { label: 'Action items', value: actionItemCount },
-              { label: 'Decisions', value: insights.decisions?.length || 0 },
-              { label: 'Risks', value: insights.risks?.length || 0, alert: (insights.risks?.length || 0) > 0 },
-            ].map((s) => (
-              <div
-                key={s.label}
-                className="rounded-xl p-4"
-                style={{ background: 'var(--paper-card)', border: '1px solid var(--rule)' }}
+      {(facts?.numbers?.length ?? 0) > 0 && (
+        <EbCard padded={false}>
+          <EbCardHeader title="Numbers mentioned" count={facts!.numbers!.length} />
+          <div className="flex flex-wrap gap-1.5 p-[18px] pt-3">
+            {facts!.numbers!.slice(0, 8).map((n, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1.5 rounded-pill bg-eb-accent-soft px-2.5 py-1 font-mono text-[11.5px] text-eb-accent-text"
+                title={n.quote}
               >
-                <p className="text-[12.5px]" style={{ color: 'var(--ink-mid)' }}>{s.label}</p>
-                <p
-                  className="mt-1 text-[22px] font-semibold leading-none"
-                  style={{ color: s.alert ? 'hsl(var(--destructive))' : 'var(--ink)', letterSpacing: '-0.02em' }}
-                >
-                  {s.value}
-                </p>
+                {n.metric}: {n.value}
+              </span>
+            ))}
+          </div>
+        </EbCard>
+      )}
+
+      {coaching?.metrics && Object.keys(coaching.metrics).length > 0 && (
+        <EbCard padded={false}>
+          <EbCardHeader title="Coaching" right={
+            <button type="button" onClick={() => setActiveTab('coaching')} className="pr-2 font-dmsans text-[12.5px] text-eb-accent hover:underline">
+              Open →
+            </button>
+          } />
+          <div className="grid grid-cols-2 gap-px bg-eb-divider">
+            {(Object.entries(coaching.metrics) as [string, CoachingVerdict][]).slice(0, 4).map(([key, m]) => (
+              <div key={key} className="bg-white p-3">
+                <div className="font-dmsans text-[11.5px] text-eb-secondary">{COACH_METRIC_LABELS[key] ?? key}</div>
+                <div className={cn('font-outfit text-[18px] font-semibold', m.verdict === 'good' ? 'text-eb-green' : m.verdict === 'ok' ? 'text-eb-text' : 'text-eb-red')}>
+                  {m.value}{key === 'talk_ratio' ? '%' : key === 'longest_monologue' ? 's' : ''}
+                </div>
               </div>
             ))}
           </div>
+        </EbCard>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setActiveTab('recording')}
+        className="flex items-center gap-3 rounded-card border border-eb-border bg-eb-card p-4 text-left shadow-eb-card hover:bg-eb-row-hover"
+      >
+        <span className="inline-flex h-10 w-10 flex-none items-center justify-center rounded-tile bg-eb-sidebar text-eb-accent-sidebar">
+          <Video size={17} strokeWidth={1.75} />
+        </span>
+        <span>
+          <span className="block font-dmsans text-sm font-medium">Recording</span>
+          <span className="block font-dmsans text-[12.5px] text-eb-secondary">
+            {meeting.duration_seconds ? formatDuration(meeting.duration_seconds) : 'Watch the call'}
+          </span>
+        </span>
+      </button>
+    </div>
+  );
+
+  const summaryTab = insights && (
+    <div className="flex flex-col gap-4">
+      <EbCard>
+        <h2 className="font-outfit text-[15px] font-semibold text-eb-text">Summary</h2>
+        <p className="mt-2 font-dmsans text-sm leading-[1.6] text-eb-prose">{insights.summary_short}</p>
+        {insights.summary_detailed && (
+          <p className="mt-3 whitespace-pre-wrap font-dmsans text-sm leading-[1.6] text-eb-prose">
+            {insights.summary_detailed}
+          </p>
+        )}
+        {(facts?.validation?.unverified?.length ?? 0) > 0 && (
+          <p className="mt-3 flex items-center gap-1.5 font-dmsans text-xs text-eb-secondary">
+            <AlertTriangle size={12} strokeWidth={1.75} />
+            {facts!.validation!.unverified.length} claim
+            {facts!.validation!.unverified.length === 1 ? '' : 's'} could not be verified against the transcript.
+          </p>
         )}
 
-        {/* Content */}
-        {insights ? (
-          <div>
-            {/* Tabs — editorial section tabs with underline, not pills */}
-            <SectionTabs
-              label="Meeting sections"
-              tabs={tabs}
-              value={activeTab}
-              onChange={setActiveTab}
-              trailing={
-                activeTab === 'summary' ? (
-                  <div className="flex items-center gap-2">
-                    <Languages size={13} strokeWidth={1.5} style={{ color: 'var(--ink-soft)' }} />
-                    <label htmlFor="summary-language" className="sr-only">
-                      Summary language
-                    </label>
-                    <select
-                      id="summary-language"
-                      value={summaryLang}
-                      onChange={(e) => setSummaryLang(e.target.value)}
-                      className="rounded-full px-3 py-1.5 text-[12px] outline-none"
-                      style={{
-                        fontFamily: 'var(--font-body)',
-                        border: '1px solid var(--rule)',
-                        background: 'var(--paper-card)',
-                        color: 'var(--ink)',
-                      }}
-                    >
-                      {['English', 'Hindi', 'Tamil', 'Telugu', 'Bengali', 'Kannada', 'Marathi', 'Malayalam', 'Gujarati', 'Punjabi'].map((l) => (
-                        <option key={l} value={l}>{l}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null
-              }
-            />
+        {(insights.decisions?.length ?? 0) > 0 && (
+          <div className="mt-5 border-t border-eb-divider pt-4">
+            <EbLabel>Decisions</EbLabel>
+            <ul className="mt-2 flex flex-col gap-1.5">
+              {insights.decisions.map((d, i) => (
+                <li key={i} className="flex gap-2.5 font-dmsans text-[13.5px] leading-[1.5] text-eb-prose">
+                  <span className="mt-[7px] h-1.5 w-1.5 flex-none rounded-full bg-eb-accent" />
+                  {typeof d === 'string' ? d : (d as { decision?: string }).decision}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-            {/* ═══ SUMMARY TAB ═══ */}
-            {activeTab === 'summary' && (
-              <div className="space-y-6">
-                {/* Executive Summary */}
-                <ProtoCard>
-                  <GradientBar />
-                  <h3 className="text-[15px] font-semibold text-foreground mb-2" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>
-                    Executive summary
-                  </h3>
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    {insights.summary_short}
-                  </p>
-                  {insights.summary_detailed && (
-                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground/90">
-                      {insights.summary_detailed}
-                    </p>
-                  )}
-                  {(insights.facts?.validation?.unverified?.length ?? 0) > 0 && (
-                    <p className="mt-3 flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-soft)' }}>
-                      <AlertTriangle size={12} strokeWidth={1.75} />
-                      {insights.facts!.validation!.unverified.length} claim{insights.facts!.validation!.unverified.length === 1 ? '' : 's'} could not be verified against the transcript.
-                    </p>
-                  )}
-                </ProtoCard>
+        {(insights.risks?.length ?? 0) > 0 && (
+          <div className="mt-4 rounded-input bg-eb-amber-bg p-4">
+            <EbLabel className="text-eb-amber-text">Risks flagged</EbLabel>
+            <ul className="mt-2 flex flex-col gap-1.5">
+              {insights.risks.map((r, i) => (
+                <li key={i} className="flex gap-2.5 font-dmsans text-[13.5px] leading-[1.5] text-eb-amber-text">
+                  <Flag size={12} strokeWidth={1.75} className="mt-1 flex-none" />
+                  {typeof r === 'string' ? r : (r as { risk?: string }).risk}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </EbCard>
 
-                {/* Numbers & asks — verbatim-grounded facts, each deep-linked
-                    into the recording. These are what the follow-up proposal
-                    is written from, so they are never summarized away. */}
-                {insights.facts && ((insights.facts.numbers?.length ?? 0) > 0 || (insights.facts.explicit_asks?.length ?? 0) > 0 || (insights.facts.objections?.length ?? 0) > 0) && (
-                  <InsightSection title="Numbers & asks">
-                    {(insights.facts.numbers ?? []).map((n, i) => (
-                      <InsightItem key={`num-${i}`} accent="var(--ember)">
-                        <span className="flex items-baseline gap-2">
-                          <Hash size={12} strokeWidth={1.75} className="translate-y-[1px] shrink-0" style={{ color: 'var(--ember)' }} />
-                          <span className="text-[15px] font-semibold text-foreground">{n.value}</span>
-                          <span className="text-sm text-muted-foreground">{n.metric}</span>
-                          <TsLink ts={n.ts} onJump={jumpToRecording} />
-                        </span>
-                        {n.quote && (
-                          <span className="mt-1 block text-xs italic text-muted-foreground">
-                            “{n.quote}”{n.speaker ? ` — ${n.speaker}` : ''}
-                          </span>
-                        )}
-                      </InsightItem>
-                    ))}
-                    {(insights.facts.explicit_asks ?? []).map((a, i) => (
-                      <InsightItem key={`ask-${i}`} accent="var(--ember)">
-                        <span className="text-sm font-medium text-foreground">They asked for: {a.statement}</span>{' '}
-                        <TsLink ts={a.ts} onJump={jumpToRecording} />
-                        {a.quote && <span className="mt-1 block text-xs italic text-muted-foreground">“{a.quote}”</span>}
-                      </InsightItem>
-                    ))}
-                    {(insights.facts.objections ?? []).map((o, i) => (
-                      <InsightItem key={`obj-${i}`} accent="var(--ember)">
-                        <span className="text-sm font-medium text-foreground">Objection: {o.statement}</span>{' '}
-                        <span
-                          className="rounded-full px-2 py-0.5 text-[10.5px] font-semibold uppercase"
-                          style={o.addressed
-                            ? { background: 'color-mix(in oklch, var(--ember) 12%, transparent)', color: 'var(--ember-deep)' }
-                            : { background: 'color-mix(in oklch, hsl(var(--destructive)) 10%, transparent)', color: 'hsl(var(--destructive))' }}
-                        >
-                          {o.addressed ? 'addressed' : 'unaddressed'}
-                        </span>{' '}
-                        <TsLink ts={o.ts} onJump={jumpToRecording} />
-                        {o.quote && <span className="mt-1 block text-xs italic text-muted-foreground">“{o.quote}”</span>}
-                      </InsightItem>
-                    ))}
-                  </InsightSection>
+      {(insights.timeline_entries?.length ?? 0) > 0 && (
+        <EbCard padded={false}>
+          <EbCardHeader title="Key moments" count={insights.timeline_entries.length} />
+          {(insights.timeline_entries as TimelineEntry[]).map((entry, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => jumpToRecording(entry.timestamp)}
+              className="flex w-full items-baseline gap-3 border-b border-eb-divider px-[18px] py-3 text-left last:border-0 hover:bg-eb-row-hover"
+            >
+              <span className="w-12 flex-none font-mono text-[11.5px] text-eb-accent">
+                {formatTimelineTime(entry.timestamp)}
+              </span>
+              <span className="flex-1">
+                <span className="block font-dmsans text-[13.5px] font-medium">{entry.content}</span>
+                {entry.speaker && (
+                  <span className="mt-0.5 block font-dmsans text-[12.5px] text-eb-secondary">{entry.speaker}</span>
                 )}
+              </span>
+            </button>
+          ))}
+        </EbCard>
+      )}
 
-                {/* Conversation metrics — computed from transcript segments.
-                    Hidden entirely for older rows that carry no metrics. */}
-                {insights.meeting_metrics &&
-                  Object.keys(insights.meeting_metrics).length > 0 && (
-                    <MeetingMetrics
-                      metrics={insights.meeting_metrics}
-                      hideSentiment={(insights.coaching?.sentiment_timeline?.length ?? 0) >= 2}
-                    />
-                )}
+      {(insights.key_points?.length ?? 0) > 0 && (
+        <EbCard>
+          <EbLabel>Key points</EbLabel>
+          <ul className="mt-2 flex flex-col gap-2">
+            {insights.key_points.map((point, i) => (
+              <li key={i} className="flex gap-2.5 font-dmsans text-[13.5px] leading-[1.5] text-eb-prose">
+                <span className="mt-[7px] h-1.5 w-1.5 flex-none rounded-full bg-eb-chip" />
+                {point}
+              </li>
+            ))}
+          </ul>
+        </EbCard>
+      )}
+    </div>
+  );
 
-                {/* Sections below mirror the summary email exactly — same set,
-                    same order, same one-box-per-item treatment. */}
-                {insights.action_items && insights.action_items.length > 0 && (
-                  <InsightSection title="Action items">
-                    {(insights.action_items as ActionItem[]).map((item, i) => (
-                      <InsightItem key={i} accent="var(--ember)">
-                        <span className="font-medium text-foreground">
-                          {typeof item === 'string' ? item : item.task}
-                        </span>
-                        {item.priority && (
-                          <span className={cn('ml-2 text-[11px] font-semibold uppercase', getPriorityColor(item.priority))}>
-                            {item.priority}
-                          </span>
-                        )}
-                        {(item.owner || item.due_date) && (
-                          <span className="mt-1 block text-xs text-muted-foreground">
-                            {item.owner && (
-                              <>Owner: <span className="font-medium" style={{ color: 'var(--ember)' }}>{item.owner}</span></>
-                            )}
-                            {item.owner && item.due_date && ' · '}
-                            {item.due_date && (
-                              <>Due {item.due_date_resolved ? formatDueDate(item.due_date_resolved) : item.due_date}</>
-                            )}
-                            {typeof item.source_timestamp === 'number' && (
-                              <> · <TsLink ts={item.source_timestamp} onJump={jumpToRecording} /></>
-                            )}
-                          </span>
-                        )}
-                        {item.outcome && (
-                          <span className="mt-1 block text-xs text-muted-foreground">Done when: {item.outcome}</span>
-                        )}
-                      </InsightItem>
-                    ))}
-                  </InsightSection>
-                )}
+  return (
+    <AppShell>
+      <Link
+        to="/dashboard"
+        className="tap-44 mb-3 inline-flex items-center gap-1.5 font-dmsans text-[13px] text-eb-secondary no-underline hover:text-eb-text"
+      >
+        <ArrowLeft size={14} strokeWidth={1.75} /> Back to meetings
+      </Link>
 
-                {insights.decisions && insights.decisions.length > 0 && (
-                  <InsightSection title="Decisions">
-                    {insights.decisions.map((d: string, i: number) => (
-                      <InsightItem key={i} accent="var(--gold)">
-                        {typeof d === 'string' ? d : (d as { decision?: string }).decision}
-                      </InsightItem>
-                    ))}
-                  </InsightSection>
-                )}
-
-                {insights.strategic_insights && insights.strategic_insights.length > 0 && (
-                  <InsightSection title="Strategic insights">
-                    {(insights.strategic_insights as StrategicInsight[]).map((item, i) => (
-                      <InsightItem key={i} accent="var(--gold)">
-                        <span className="flex items-start gap-3">
-                          <span className="flex-1">{item.insight}</span>
-                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs capitalize text-muted-foreground">
-                            {item.category || 'insight'}
-                          </span>
-                        </span>
-                      </InsightItem>
-                    ))}
-                  </InsightSection>
-                )}
-
-                {insights.key_points && insights.key_points.length > 0 && (
-                  <InsightSection title="Key points">
-                    {insights.key_points.map((point: string, i: number) => (
-                      <InsightItem key={i}>{point}</InsightItem>
-                    ))}
-                  </InsightSection>
-                )}
-
-                {insights.speaker_highlights && insights.speaker_highlights.length > 0 && (
-                  <InsightSection title="Speaker highlights">
-                    {(insights.speaker_highlights as SpeakerHighlight[]).map((item, i) => (
-                      <InsightItem key={i}>
-                        <span className="block text-sm font-medium text-foreground">{item.speaker}</span>
-                        <span className="mt-1 block">{item.highlight}</span>
-                        {item.context && (
-                          <span className="mt-1 block text-xs text-muted-foreground">→ {item.context}</span>
-                        )}
-                      </InsightItem>
-                    ))}
-                  </InsightSection>
-                )}
-
-                {insights.open_questions && insights.open_questions.length > 0 && (
-                  <InsightSection title="Open questions">
-                    {insights.open_questions.map((q: string, i: number) => (
-                      <InsightItem key={i} accent="var(--ink-faint)">{q}</InsightItem>
-                    ))}
-                  </InsightSection>
-                )}
-
-                {insights.risks && insights.risks.length > 0 && (
-                  <InsightSection title="Risks">
-                    {insights.risks.map((r: string, i: number) => (
-                      <InsightItem key={i} accent="var(--stop)">{r}</InsightItem>
-                    ))}
-                  </InsightSection>
-                )}
-
-                {insights.follow_ups && insights.follow_ups.length > 0 && (
-                  <InsightSection title="Follow-ups">
-                    {(insights.follow_ups as FollowUp[]).map((item, i) => (
-                      <InsightItem key={i} accent="var(--ember)">
-                        <span className="block">{item.description}</span>
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          {item.assignee ? `${item.assignee} · ` : ''}{item.type || 'follow-up'}
-                        </span>
-                      </InsightItem>
-                    ))}
-                  </InsightSection>
-                )}
-
-                {insights.timeline_entries && insights.timeline_entries.length > 0 && (
-                  <InsightSection title="Outline">
-                    <div className="rounded-lg border border-border px-4 py-3" style={{ background: 'var(--paper-card)' }}>
-                      {(insights.timeline_entries as TimelineEntry[]).slice(0, 8).map((e, i) => (
-                        <div key={i} className="flex gap-3 py-1.5">
-                          <button
-                            type="button"
-                            onClick={() => jumpToRecording(e.timestamp)}
-                            className="w-11 shrink-0 text-left text-xs font-semibold transition-opacity hover:opacity-70"
-                            style={{ color: 'var(--ember)' }}
-                            title="Jump to this moment in the recording"
-                          >
-                            {formatTimelineTime(e.timestamp)}
-                          </button>
-                          <span className="flex-1 text-sm leading-relaxed text-muted-foreground">
-                            {e.speaker && <span className="font-medium text-foreground">{e.speaker}</span>}
-                            {e.speaker && ' — '}
-                            {e.content}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </InsightSection>
-                )}
-              </div>
-            )}
-
-            {/* ═══ ACTIONS TAB ═══ */}
-            {activeTab === 'actions' && (
-              <div className="space-y-2">
-                {insights.action_items && (insights.action_items as ActionItem[]).some((it) => it.due_date_resolved) && (
-                  <label className="flex items-center gap-2 pb-1 text-xs" style={{ color: 'var(--ink-soft)' }}>
-                    <Checkbox checked={inviteAttendees} onCheckedChange={(v) => setInviteAttendees(v === true)} />
-                    Invite the meeting's attendees when I add a follow-up to my calendar
-                  </label>
-                )}
-                {insights.action_items && (insights.action_items as ActionItem[]).map((item, i) => (
-                  <ProtoCard key={i} style={{ padding: 16 }}>
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={cn(
-                          'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2',
-                          item.done ? 'border-success bg-success' : 'border-border bg-transparent'
-                        )}
-                      >
-                        {item.done && <CheckCircle2 size={12} className="text-white" />}
-                      </div>
-                      <div className="flex-1">
-                        <div className={cn('text-sm text-foreground', item.done && 'text-muted-foreground line-through')}>
-                          {typeof item === 'string' ? item : item.task}
-                        </div>
-                        {(item.owner || item.due_date) && (
-                          <div className="mt-0.5 text-xs text-muted-foreground">
-                            {item.owner ? `Assigned to ${item.owner}` : ''}
-                            {item.owner && item.due_date ? ' · ' : ''}
-                            {item.due_date ? `Due ${item.due_date}` : ''}
-                          </div>
-                        )}
-                      </div>
-                      {item.owner && (
-                        <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                          {item.owner}
-                        </span>
-                      )}
-                      {item.priority && (
-                        <Badge variant="outline" className={cn('text-xs', getPriorityColor(item.priority))}>
-                          {item.priority}
-                        </Badge>
-                      )}
-                    </div>
-                    {(item.due_date_resolved || (item as ActionItem & { calendar_event_link?: string }).calendar_event_link) && (
-                      <div className="mt-2 flex flex-wrap items-center gap-3 pl-8 text-xs">
-                        {(item as ActionItem & { calendar_event_link?: string }).calendar_event_link ? (
-                          <a
-                            href={(item as ActionItem & { calendar_event_link?: string }).calendar_event_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 font-medium"
-                            style={{ color: 'var(--ember-deep)' }}
-                          >
-                            <ExternalLink size={12} strokeWidth={1.75} /> Open calendar event
-                          </a>
-                        ) : item.due_date_resolved ? (
-                          <button
-                            type="button"
-                            disabled={calendarBusy === i}
-                            onClick={() => handleAddToCalendar(i, item.due_date_resolved!)}
-                            className="inline-flex items-center gap-1 font-medium disabled:opacity-60"
-                            style={{ color: 'var(--ember-deep)' }}
-                          >
-                            {calendarBusy === i ? <Loader2 size={12} className="animate-spin" /> : <CalendarPlus size={12} strokeWidth={1.75} />}
-                            Add {formatDueDate(item.due_date_resolved)} to calendar
-                          </button>
-                        ) : null}
-                      </div>
-                    )}
-                  </ProtoCard>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="font-outfit text-[26px] font-semibold leading-[1.15] tracking-[-.02em] text-eb-text">
+            {meeting.title}
+          </h1>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 font-dmsans text-[13px] text-eb-secondary">
+            <span>{formatIST(new Date(meeting.start_time), 'MMM d, yyyy · h:mm a')}</span>
+            {meeting.duration_seconds ? (
+              <>
+                <span aria-hidden>·</span>
+                <span>{formatDuration(meeting.duration_seconds)}</span>
+              </>
+            ) : null}
+            <span aria-hidden>·</span>
+            <span>{SOURCE_LABELS[meeting.source ?? 'manual'] ?? 'Recording'}</span>
+            {attendees.length > 0 && (
+              <span className="flex items-center -space-x-1.5 pl-1">
+                {attendees.slice(0, 4).map((a, i) => (
+                  <EbAvatar
+                    key={i}
+                    name={a.displayName || a.email || '?'}
+                    size={20}
+                    round
+                    className="ring-2 ring-eb-bg"
+                  />
                 ))}
-                {(!insights.action_items || insights.action_items.length === 0) && (
-                  <ProtoCard style={{ textAlign: 'center', padding: 40 }}>
-                    <CheckCircle2 size={32} className="mx-auto mb-3 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">No action items for this meeting</p>
-                  </ProtoCard>
+                {attendees.length > 4 && (
+                  <span className="pl-3 font-dmsans text-[12.5px]">+{attendees.length - 4}</span>
                 )}
-              </div>
+              </span>
             )}
+            {meeting.languages && Object.keys(meeting.languages).length > 0 ? (
+              <EbBadge tone="neutral">{formatLanguageMix(meeting.languages)}</EbBadge>
+            ) : meeting.language ? (
+              <EbBadge tone="neutral">{meeting.language}</EbBadge>
+            ) : null}
+            {inProgress && <EbBadge tone="amber" dot>{meeting.status.replace(/_/g, ' ')}</EbBadge>}
+          </div>
+          {(meeting.status === 'failed' || meeting.status === 'cancelled') && meeting.error_message && (
+            <p className="mt-2 font-dmsans text-[13px] text-eb-red">{meeting.error_message}</p>
+          )}
+        </div>
 
-            {/* ═══ COACHING TAB ═══ */}
-            {activeTab === 'coaching' && insights.coaching && (() => {
-              const coaching = insights.coaching as CoachingReport;
-              const verdictColor = (v: string) =>
-                v === 'good' ? 'var(--ember-deep)' : v === 'ok' ? 'var(--ink-mid)' : 'hsl(var(--destructive))';
-              const metricLabels: Record<string, string> = {
-                talk_ratio: 'Talk ratio',
-                longest_monologue: 'Longest monologue',
-                questions: 'Questions asked',
-                hedge_density: 'Hedge words / 100',
-              };
-              const flagLabels: Record<string, string> = {
-                pitched_before_discovery_complete: 'Pitched before discovery finished',
-                objection_ignored: 'Objection ignored',
-                numbers_mismatch: 'Used hypothetical numbers',
-              };
-              const metricEntries = Object.entries(coaching.metrics ?? {}) as [string, CoachingVerdict][];
-              const flagEntries = (Object.entries(coaching.flags ?? {}) as [string, CoachingFlag][])
-                .filter(([k]) => k !== 'next_step_secured');
-              const nextStep = coaching.flags?.next_step_secured;
-              return (
-                <div className="space-y-6">
-                  {coaching.summary && (
-                    <ProtoCard>
-                      <h3 className="mb-2 text-[15px] font-semibold text-foreground" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>
-                        Coach's summary{coaching.rep ? ` — ${coaching.rep}` : ''}
-                      </h3>
-                      <p className="text-sm leading-relaxed text-muted-foreground">{coaching.summary}</p>
-                    </ProtoCard>
-                  )}
+        {insights && (
+          <div className="flex flex-wrap items-center gap-2">
+            <EbButton size="sm" onClick={() => setEmailDialogOpen(true)} icon={<Mail size={14} strokeWidth={1.75} />}>
+              Email
+            </EbButton>
+            <EbButton size="sm" onClick={() => setShareDialogOpen(true)} icon={<Link2 size={14} strokeWidth={1.75} />}>
+              Share
+            </EbButton>
+            {facts && (
+              <EbButton size="sm" onClick={() => handleDraft(false)} icon={<PenLine size={14} strokeWidth={1.75} />}>
+                Draft follow-up
+              </EbButton>
+            )}
+            <EbButton
+              size="sm"
+              disabled={regenerating}
+              onClick={() => setRegenOpen(true)}
+              icon={regenerating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} strokeWidth={1.75} />}
+            >
+              {regenerating ? 'Regenerating…' : 'Regenerate'}
+            </EbButton>
 
-                  {metricEntries.length > 0 && (
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                      {metricEntries.map(([key, m]) => (
-                        <div key={key} className="rounded-xl p-4" style={{ background: 'var(--paper-card)', border: '1px solid var(--rule)' }}>
-                          <p className="text-[12.5px]" style={{ color: 'var(--ink-mid)' }}>{metricLabels[key] ?? key}</p>
-                          <p className="mt-1 text-[22px] font-semibold leading-none" style={{ color: verdictColor(m.verdict), letterSpacing: '-0.02em' }}>
-                            {m.value}{key === 'talk_ratio' ? '%' : key === 'longest_monologue' ? 's' : ''}
-                          </p>
-                          <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: 'var(--ink-soft)' }}>{m.note}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {(flagEntries.some(([, f]) => f?.value) || nextStep) && (
-                    <InsightSection title="Moments">
-                      {flagEntries.filter(([, f]) => f?.value).map(([key, f]) => (
-                        <InsightItem key={key} accent="hsl(var(--destructive))">
-                          <span className="text-sm font-medium text-foreground">{flagLabels[key] ?? key}</span>{' '}
-                          <TsLink ts={f.evidence_ts ?? undefined} onJump={jumpToRecording} />
-                          {f.note && <span className="mt-1 block text-xs text-muted-foreground">{f.note}</span>}
-                        </InsightItem>
-                      ))}
-                      {nextStep && (
-                        <InsightItem accent={nextStep.value ? 'var(--ember)' : 'hsl(var(--destructive))'}>
-                          <span className="text-sm font-medium text-foreground">
-                            {nextStep.value
-                              ? `Next step secured${nextStep.strength === 'date_locked' ? ' — date locked' : nextStep.strength === 'vague' ? ' — but vague' : ''}`
-                              : 'No next step secured'}
-                          </span>{' '}
-                          <TsLink ts={nextStep.evidence_ts ?? undefined} onJump={jumpToRecording} />
-                          {nextStep.note && <span className="mt-1 block text-xs text-muted-foreground">{nextStep.note}</span>}
-                        </InsightItem>
-                      )}
-                    </InsightSection>
-                  )}
-
-                  {(coaching.sentiment_timeline?.length ?? 0) >= 2 && (
-                    <ProtoCard>
-                      <h3 className="mb-1 text-[15px] font-semibold text-foreground" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>
-                        {coaching.external_participant ? `${coaching.external_participant}'s engagement` : 'Engagement over time'}
-                      </h3>
-                      <p className="mb-3 text-xs" style={{ color: 'var(--ink-soft)' }}>Sentiment of the other side across the call. Dots mark inflection points.</p>
-                      <SentimentSparkline timeline={coaching.sentiment_timeline!} />
-                    </ProtoCard>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* ═══ TRANSCRIPT TAB ═══ */}
-            {activeTab === 'transcript' && (() => {
-              const internalCount = speakerSegments.filter((s) => (s.zone ?? 'meeting') !== 'meeting').length;
-              const visibleSegments = showInternal
-                ? speakerSegments
-                : speakerSegments.filter((s) => (s.zone ?? 'meeting') === 'meeting');
-              return (
-              <div>
-                {internalCount > 0 && (
-                  <div
-                    className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg px-4 py-2.5"
-                    style={{ background: 'var(--paper-card)', border: '1px solid var(--rule)' }}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <EbButton size="sm" variant="destructive" icon={<Trash2 size={14} strokeWidth={1.75} />}>
+                  Delete
+                </EbButton>
+              </AlertDialogTrigger>
+              <AlertDialogContent className={EB_DIALOG}>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this meeting?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Permanently removes the meeting with its transcript, insights and archived
+                    audio. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   >
-                    <span className="text-[12.5px]" style={{ color: 'var(--ink-mid)' }}>
-                      {internalCount} internal segment{internalCount === 1 ? '' : 's'} (pre/post-meeting chatter) {showInternal ? 'shown below' : 'hidden'} — visible only to you, never included in summaries or shares. Window {meeting.boundaries?.source === 'llm_estimated' ? 'estimated from the conversation' : 'estimated from who spoke when'}.
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowInternal((v) => !v)}
-                      className="inline-flex items-center gap-1.5 text-[12.5px] font-medium"
-                      style={{ color: 'var(--ember-deep)' }}
-                    >
-                      {showInternal ? <EyeOff size={13} strokeWidth={1.75} /> : <Eye size={13} strokeWidth={1.75} />}
-                      {showInternal ? 'Hide internal audio' : 'Show internal audio'}
-                    </button>
-                  </div>
-                )}
-                {visibleSegments.length > 0 ? visibleSegments.map((seg, i) => {
-                  const prevSpeaker = i > 0 ? visibleSegments[i - 1].speaker : null;
-                  const prevZone = i > 0 ? (visibleSegments[i - 1].zone ?? 'meeting') : null;
-                  const zone = seg.zone ?? 'meeting';
-                  const isInternal = zone !== 'meeting';
-                  const isNewSpeaker = seg.speaker !== prevSpeaker || zone !== prevZone;
-                  return (
-                    <div key={i} className={cn('flex gap-3 border-b border-border py-3', isInternal && 'opacity-60')}>
-                      {isNewSpeaker ? (
-                        <div 
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white flex-shrink-0"
-                          style={{ background: 'var(--ember)' }}
-                        >
-                          {seg.speaker[0]}
-                        </div>
-                      ) : (
-                        <div className="w-8 flex-shrink-0" />
-                      )}
-                      <div>
-                        {isNewSpeaker && (
-                          <div className="flex gap-2 items-center mb-1">
-                            {renameTarget && renameTarget.from === seg.speaker ? (
-                              <span className="flex items-center gap-1.5">
-                                <input
-                                  autoFocus
-                                  value={renameTarget.value}
-                                  onChange={(e) => setRenameTarget({ from: seg.speaker, value: e.target.value })}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameTarget(null); }}
-                                  className="w-[min(180px,60vw)] rounded-md px-2 py-1.5 text-[16px] outline-none md:py-0.5 md:text-[13px]"
-                                  style={{ border: '1px solid var(--rule)', background: 'var(--paper-card)', color: 'var(--ink)' }}
-                                  aria-label="New speaker name"
-                                />
-                                <button type="button" onClick={handleRename} disabled={renaming} className="text-[12px] font-medium" style={{ color: 'var(--ember-deep)' }}>
-                                  {renaming ? 'Saving…' : 'Save'}
-                                </button>
-                                <button type="button" onClick={() => setRenameTarget(null)} className="text-[12px]" style={{ color: 'var(--ink-soft)' }}>Cancel</button>
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setRenameTarget({ from: seg.speaker, value: seg.speaker })}
-                                className="group inline-flex items-center gap-1 text-[13px] font-medium text-foreground"
-                                title="Rename this speaker everywhere"
-                              >
-                                {seg.speaker}
-                                <Pencil size={11} strokeWidth={1.75} className="opacity-0 transition-opacity group-hover:opacity-60" />
-                              </button>
-                            )}
-                            {seg.start !== undefined && (
-                              <TsLink ts={seg.start} onJump={jumpToRecording} />
-                            )}
-                            {isInternal && (
-                              <span
-                                className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-                                style={{ background: 'color-mix(in oklch, var(--ink) 8%, transparent)', color: 'var(--ink-soft)' }}
-                              >
-                                Internal — not shared
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        <p className="text-sm leading-relaxed text-muted-foreground">{seg.text}</p>
-                      </div>
-                    </div>
-                  );
-                }) : transcript ? (
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                    {transcript.content}
-                  </p>
-                ) : (
-                  <ProtoCard style={{ textAlign: 'center', padding: 40 }}>
-                    <FileText size={32} className="mx-auto mb-3 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Transcript will appear here after processing</p>
-                  </ProtoCard>
-                )}
-              </div>
-              );
-            })()}
-
-            {activeTab === 'recording' && <RecordingPlayer meetingId={meeting.id} seekSeconds={seekSeconds} />}
-
-            {/* ═══ DELIVERY TAB ═══ */}
-            {activeTab === 'delivery' && (
-              <div className="space-y-3">
-                {/* Email Deliveries */}
-                {emailMessages.length > 0 && (
-                  <>
-                    <h3 className="text-[15px] font-semibold text-foreground mb-3 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>
-                      <Mail size={16} style={{ color: 'var(--info)' }} /> Email Deliveries
-                    </h3>
-                    {emailMessages.map((msg, i) => (
-                      <ProtoCard key={i} style={{ padding: 16 }}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="text-sm font-medium text-foreground">{msg.recipient_email}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {formatIST(new Date(msg.sent_at || msg.created_at), 'MMM d, yyyy h:mm a')}
-                            </div>
-                            {msg.error_message && (
-                              <div className="mt-1 text-xs text-destructive">
-                                Error: {msg.error_message}
-                              </div>
-                            )}
-                          </div>
-                          <span
-                            className={cn(
-                              'rounded-full px-2.5 py-1 text-[11px] font-semibold',
-                              msg.status === 'sent' ? 'bg-success/15 text-success dark:text-success' : 'bg-muted text-muted-foreground'
-                            )}
-                          >
-                            {msg.status === 'sent' ? '✓ Sent' : msg.status === 'failed' ? '✗ Failed' : 'Pending'}
-                          </span>
-                        </div>
-                      </ProtoCard>
-                    ))}
-                  </>
-                )}
-
-                {emailMessages.length === 0 && (
-                  <ProtoCard style={{ textAlign: 'center', padding: 40 }}>
-                    <Mail size={32} className="mx-auto mb-3 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">No deliveries yet. Send this report by email above.</p>
-                  </ProtoCard>
-                )}
-              </div>
-            )}
-          </div>
-        ) : IN_PROGRESS_STATUSES.includes(meeting.status) ? (
-          <div className="py-16 text-center">
-            <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-muted-foreground" />
-            <ol className="mx-auto mb-4 flex max-w-md items-center justify-center gap-2 text-[12px]">
-              {(['Recording', 'Transcribing & analysing', 'Ready'] as const).map((label, idx) => {
-                const current = ['joining', 'in_call', 'recording'].includes(meeting.status) ? 0 : 1;
-                const state = idx < current ? 'done' : idx === current ? 'active' : 'todo';
-                return (
-                  <li key={label} className="flex items-center gap-2">
-                    <span
-                      className="inline-block h-2 w-2 rounded-full"
-                      style={{ background: state === 'todo' ? 'var(--rule)' : 'var(--ember)', opacity: state === 'done' ? 0.5 : 1 }}
-                    />
-                    <span style={{ color: state === 'active' ? 'var(--ink)' : 'var(--ink-soft)', fontWeight: state === 'active' ? 600 : 400 }}>{label}</span>
-                    {idx < 2 && <span aria-hidden style={{ color: 'var(--rule)' }}>—</span>}
-                  </li>
-                );
-              })}
-            </ol>
-            <p className="mb-1 text-base font-medium text-foreground">
-              {meeting.status === 'transcribing'
-                ? 'Transcribing meeting...'
-                : meeting.status === 'joining' || meeting.status === 'in_call'
-                  ? 'Bot is joining the meeting...'
-                  : 'Processing meeting...'}
-            </p>
-            <p className="mx-auto max-w-sm text-sm text-muted-foreground">
-              AI is analyzing your recording. This usually takes a few minutes.
-            </p>
-          </div>
-        ) : (
-          <div className="py-10">
-            <div className="mb-8 text-center">
-              <p className="mb-1 text-base font-medium text-foreground">No insights available</p>
-              <p className="text-sm text-muted-foreground">This meeting hasn&apos;t been processed yet.</p>
-            </div>
-            {/* A meeting with no insights still has a recording worth watching —
-                and audio for a failed meeting is kept far longer than usual. */}
-            <RecordingPlayer meetingId={meeting.id} />
+                    {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         )}
       </div>
-    </DashboardLayout>
+
+      <EmailReportDialog
+        open={emailDialogOpen}
+        onOpenChange={setEmailDialogOpen}
+        meetingTitle={meeting.title}
+        meetingDate={meeting.start_time ? formatIST(new Date(meeting.start_time), 'EEE, MMM d') : undefined}
+        userEmail={user?.email || undefined}
+        attendees={attendees}
+        onSend={handleSendEmail}
+      />
+      <ShareLinkDialog meetingId={meeting.id} open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
+
+      {/* Mockup 00g. Dark button, not red: this replaces generated text and is
+          repeatable — red is reserved for the delete that is not. */}
+      <EbDialog
+        open={regenOpen}
+        onOpenChange={setRegenOpen}
+        icon={<RefreshCw size={18} strokeWidth={1.75} />}
+        title="Regenerate insights?"
+        description="Rebuilds the summary, extracted facts, action items and coaching from the stored transcript with the current pipeline. No re-transcription. Speaker renames are kept."
+        width={480}
+        footer={
+          <>
+            <DialogNote>Takes about a minute</DialogNote>
+            <div className="flex items-center gap-2">
+              <EbButton onClick={() => setRegenOpen(false)}>Cancel</EbButton>
+              <EbButton
+                variant="dark"
+                disabled={regenerating}
+                onClick={() => {
+                  setRegenOpen(false);
+                  handleRegenerate();
+                }}
+                icon={<RefreshCw size={15} strokeWidth={1.75} />}
+              >
+                Regenerate
+              </EbButton>
+            </div>
+          </>
+        }
+      >
+        <div className="flex items-start gap-2.5 rounded-card border border-eb-border bg-eb-amber-bg px-3.5 py-3">
+          <Flag size={15} strokeWidth={1.75} className="mt-px shrink-0 text-eb-amber" />
+          <p className="m-0 font-dmsans text-[13px] leading-[1.55] text-eb-amber-text">
+            Any edits you made to the summary or action items will be replaced. Ticked action items
+            stay ticked.
+          </p>
+        </div>
+      </EbDialog>
+
+      <AlertDialog open={draftOpen} onOpenChange={setDraftOpen}>
+        <AlertDialogContent className={cn('max-w-2xl', EB_DIALOG)}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Follow-up email draft</AlertDialogTitle>
+            <AlertDialogDescription>
+              Written from the extracted facts only — their own words for what they need, the
+              commitments both ways, and the follow-up time. Edit before sending.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {drafting || !draft ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-6 w-6 animate-spin text-eb-secondary" />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="font-dmsans text-[13px] text-eb-secondary">
+                To: <span className="text-eb-text">{draft.to?.join(', ') || '—'}</span>
+              </div>
+              <div className="font-dmsans text-sm font-medium text-eb-text">{draft.subject}</div>
+              <textarea
+                readOnly
+                value={draft.body}
+                rows={12}
+                className="w-full rounded-input border border-eb-border bg-eb-paper p-3 font-dmsans text-sm leading-relaxed text-eb-text outline-none"
+              />
+            </div>
+          )}
+          <AlertDialogFooter className="flex-wrap gap-2">
+            <AlertDialogCancel>Close</AlertDialogCancel>
+            {draft && !drafting && (
+              <>
+                <EbButton size="sm" onClick={() => handleDraft(true)} icon={<RefreshCw size={13} strokeWidth={1.75} />}>
+                  Redraft
+                </EbButton>
+                <EbButton
+                  size="sm"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(`Subject: ${draft.subject}\n\n${draft.body}`);
+                    toast({ title: 'Copied to clipboard' });
+                  }}
+                  icon={<Copy size={13} strokeWidth={1.75} />}
+                >
+                  Copy
+                </EbButton>
+                <a
+                  href={`mailto:${encodeURIComponent((draft.to ?? []).filter((t) => t.includes('@')).join(','))}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`}
+                  className="inline-flex items-center gap-2 rounded-pill bg-gradient-to-b from-eb-accent-top to-eb-accent px-3 py-1.5 font-dmsans text-[13px] font-medium text-white shadow-eb-primary hover:to-eb-accent-hover"
+                >
+                  <Mail size={13} strokeWidth={1.75} /> Open in mail
+                </a>
+              </>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {insights ? (
+        <>
+          <div className="mb-5">
+            <EbChipGroup ariaLabel="Meeting sections" value={activeTab} onChange={setActiveTab} options={tabs} />
+          </div>
+
+          {activeTab === 'summary' && (
+            <EbTwoColumn rail={summaryRail}>{summaryTab}</EbTwoColumn>
+          )}
+
+          {activeTab === 'actions' && (
+            <div className="flex flex-col gap-3">
+              {(insights.action_items as ActionItem[]).some((it) => it.due_date_resolved) && (
+                <label className="flex items-center gap-2 font-dmsans text-[12.5px] text-eb-secondary">
+                  <Checkbox checked={inviteAttendees} onCheckedChange={(v) => setInviteAttendees(v === true)} />
+                  Invite the meeting&apos;s attendees when I add a follow-up to my calendar
+                </label>
+              )}
+              {actionItemCount === 0 ? (
+                <EbCard className="py-10 text-center">
+                  <CheckCircle2 size={28} className="mx-auto mb-3 text-eb-muted" strokeWidth={1.5} />
+                  <p className="font-dmsans text-[13px] text-eb-secondary">No action items for this meeting.</p>
+                </EbCard>
+              ) : (
+                <EbCard padded={false}>
+                  {(insights.action_items as ActionItem[]).map((item, i) => {
+                    const link = (item as ActionItem & { calendar_event_link?: string }).calendar_event_link;
+                    return (
+                      <div key={i} className="border-b border-eb-divider px-[18px] py-3.5 last:border-0">
+                        <div className="flex items-start gap-3">
+                          <span className={cn(
+                            'mt-0.5 flex h-[18px] w-[18px] flex-none items-center justify-center rounded-md border-[1.5px]',
+                            item.done ? 'border-0 bg-eb-green text-white' : 'border-eb-control-edge bg-white',
+                          )}>
+                            {item.done && <CheckCircle2 size={11} strokeWidth={3} />}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className={cn('block font-dmsans text-sm', item.done && 'text-eb-secondary line-through')}>
+                              {typeof item === 'string' ? item : item.task}
+                            </span>
+                            {(item.owner || item.due_date) && (
+                              <span className="mt-0.5 block font-dmsans text-[12.5px] text-eb-secondary">
+                                {item.owner ? `Assigned to ${item.owner}` : ''}
+                                {item.owner && item.due_date ? ' · ' : ''}
+                                {item.due_date ? `Due ${item.due_date}` : ''}
+                              </span>
+                            )}
+                          </span>
+                          {item.priority && (
+                            <EbBadge tone={item.priority === 'high' ? 'red' : item.priority === 'medium' ? 'amber' : 'neutral'}>
+                              {item.priority}
+                            </EbBadge>
+                          )}
+                        </div>
+                        {(item.due_date_resolved || link) && (
+                          <div className="mt-2 pl-[30px] font-dmsans text-[12.5px]">
+                            {link ? (
+                              <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-eb-accent no-underline hover:underline">
+                                <ExternalLink size={12} strokeWidth={1.75} /> Open calendar event
+                              </a>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={calendarBusy === i}
+                                onClick={() => handleAddToCalendar(i, item.due_date_resolved!)}
+                                className="inline-flex items-center gap-1 font-medium text-eb-accent disabled:opacity-60 hover:underline"
+                              >
+                                {calendarBusy === i ? <Loader2 size={12} className="animate-spin" /> : <CalendarPlus size={12} strokeWidth={1.75} />}
+                                Add {formatDueDate(item.due_date_resolved!)} to calendar
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </EbCard>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'recording' && (
+            <RecordingPanel
+              meetingId={meeting.id}
+              segments={visibleSegments}
+              topics={(facts?.topics as PanelTopic[] | undefined) ?? []}
+              seekSeconds={seekSeconds}
+              onSeek={setSeekSeconds}
+            />
+          )}
+
+          {activeTab === 'transcript' && (
+            <div className="flex flex-col gap-3">
+              {internalCount > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-input border border-eb-border bg-eb-card px-4 py-2.5">
+                  <span className="font-dmsans text-[12.5px] text-eb-secondary">
+                    {internalCount} internal segment{internalCount === 1 ? '' : 's'} (pre/post-meeting chatter){' '}
+                    {showInternal ? 'shown below' : 'hidden'} — visible only to you, never included in
+                    summaries or shares.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowInternal((v) => !v)}
+                    className="inline-flex items-center gap-1.5 font-dmsans text-[12.5px] font-medium text-eb-accent"
+                  >
+                    {showInternal ? <EyeOff size={13} strokeWidth={1.75} /> : <Eye size={13} strokeWidth={1.75} />}
+                    {showInternal ? 'Hide internal audio' : 'Show internal audio'}
+                  </button>
+                </div>
+              )}
+
+              {visibleSegments.length > 0 ? (
+                <EbCard padded={false}>
+                  {visibleSegments.map((seg, i) => {
+                    const prev = i > 0 ? visibleSegments[i - 1] : null;
+                    const zone = seg.zone ?? 'meeting';
+                    const isInternal = zone !== 'meeting';
+                    const isNewSpeaker = seg.speaker !== prev?.speaker || zone !== (prev?.zone ?? 'meeting');
+                    return (
+                      <div key={i} className={cn('flex gap-3 px-[18px]', isNewSpeaker ? 'pt-3.5' : 'pt-0', 'pb-1.5', isInternal && 'opacity-60')}>
+                        <span className="w-8 flex-none">
+                          {isNewSpeaker && <EbAvatar name={seg.speaker} size={30} round />}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          {isNewSpeaker && (
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              {renameTarget && renameTarget.from === seg.speaker ? (
+                                <span className="flex items-center gap-1.5">
+                                  <input
+                                    autoFocus
+                                    value={renameTarget.value}
+                                    onChange={(e) => setRenameTarget({ from: seg.speaker, value: e.target.value })}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleRename();
+                                      if (e.key === 'Escape') setRenameTarget(null);
+                                    }}
+                                    className="w-[min(180px,60vw)] rounded-input border border-eb-border bg-white px-2 py-1 font-dmsans text-[13px] outline-none"
+                                    aria-label="New speaker name"
+                                  />
+                                  <button type="button" onClick={handleRename} disabled={renaming} className="font-dmsans text-[12px] font-medium text-eb-accent">
+                                    {renaming ? 'Saving…' : 'Save'}
+                                  </button>
+                                  <button type="button" onClick={() => setRenameTarget(null)} className="font-dmsans text-[12px] text-eb-secondary">
+                                    Cancel
+                                  </button>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setRenameTarget({ from: seg.speaker, value: seg.speaker })}
+                                  className="group inline-flex items-center gap-1 font-dmsans text-[13px] font-medium"
+                                  title="Rename this speaker everywhere"
+                                >
+                                  {seg.speaker}
+                                  <Pencil size={11} strokeWidth={1.75} className="opacity-0 transition-opacity group-hover:opacity-60" />
+                                </button>
+                              )}
+                              {seg.start !== undefined && (
+                                <button
+                                  type="button"
+                                  onClick={() => jumpToRecording(seg.start!)}
+                                  className="font-mono text-[11.5px] text-eb-accent hover:underline"
+                                >
+                                  {formatTimelineTime(seg.start)}
+                                </button>
+                              )}
+                              {isInternal && <EbBadge tone="neutral">Internal — not shared</EbBadge>}
+                            </div>
+                          )}
+                          <p className="font-dmsans text-[13.5px] leading-[1.6] text-eb-prose">{seg.text}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="h-3" />
+                </EbCard>
+              ) : transcript ? (
+                <EbCard>
+                  <p className="whitespace-pre-wrap font-dmsans text-[13.5px] leading-[1.6] text-eb-prose">
+                    {transcript.content}
+                  </p>
+                </EbCard>
+              ) : (
+                <EbCard className="py-10 text-center">
+                  <FileText size={28} className="mx-auto mb-3 text-eb-muted" strokeWidth={1.5} />
+                  <p className="font-dmsans text-[13px] text-eb-secondary">
+                    The transcript appears here once processing finishes.
+                  </p>
+                </EbCard>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'coaching' && coaching && (
+            <div className="flex flex-col gap-4">
+              {coaching.summary && (
+                <EbDarkPanel eyebrow={`Coach's summary${coaching.rep ? ` · ${coaching.rep}` : ''}`}>
+                  <p className="font-dmsans text-sm leading-[1.6]">{coaching.summary}</p>
+                </EbDarkPanel>
+              )}
+
+              {Object.keys(coaching.metrics ?? {}).length > 0 && (
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  {(Object.entries(coaching.metrics!) as [string, CoachingVerdict][]).map(([key, m]) => (
+                    <div key={key} className="rounded-card border border-eb-border bg-eb-card p-4 shadow-eb-card">
+                      <div className="font-dmsans text-[12.5px] text-eb-secondary">{COACH_METRIC_LABELS[key] ?? key}</div>
+                      <div className={cn('mt-1.5 font-outfit text-[26px] font-semibold leading-none tracking-[-.02em]', m.verdict === 'good' ? 'text-eb-green' : m.verdict === 'ok' ? 'text-eb-text' : 'text-eb-red')}>
+                        {m.value}{key === 'talk_ratio' ? '%' : key === 'longest_monologue' ? 's' : ''}
+                      </div>
+                      <div className="mt-1.5 font-dmsans text-[11.5px] leading-snug text-eb-secondary">{m.note}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(() => {
+                const flagEntries = (Object.entries(coaching.flags ?? {}) as [string, CoachingFlag][])
+                  .filter(([k]) => k !== 'next_step_secured');
+                const nextStep = coaching.flags?.next_step_secured;
+                if (!flagEntries.some(([, f]) => f?.value) && !nextStep) return null;
+                return (
+                  <EbCard padded={false}>
+                    <EbCardHeader title="Moments" />
+                    {flagEntries.filter(([, f]) => f?.value).map(([key, f]) => (
+                      <div key={key} className="border-b border-eb-divider px-[18px] py-3 last:border-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Flag size={13} strokeWidth={1.75} className="text-eb-red" />
+                          <span className="font-dmsans text-[13.5px] font-medium">{COACH_FLAG_LABELS[key] ?? key}</span>
+                          {f.evidence_ts != null && (
+                            <button type="button" onClick={() => jumpToRecording(f.evidence_ts!)} className="font-mono text-[11.5px] text-eb-accent hover:underline">
+                              {formatTimelineTime(f.evidence_ts)}
+                            </button>
+                          )}
+                        </div>
+                        {f.note && <p className="mt-1 font-dmsans text-[12.5px] text-eb-secondary">{f.note}</p>}
+                      </div>
+                    ))}
+                    {nextStep && (
+                      <div className="px-[18px] py-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <EbBadge tone={nextStep.value ? 'green' : 'red'} dot>
+                            {nextStep.value ? 'Next step secured' : 'No next step'}
+                          </EbBadge>
+                          {nextStep.value && nextStep.strength === 'date_locked' && <span className="font-dmsans text-[12.5px] text-eb-secondary">date locked</span>}
+                          {nextStep.value && nextStep.strength === 'vague' && <span className="font-dmsans text-[12.5px] text-eb-secondary">but vague</span>}
+                          {nextStep.evidence_ts != null && (
+                            <button type="button" onClick={() => jumpToRecording(nextStep.evidence_ts!)} className="font-mono text-[11.5px] text-eb-accent hover:underline">
+                              {formatTimelineTime(nextStep.evidence_ts)}
+                            </button>
+                          )}
+                        </div>
+                        {nextStep.note && <p className="mt-1 font-dmsans text-[12.5px] text-eb-secondary">{nextStep.note}</p>}
+                      </div>
+                    )}
+                  </EbCard>
+                );
+              })()}
+
+              {(coaching.sentiment_timeline?.length ?? 0) >= 2 && (
+                <EbCard>
+                  <h3 className="font-outfit text-[15px] font-semibold text-eb-text">
+                    {coaching.external_participant ? `${coaching.external_participant}'s engagement` : 'Engagement over time'}
+                  </h3>
+                  <p className="mb-3 mt-0.5 font-dmsans text-[12.5px] text-eb-secondary">
+                    Sentiment of the other side across the call. Dots mark inflection points.
+                  </p>
+                  <SentimentSparkline timeline={coaching.sentiment_timeline!} />
+                </EbCard>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'facts' && facts && (
+            <div className="flex flex-col gap-4">
+              {FACT_GROUPS.map(({ key, title, primary, secondary }) => {
+                const rows = (facts as unknown as Record<string, Array<Record<string, unknown>>>)[key];
+                if (!Array.isArray(rows) || rows.length === 0) return null;
+                return (
+                  <EbCard key={key} padded={false}>
+                    <EbCardHeader title={title} count={rows.length} />
+                    {rows.map((row, i) => (
+                      <div key={i} className="border-b border-eb-divider px-[18px] py-3 last:border-0">
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <span className="font-dmsans text-[13.5px] font-medium">
+                            {String(row[primary] ?? '')}
+                            {secondary && row[secondary] ? `: ${String(row[secondary])}` : ''}
+                          </span>
+                          {typeof row.ts === 'number' && (
+                            <button type="button" onClick={() => jumpToRecording(row.ts as number)} className="font-mono text-[11.5px] text-eb-accent hover:underline">
+                              {formatTimelineTime(row.ts as number)}
+                            </button>
+                          )}
+                        </div>
+                        {typeof row.quote === 'string' && (
+                          <p className="mt-1 border-l-2 border-eb-border pl-2.5 font-dmsans text-[12.5px] italic leading-[1.5] text-eb-secondary">
+                            “{row.quote}”
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </EbCard>
+                );
+              })}
+              {(facts.validation?.unverified?.length ?? 0) > 0 && (
+                <EbCard>
+                  <EbLabel className="text-eb-amber-text">Unverified claims</EbLabel>
+                  <ul className="mt-2 flex flex-col gap-1.5">
+                    {facts.validation!.unverified.map((claim, i) => (
+                      <li key={i} className="font-dmsans text-[13px] leading-[1.5] text-eb-prose">{claim}</li>
+                    ))}
+                  </ul>
+                </EbCard>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'delivery' && (
+            <EbCard padded={false}>
+              <EbCardHeader title="Email deliveries" count={emailMessages.length || undefined} />
+              {emailMessages.length === 0 ? (
+                <p className="px-[18px] py-8 text-center font-dmsans text-[13px] text-eb-secondary">
+                  Nothing sent yet. Use Email above to send this report.
+                </p>
+              ) : (
+                emailMessages.map((msg, i) => (
+                  <div key={i} className="flex items-center gap-3 border-b border-eb-divider px-[18px] py-3 last:border-0">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-dmsans text-[13.5px] font-medium">{msg.recipient_email}</div>
+                      <div className="font-mono text-[11.5px] text-eb-secondary">
+                        {formatIST(new Date(msg.sent_at || msg.created_at), 'MMM d, yyyy h:mm a')}
+                      </div>
+                      {msg.error_message && (
+                        <div className="font-dmsans text-[12px] text-eb-red">{msg.error_message}</div>
+                      )}
+                    </div>
+                    <EbBadge tone={msg.status === 'sent' ? 'green' : msg.status === 'failed' ? 'red' : 'neutral'} dot>
+                      {msg.status === 'sent' ? 'Sent' : msg.status === 'failed' ? 'Failed' : 'Pending'}
+                    </EbBadge>
+                  </div>
+                ))
+              )}
+            </EbCard>
+          )}
+        </>
+      ) : inProgress ? (
+        <EbCard className="py-14 text-center">
+          <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-eb-muted" />
+          <div className="mx-auto mb-4 flex max-w-md items-center justify-center gap-2 font-dmsans text-[12px]">
+            {(['Recording', 'Transcribing & analysing', 'Ready'] as const).map((label, idx) => {
+              const current = ['joining', 'in_call', 'recording'].includes(meeting.status) ? 0 : 1;
+              const state = idx < current ? 'done' : idx === current ? 'active' : 'todo';
+              return (
+                <span key={label} className="flex items-center gap-2">
+                  <span className={cn('inline-block h-2 w-2 rounded-full', state === 'todo' ? 'bg-eb-chip' : 'bg-eb-accent', state === 'done' && 'opacity-50')} />
+                  <span className={state === 'active' ? 'font-semibold text-eb-text' : 'text-eb-secondary'}>{label}</span>
+                  {idx < 2 && <span aria-hidden className="text-eb-chip">—</span>}
+                </span>
+              );
+            })}
+          </div>
+          <p className="font-dmsans text-sm font-medium">
+            {meeting.status === 'transcribing'
+              ? 'Transcribing the meeting…'
+              : meeting.status === 'joining' || meeting.status === 'in_call'
+                ? 'The bot is joining the meeting…'
+                : 'Processing the meeting…'}
+          </p>
+          <p className="mx-auto mt-1 max-w-sm font-dmsans text-[13px] text-eb-secondary">
+            This usually takes a few minutes.
+          </p>
+        </EbCard>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <EbCard className="text-center">
+            <p className="font-dmsans text-sm font-medium">No insights for this meeting</p>
+            <p className="mt-1 font-dmsans text-[13px] text-eb-secondary">It has not been processed yet.</p>
+          </EbCard>
+          {/* A meeting with no insights still has a recording worth watching, and
+              audio for a failed meeting is kept far longer than usual. */}
+          <RecordingPlayer meetingId={meeting.id} />
+        </div>
+      )}
+    </AppShell>
   );
 }

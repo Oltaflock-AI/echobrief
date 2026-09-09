@@ -43,7 +43,7 @@ const NOTICE_OPTIONS = [
   { value: 30, label: "30 minutes before" },
 ];
 
-export function BotPanelV2({ userId }: { userId: string }) {
+export function BotPanel({ userId }: { userId: string }) {
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);

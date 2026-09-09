@@ -8,7 +8,7 @@ import { formatIST } from '@/lib/time';
 /**
  * A shared meeting, read by somebody who may have no account.
  *
- * Deliberately not wrapped in DashboardLayout: this page is a public surface
+ * Deliberately not wrapped in AppShell: this page is a public surface
  * and the most common way a stranger meets the product, so it carries the brand
  * and a way in, not the app chrome. It renders exactly what
  * `get-shared-meeting` returns and asks for nothing the payload has not already

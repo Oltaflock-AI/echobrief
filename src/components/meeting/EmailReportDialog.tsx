@@ -21,7 +21,7 @@ export type EmailAttendee = { email: string; displayName?: string | null };
 
 const VALID = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function EmailReportDialogV2({
+export function EmailReportDialog({
   open,
   onOpenChange,
   meetingTitle,

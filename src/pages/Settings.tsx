@@ -1,59 +1,53 @@
-import { useEffect, useState } from 'react';
-import { SectionTabs } from '@/components/ui/SectionTabs';
-import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
-import { BotCustomization } from '@/components/dashboard/BotCustomization';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
-import { Loader2 } from 'lucide-react';
-import { displayNameFromUserMetadata } from '@/lib/userDisplayName';
-import { ApiTokensCard } from '@/components/settings/ApiTokensCard';
-import { BillingCard } from '@/components/settings/BillingCard';
-import { AccountPanel } from '@/components/settings/AccountPanel';
-import { IntegrationsPanel } from '@/components/settings/IntegrationsPanel';
-import { SecurityPanel } from '@/components/settings/SecurityPanel';
-import type { Profile } from '@/components/settings/types';
-
 /**
- * The settings shell: which tab is showing, and the one profile read they all
- * depend on.
+ * Settings.
  *
- * This file was 1,217 lines — six tabs' worth of forms, twenty-five pieces of
- * state and nineteen handlers in a single component. It was the file every new
- * setting had to land in, and the reason none of them could be added quickly.
- * Each tab is now its own panel; what stays here is the routing and the profile
- * fetch, because more than one panel needs the profile and fetching it twice
- * would be worse than passing it down.
+ * A 200px chip rail beside a 760px column of Sections, per DESIGN_SPEC §1 and
+ * §7. Tab routing, the profile fetch (including the write-on-load repair of a
+ * missing or empty profile row) and the local state predate the Console and
+ * are unchanged. The webhook section sits under Developer rather than Account
+ * because that is where the spec files it.
  *
- * Deliberately still on local state rather than TanStack Query: this is a form
- * page with write-on-load side effects (it creates a missing profile row) and
- * user-mutated lists, which is a poor fit for read-caching. See
- * docs/engineering-notes.md #21.
+ * Settings deliberately stays on local `useState` rather than TanStack Query:
+ * it is a form page with write-on-load side effects and user-mutated lists, a
+ * poor fit for read-caching.
  */
 
-type SettingsTab = 'account' | 'bot' | 'integrations' | 'billing' | 'security' | 'developer';
+import { useEffect, useState } from "react";
+import {
+  Bot, CreditCard, Code2, Loader2, Lock, Plug, User, type LucideIcon,
+} from "lucide-react";
+import { AppShell } from "@/components/shell/AppShell";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { displayNameFromUserMetadata } from "@/lib/userDisplayName";
+import { ApiTokensCard } from "@/components/settings/ApiTokensCard";
+import { BillingCard } from "@/components/settings/BillingCard";
+import { IntegrationsPanel } from "@/components/settings/IntegrationsPanel";
+import { SecurityPanel } from "@/components/settings/SecurityPanel";
+import { BotPanel } from "@/components/settings/BotPanel";
+import { AccountPanel } from "@/components/settings/AccountPanel";
+import { WebhookSection } from "@/components/settings/WebhookSection";
+import { PageHeader, SettingsLayout } from "@/ui";
+import { cn } from "@/lib/utils";
+import type { Profile } from "@/components/settings/types";
 
-const TABS = [
-  { id: 'account' as const, label: 'Account', icon: '👤' },
-  { id: 'bot' as const, label: 'Bot', icon: '🤖' },
-  { id: 'integrations' as const, label: 'Integrations', icon: '🔗' },
-  { id: 'billing' as const, label: 'Billing', icon: '💳' },
-  { id: 'security' as const, label: 'Security', icon: '🔒' },
-  { id: 'developer' as const, label: 'Developer', icon: '⌘' },
+type SettingsTab = "account" | "bot" | "integrations" | "billing" | "security" | "developer";
+
+const TABS: Array<{ id: SettingsTab; label: string; icon: LucideIcon }> = [
+  { id: "account", label: "Account", icon: User },
+  { id: "bot", label: "Bot", icon: Bot },
+  { id: "integrations", label: "Integrations", icon: Plug },
+  { id: "billing", label: "Billing", icon: CreditCard },
+  { id: "security", label: "Security", icon: Lock },
+  { id: "developer", label: "Developer", icon: Code2 },
 ];
 
 export default function Settings() {
   const { user } = useAuth();
 
   const getInitialTab = (): SettingsTab => {
-    const params = new URLSearchParams(window.location.search);
-    const tabParam = params.get('tab');
-    if (
-      tabParam === 'integrations' || tabParam === 'bot' || tabParam === 'billing' ||
-      tabParam === 'security' || tabParam === 'developer'
-    ) {
-      return tabParam as SettingsTab;
-    }
-    return 'account';
+    const tabParam = new URLSearchParams(window.location.search).get("tab");
+    return TABS.some((t) => t.id === tabParam) ? (tabParam as SettingsTab) : "account";
   };
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(getInitialTab());
@@ -69,44 +63,41 @@ export default function Settings() {
       const { data: authData, error: authErr } = await supabase.auth.getUser();
       const authUser = authData?.user ?? user;
       if (authErr) {
-        console.warn('[Settings] getUser:', authErr);
+        console.warn("[Settings] getUser:", authErr);
       }
 
       const fromAuthMeta = displayNameFromUserMetadata(authUser);
 
       const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', user.id)
+        .from("profiles")
+        .select("*")
+        .eq("user_id", user.id)
         .maybeSingle();
 
       if (profileError) {
-        console.error('[Settings] profile fetch:', profileError);
+        console.error("[Settings] profile fetch:", profileError);
         setProfile(null);
       } else if (profileData) {
-        const fromProfile = (profileData.full_name || '').trim();
+        const fromProfile = (profileData.full_name || "").trim();
         const resolvedName = fromProfile || fromAuthMeta;
         setProfile({ ...(profileData as Profile), full_name: resolvedName || null });
 
         if (!fromProfile && resolvedName) {
-          await supabase
-            .from('profiles')
-            .update({ full_name: resolvedName })
-            .eq('user_id', user.id);
+          await supabase.from("profiles").update({ full_name: resolvedName }).eq("user_id", user.id);
         }
       } else {
         setProfile(null);
         if (fromAuthMeta || authUser.email) {
-          const { error: insertErr } = await supabase.from('profiles').insert({
+          const { error: insertErr } = await supabase.from("profiles").insert({
             user_id: user.id,
             email: authUser.email ?? null,
             full_name: fromAuthMeta || null,
           });
-          if (insertErr?.code === '23505') {
+          if (insertErr?.code === "23505") {
             await supabase
-              .from('profiles')
+              .from("profiles")
               .update({ full_name: fromAuthMeta || null })
-              .eq('user_id', user.id);
+              .eq("user_id", user.id);
           }
         }
       }
@@ -119,54 +110,66 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center min-h-screen">
-          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      <AppShell>
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-eb-muted" />
         </div>
-      </DashboardLayout>
+      </AppShell>
     );
   }
 
   return (
-    <DashboardLayout>
-      <div className="mx-auto max-w-[960px] px-4 py-6 sm:px-6 md:px-8 md:py-10">
-        <div className="mb-8">
-          <h1
-            className="text-[28px] font-semibold leading-tight"
-            style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
-          >
-            Settings
-          </h1>
-          <p className="mt-1 text-[14px]" style={{ color: 'var(--ink-mid)' }}>
-            Manage your account, integrations, and preferences.
-          </p>
-        </div>
+    <AppShell>
+      <PageHeader title="Settings" subtitle="Manage your account, integrations and preferences." />
 
-        <SectionTabs
-          label="Settings sections"
-          tabs={TABS}
-          value={activeTab}
-          onChange={(tabId: SettingsTab) => setActiveTab(tabId)}
-        />
+      <SettingsLayout
+        rail={
+          <nav aria-label="Settings sections" className="flex flex-row gap-1.5 overflow-x-auto md:flex-col">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = tab.id === activeTab;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "tap-44 inline-flex h-9 flex-none items-center gap-2.5 rounded-pill border px-3.5",
+                    "font-dmsans text-[13.5px] font-medium whitespace-nowrap md:w-full",
+                    active
+                      ? "border-eb-sidebar bg-eb-sidebar text-white"
+                      : "border-transparent text-eb-secondary hover:bg-eb-row-hover",
+                  )}
+                >
+                  <Icon size={15} strokeWidth={1.75} className={active ? "text-eb-accent-sidebar" : "text-eb-muted"} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+        }
+      >
+        {activeTab === "account" && <AccountPanel profile={profile} setProfile={setProfile} />}
 
-        {activeTab === 'account' && <AccountPanel profile={profile} setProfile={setProfile} />}
+        {activeTab === "bot" && user && <BotPanel userId={user.id} />}
 
-        {activeTab === 'bot' && (
-          <div>
-            {user && <BotCustomization user_id={user.id} />}
-          </div>
-        )}
-
-        {activeTab === 'integrations' && (
+        {activeTab === "integrations" && (
           <IntegrationsPanel profile={profile} setProfile={setProfile} />
         )}
 
-        {activeTab === 'billing' && <BillingCard />}
+        {activeTab === "billing" && <BillingCard />}
 
-        {activeTab === 'security' && <SecurityPanel />}
+        {activeTab === "security" && <SecurityPanel />}
 
-        {activeTab === 'developer' && <ApiTokensCard />}
-      </div>
-    </DashboardLayout>
+        {activeTab === "developer" && (
+          <>
+            <ApiTokensCard />
+            <WebhookSection profile={profile} setProfile={setProfile} />
+          </>
+        )}
+      </SettingsLayout>
+    </AppShell>
   );
 }

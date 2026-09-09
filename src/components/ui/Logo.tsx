@@ -21,10 +21,9 @@ interface LogoProps {
   animated?: boolean;
   /**
    * Which brand system to draw in. `legacy` is Warm Dispatch (DM Serif
-   * Display + ember) for the landing page, emails and V1; `console` is the
-   * UI v2 palette (Instrument Serif + terracotta). Explicit rather than read
-   * from UiVersionContext, because the landing page stays Warm Dispatch even
-   * for a user whose app is on the Console.
+   * Display + ember) for the landing page and the emails; `console` is the
+   * app palette (Instrument Serif + terracotta). Explicit, because the
+   * marketing surfaces stay Warm Dispatch while the app is on the Console.
    */
   variant?: 'legacy' | 'console';
   /** `dark` is for the sidebar and other dark panels, where the ink flips to white. */

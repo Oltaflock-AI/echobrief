@@ -1,19 +1,45 @@
-import { useCallback, useEffect, useState, useMemo } from 'react';
-import { formatIST } from '@/lib/time';
-import { Link } from 'react-router-dom';
-import { Check, User, ChevronDown, ChevronRight, ExternalLink, Pencil, CheckSquare, Calendar, Video, Filter } from 'lucide-react';
-import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
-import { supabase } from '@/integrations/supabase/client';
-import type { Json } from '@/integrations/supabase/types';
-import { useAuth } from '@/contexts/AuthContext';
-import { cn } from '@/lib/utils';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from 'sonner';
+/**
+ * Action items — Console (UI v2), from mockup 04-action-items.
+ *
+ * The data layer is ActionItems.tsx's, unchanged: items are elements of the
+ * `meeting_insights.action_items` JSONB array (a bare string on older meetings,
+ * an object with owner/priority/due dates since the two-pass pipeline), and
+ * completion lives in `action_item_completions` keyed by
+ * (user_id, meeting_id, action_item_index). Editing an item read-modify-writes
+ * that single array element and preserves how it was stored.
+ *
+ * The mockup's "+ Add item" button is deliberately absent. Action items are
+ * extracted from a meeting; there is no path that creates a free-standing one,
+ * and no column to put it in.
+ */
 
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { CheckCircle2, CalendarClock, ListTodo, Pencil, ChevronDown } from 'lucide-react';
+import { toast } from 'sonner';
+import { formatIST } from '@/lib/time';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { AppShell } from '@/components/shell/AppShell';
+import { ListSkeleton } from '@/components/dashboard/ListSkeleton';
+import {
+  Avatar,
+  Badge,
+  Card,
+  Chip,
+  PageHeader,
+  StatTile,
+  Checkbox as EbCheckbox,
+} from '@/ui';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { cn } from '@/lib/utils';
+import type { Json } from '@/integrations/supabase/types';
 
 interface DueDateRange {
   start?: string;
@@ -32,7 +58,7 @@ interface ActionItemData {
   due_date_range?: DueDateRange;
 }
 
-interface ActionItem {
+interface Item {
   id: string;
   index: number;
   task: string;
@@ -41,238 +67,208 @@ interface ActionItem {
   due_date?: string;
   due_date_resolved?: string;
   due_date_range?: DueDateRange;
-  completed: boolean;
 }
 
-interface MeetingGroup {
+interface Group {
   id: string;
   insightsId: string;
   title: string;
   date: string;
-  source: string;
-  actionItems: ActionItem[];
+  items: Item[];
 }
 
-type FilterStatus = 'all' | 'open' | 'completed';
-type SortOption = 'date' | 'priority' | 'due';
+type StatusFilter = 'all' | 'open' | 'completed';
+type SortOption = 'due' | 'priority' | 'date';
 
-const priorityOrder = { high: 0, medium: 1, low: 2, undefined: 3 };
+const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, undefined: 3 };
+const PRIORITY_TONE = { high: 'red', medium: 'amber', low: 'neutral' } as const;
 
 /** Human label for an item's due info, or null when it carries none. */
-function dueChipLabel(item: ActionItem): string | null {
+function dueLabel(item: Item): string | null {
   if (item.due_date_resolved) {
     const d = new Date(item.due_date_resolved);
-    if (!Number.isNaN(d.getTime())) return `Due ${formatIST(d, 'EEE, MMM d')}`;
+    if (!Number.isNaN(d.getTime())) return formatIST(d, 'EEE, MMM d');
   }
   if (item.due_date_range?.start) {
     const d = new Date(item.due_date_range.start);
-    if (!Number.isNaN(d.getTime())) return `Due week of ${formatIST(d, 'MMM d')}`;
+    if (!Number.isNaN(d.getTime())) return `Week of ${formatIST(d, 'MMM d')}`;
   }
-  if (item.due_date) return `Due ${item.due_date}`;
-  return null;
+  return item.due_date ?? null;
 }
 
 /** Overdue = resolved due date strictly before today (IST) on an open item. */
-function isOverdue(item: ActionItem, completed: boolean): boolean {
+function isOverdue(item: Item, completed: boolean): boolean {
   if (completed || !item.due_date_resolved) return false;
   return item.due_date_resolved < formatIST(new Date(), 'yyyy-MM-dd');
 }
 
+/** "Today" / "Fri, Sep 4" for the group header, the way the mockup reads. */
+function groupDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const today = formatIST(new Date(), 'yyyy-MM-dd');
+  const that = formatIST(d, 'yyyy-MM-dd');
+  if (that === today) return 'Today';
+  return formatIST(d, 'EEE, MMM d');
+}
+
 export default function ActionItems() {
   const { user } = useAuth();
-  const [meetingGroups, setMeetingGroups] = useState<MeetingGroup[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
-  const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
-  const [expandedMeetings, setExpandedMeetings] = useState<Set<string>>(new Set());
+  const [completed, setCompleted] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
-  
-  // Filters
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
-  const [meetingFilter, setMeetingFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<SortOption>('date');
 
-  // Auto-expand all meetings on first load (functional update so the effect
-  // only depends on the fetched groups, not on the expansion state itself)
-  useEffect(() => {
-    if (meetingGroups.length > 0) {
-      setExpandedMeetings(prev => (prev.size === 0 ? new Set(meetingGroups.map(g => g.id)) : prev));
-    }
-  }, [meetingGroups]);
+  const [status, setStatus] = useState<StatusFilter>('open');
+  const [meetingFilter, setMeetingFilter] = useState('all');
+  const [ownerFilter, setOwnerFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<SortOption>('due');
 
-  const fetchActionItems = useCallback(async () => {
+  const fetchItems = useCallback(async () => {
+    if (!user) return;
     try {
-      const { data: meetings } = await supabase
-        .from('meetings')
-        .select(`id, title, start_time, source, meeting_insights (id, action_items)`)
-        .eq('user_id', user?.id)
-        .order('start_time', { ascending: false });
+      const [{ data: meetings }, { data: completions }] = await Promise.all([
+        supabase
+          .from('meetings')
+          .select('id, title, start_time, meeting_insights (id, action_items)')
+          .eq('user_id', user.id)
+          .order('start_time', { ascending: false }),
+        supabase
+          .from('action_item_completions')
+          .select('meeting_id, action_item_index, completed')
+          .eq('user_id', user.id),
+      ]);
 
-      // Completion state lives in action_item_completions, keyed by
-      // (user_id, meeting_id, action_item_index) — the same composite the
-      // local `${meeting.id}-${index}` item id encodes.
-      const { data: completions } = await supabase
-        .from('action_item_completions')
-        .select('meeting_id, action_item_index, completed')
-        .eq('user_id', user?.id);
-
-      setCompletedItems(
+      setCompleted(
         new Set(
           (completions || [])
             .filter((c) => c.completed)
-            .map((c) => `${c.meeting_id}-${c.action_item_index}`)
-        )
+            .map((c) => `${c.meeting_id}-${c.action_item_index}`),
+        ),
       );
 
-      const groups: MeetingGroup[] = [];
-      
+      const next: Group[] = [];
       meetings?.forEach((meeting) => {
         const insights = meeting.meeting_insights?.[0];
-        if (insights?.action_items && Array.isArray(insights.action_items)) {
-          const items: ActionItem[] = [];
-          
-          (insights.action_items as (string | ActionItemData)[]).forEach((item, index) => {
-            const isObject = typeof item === 'object' && item !== null;
-            const data = isObject ? (item as ActionItemData) : undefined;
-            items.push({
+        if (!insights?.action_items || !Array.isArray(insights.action_items)) return;
+        const items: Item[] = (insights.action_items as (string | ActionItemData)[]).map(
+          (raw, index) => {
+            const data = typeof raw === 'object' && raw !== null ? (raw as ActionItemData) : undefined;
+            return {
               id: `${meeting.id}-${index}`,
               index,
-              task: data ? data.task : item as string,
+              task: data ? data.task : (raw as string),
               owner: data?.owner,
               priority: data?.priority,
               due_date: data?.due_date,
               due_date_resolved: data?.due_date_resolved,
               due_date_range: data?.due_date_range,
-              completed: false,
-            });
+            };
+          },
+        );
+        if (items.length > 0) {
+          next.push({
+            id: meeting.id,
+            insightsId: insights.id,
+            title: meeting.title,
+            date: meeting.start_time,
+            items,
           });
-          
-          if (items.length > 0) {
-            groups.push({
-              id: meeting.id,
-              insightsId: insights.id,
-              title: meeting.title,
-              date: meeting.start_time,
-              source: meeting.source || 'manual',
-              actionItems: items,
-            });
-          }
         }
       });
-      
-      setMeetingGroups(groups);
+      setGroups(next);
     } catch (error) {
       console.error('Error fetching action items:', error);
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user]);
 
   useEffect(() => {
-    if (user) fetchActionItems();
-  }, [user, fetchActionItems]);
+    if (user) fetchItems();
+  }, [user, fetchItems]);
 
-  const toggleComplete = async (itemId: string, meetingId: string, index: number) => {
+  const toggleComplete = async (item: Item, meetingId: string) => {
     if (!user) return;
+    const next = !completed.has(item.id);
 
-    const wasCompleted = completedItems.has(itemId);
-    const nextCompleted = !wasCompleted;
-
-    // Optimistic update, rolled back if the write fails.
-    setCompletedItems((prev) => {
-      const newSet = new Set(prev);
-      if (nextCompleted) newSet.add(itemId);
-      else newSet.delete(itemId);
-      return newSet;
+    // Optimistic, rolled back if the write fails.
+    setCompleted((prev) => {
+      const s = new Set(prev);
+      if (next) s.add(item.id);
+      else s.delete(item.id);
+      return s;
     });
 
     const { error } = await supabase.from('action_item_completions').upsert(
       {
         user_id: user.id,
         meeting_id: meetingId,
-        action_item_index: index,
-        completed: nextCompleted,
-        completed_at: nextCompleted ? new Date().toISOString() : null,
+        action_item_index: item.index,
+        completed: next,
+        completed_at: next ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: 'user_id,meeting_id,action_item_index' }
+      { onConflict: 'user_id,meeting_id,action_item_index' },
     );
 
     if (error) {
       console.error('[ActionItems] completion save failed:', error);
-      setCompletedItems((prev) => {
-        const newSet = new Set(prev);
-        if (nextCompleted) newSet.delete(itemId);
-        else newSet.add(itemId);
-        return newSet;
+      setCompleted((prev) => {
+        const s = new Set(prev);
+        if (next) s.delete(item.id);
+        else s.add(item.id);
+        return s;
       });
       toast.error('Could not save — please try again');
       return;
     }
-
-    if (nextCompleted) toast.success('Task marked complete');
+    if (next) toast.success('Task marked complete');
   };
 
-  const toggleMeetingExpanded = (meetingId: string) => {
-    setExpandedMeetings((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(meetingId)) newSet.delete(meetingId);
-      else newSet.add(meetingId);
-      return newSet;
-    });
-  };
-
-  const startEditing = (item: ActionItem) => {
-    setEditingId(item.id);
-    setEditText(item.task);
-  };
-
-  const saveEdit = async () => {
-    if (!editingId) return;
-
-    const group = meetingGroups.find((g) =>
-      g.actionItems.some((item) => item.id === editingId)
-    );
-    const item = group?.actionItems.find((i) => i.id === editingId);
-    if (!group || !item) return;
-
-    const newTask = editText.trim();
-    if (!newTask) {
-      toast.error('Task cannot be empty');
-      return;
-    }
-
-    const previousTask = item.task;
-    setMeetingGroups(prev => prev.map(g => ({
-      ...g,
-      actionItems: g.actionItems.map(i =>
-        i.id === editingId ? { ...i, task: newTask } : i
-      )
-    })));
+  const saveEdit = async (group: Group, item: Item) => {
+    const text = editText.trim();
     setEditingId(null);
-    setEditText('');
+    if (!text || text === item.task) return;
 
-    // Action items live as a JSONB array on meeting_insights. Read-modify-write
-    // the single element, preserving whether it was stored as a bare string or
-    // an object with owner/priority metadata.
-    const { data: insightsRow, error: readError } = await supabase
+    const previous = item.task;
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id !== group.id
+          ? g
+          : { ...g, items: g.items.map((i) => (i.id === item.id ? { ...i, task: text } : i)) },
+      ),
+    );
+
+    // The array element is rewritten in place, keeping whether it was stored as
+    // a bare string or an object with metadata.
+    const { data: row, error: readError } = await supabase
       .from('meeting_insights')
       .select('action_items')
       .eq('id', group.insightsId)
       .single();
 
-    if (readError || !insightsRow || !Array.isArray(insightsRow.action_items)) {
-      console.error('[ActionItems] could not read action items for edit:', readError);
-      revertEdit(editingId, previousTask);
+    const revert = () =>
+      setGroups((prev) =>
+        prev.map((g) =>
+          g.id !== group.id
+            ? g
+            : { ...g, items: g.items.map((i) => (i.id === item.id ? { ...i, task: previous } : i)) },
+        ),
+      );
+
+    if (readError || !row || !Array.isArray(row.action_items)) {
+      revert();
+      toast.error('Could not save the change');
       return;
     }
 
-    const updated = [...(insightsRow.action_items as (string | ActionItemData)[])];
+    const updated = [...(row.action_items as (string | ActionItemData)[])];
     const existing = updated[item.index];
     updated[item.index] =
-      typeof existing === 'object' && existing !== null
-        ? { ...(existing as ActionItemData), task: newTask }
-        : newTask;
+      typeof existing === 'object' && existing !== null ? { ...existing, task: text } : text;
 
     const { error: writeError } = await supabase
       .from('meeting_insights')
@@ -280,373 +276,279 @@ export default function ActionItems() {
       .eq('id', group.insightsId);
 
     if (writeError) {
-      console.error('[ActionItems] task update failed:', writeError);
-      revertEdit(editingId, previousTask);
-      return;
-    }
-
-    toast.success('Task updated');
-  };
-
-  const revertEdit = (itemId: string, previousTask: string) => {
-    setMeetingGroups(prev => prev.map(g => ({
-      ...g,
-      actionItems: g.actionItems.map(i =>
-        i.id === itemId ? { ...i, task: previousTask } : i
-      )
-    })));
-    toast.error('Could not save the change — reverted');
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditText('');
-  };
-
-  const getSourceIcon = (source: string) => {
-    switch (source) {
-      case 'google_calendar':
-        return <Calendar className="w-3.5 h-3.5" />;
-      case 'zoom':
-        return <Video className="w-3.5 h-3.5" />;
-      default:
-        return null;
+      revert();
+      toast.error('Could not save the change');
     }
   };
 
-  const getSourceLabel = (source: string) => {
-    switch (source) {
-      case 'google_calendar':
-        return 'Google Meet';
-      case 'zoom':
-        return 'Zoom';
-      default:
-        return 'Manual';
-    }
-  };
+  const owners = useMemo(() => {
+    const set = new Set<string>();
+    groups.forEach((g) => g.items.forEach((i) => i.owner && set.add(i.owner)));
+    return [...set].sort();
+  }, [groups]);
 
-  // Filter and sort logic
-  const filteredGroups = useMemo(() => {
-    let groups = [...meetingGroups];
-    
-    // Filter by meeting
-    if (meetingFilter !== 'all') {
-      groups = groups.filter(g => g.id === meetingFilter);
-    }
-    
-    // Filter items by status
-    groups = groups.map(group => ({
-      ...group,
-      actionItems: group.actionItems.filter(item => {
-        const isCompleted = completedItems.has(item.id);
-        if (statusFilter === 'open') return !isCompleted;
-        if (statusFilter === 'completed') return isCompleted;
+  const stats = useMemo(() => {
+    const weekEnd = new Date();
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    const weekEndIso = formatIST(weekEnd, 'yyyy-MM-dd');
+    const today = formatIST(new Date(), 'yyyy-MM-dd');
+    let open = 0;
+    let dueThisWeek = 0;
+    let done = 0;
+    groups.forEach((g) =>
+      g.items.forEach((i) => {
+        if (completed.has(i.id)) {
+          done += 1;
+          return;
+        }
+        open += 1;
+        const due = i.due_date_resolved ?? i.due_date_range?.start;
+        if (due && due >= today && due <= weekEndIso) dueThisWeek += 1;
+      }),
+    );
+    return { open, dueThisWeek, done };
+  }, [groups, completed]);
+
+  const visible = useMemo(() => {
+    const out: Group[] = [];
+    groups.forEach((g) => {
+      if (meetingFilter !== 'all' && g.id !== meetingFilter) return;
+      let items = g.items.filter((i) => {
+        const done = completed.has(i.id);
+        if (status === 'open' && done) return false;
+        if (status === 'completed' && !done) return false;
+        if (ownerFilter !== 'all' && (i.owner ?? '') !== ownerFilter) return false;
         return true;
-      })
-    })).filter(g => g.actionItems.length > 0);
-    
-    // Sort
-    if (sortBy === 'priority') {
-      groups = groups.map(group => ({
-        ...group,
-        actionItems: [...group.actionItems].sort((a, b) =>
-          (priorityOrder[a.priority || 'undefined'] || 3) - (priorityOrder[b.priority || 'undefined'] || 3)
-        )
-      }));
-    } else if (sortBy === 'due') {
-      // Items with a resolved due date first, soonest first; the rest keep
-      // their original order after them.
-      groups = groups.map(group => ({
-        ...group,
-        actionItems: [...group.actionItems].sort((a, b) => {
-          if (a.due_date_resolved && b.due_date_resolved) {
-            return a.due_date_resolved.localeCompare(b.due_date_resolved);
-          }
-          if (a.due_date_resolved) return -1;
-          if (b.due_date_resolved) return 1;
-          return 0;
-        })
-      }));
-    }
-    
-    return groups;
-  }, [meetingGroups, statusFilter, meetingFilter, sortBy, completedItems]);
+      });
+      if (items.length === 0) return;
+      items = [...items].sort((a, b) => {
+        if (sortBy === 'priority') {
+          return PRIORITY_ORDER[a.priority ?? 'undefined'] - PRIORITY_ORDER[b.priority ?? 'undefined'];
+        }
+        if (sortBy === 'due') {
+          const av = a.due_date_resolved ?? a.due_date_range?.start ?? '9999-12-31';
+          const bv = b.due_date_resolved ?? b.due_date_range?.start ?? '9999-12-31';
+          return av.localeCompare(bv);
+        }
+        return a.index - b.index;
+      });
+      out.push({ ...g, items });
+    });
+    return out;
+  }, [groups, meetingFilter, ownerFilter, status, sortBy, completed]);
 
-  const totalItems = meetingGroups.reduce((acc, g) => acc + g.actionItems.length, 0);
-  const openCount = totalItems - completedItems.size;
-  const completedCount = completedItems.size;
+  const totalShown = visible.reduce((n, g) => n + g.items.length, 0);
 
   return (
-    <DashboardLayout>
-      <div className="mx-auto max-w-[960px] px-4 py-6 sm:px-6 md:px-8 md:py-10">
-        {/* Header */}
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1
-              className="text-[28px] font-semibold leading-tight"
-              style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
+    <AppShell>
+      <PageHeader
+        title="Action items"
+        subtitle="Tasks extracted from your meetings."
+        actions={
+          <div className="hidden gap-2.5 sm:flex">
+            <StatTile label="Open" value={String(stats.open)} icon={<ListTodo size={14} />} accent className="min-w-[124px]" />
+            <StatTile label="Due this week" value={String(stats.dueThisWeek)} icon={<CalendarClock size={14} />} className="min-w-[124px]" />
+            <StatTile label="Completed" value={String(stats.done)} icon={<CheckCircle2 size={14} />} className="min-w-[124px]" />
+          </div>
+        }
+      />
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-2">
+          {(['all', 'open', 'completed'] as StatusFilter[]).map((s) => (
+            <Chip
+              key={s}
+              size="sm"
+              active={status === s && s === 'all'}
+              selected={status === s && s !== 'all'}
+              onClick={() => setStatus(s)}
             >
-              Action items
-            </h1>
-            <p className="mt-1 text-[14px]" style={{ color: 'var(--ink-mid)' }}>
-              Tasks extracted from your meetings.
-            </p>
-          </div>
-          <div className="flex items-center gap-6">
-            <div>
-              <p className="text-[12.5px]" style={{ color: 'var(--ink-mid)' }}>Open</p>
-              <p className="mt-0.5 text-[22px] font-semibold leading-none" style={{ color: 'var(--ember-deep)', letterSpacing: '-0.02em' }}>
-                {openCount}
-              </p>
-            </div>
-            <div>
-              <p className="text-[12.5px]" style={{ color: 'var(--ink-mid)' }}>Completed</p>
-              <p className="mt-0.5 text-[22px] font-semibold leading-none" style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}>
-                {completedCount}
-              </p>
-            </div>
-          </div>
+              {s === 'all' ? 'All' : s === 'open' ? 'Open' : 'Completed'}
+            </Chip>
+          ))}
         </div>
 
-        {loading ? (
-          <div className="space-y-6">
-            {[1, 2].map((i) => (
-              <div key={i} className="space-y-3">
-                <Skeleton className="h-6 w-64" />
-                <Skeleton className="h-14 rounded-lg" />
-                <Skeleton className="h-14 rounded-lg" />
-              </div>
-            ))}
-          </div>
-        ) : totalItems === 0 ? (
-          <div
-            className="flex flex-col items-center justify-center rounded-xl px-6 py-16 text-center"
-            style={{ border: '1px dashed var(--rule)', background: 'var(--paper-card)' }}
-          >
-            <CheckSquare className="mb-4 h-10 w-10" strokeWidth={1.5} style={{ color: 'var(--ink-faint)' }} />
-            <p className="mb-1.5 text-[17px] font-semibold" style={{ color: 'var(--ink)' }}>
-              No action items yet
-            </p>
-            <p className="max-w-sm text-[14px]" style={{ color: 'var(--ink-mid)', lineHeight: 1.6 }}>
-              Action items appear here after your meetings are processed. Record a meeting to get started.
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Filters */}
-            <div className="flex items-center gap-3 mb-6 pb-6 border-b border-border/50">
-              <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
-                {(['all', 'open', 'completed'] as FilterStatus[]).map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => setStatusFilter(status)}
-                    className={cn(
-                      "px-3 py-1.5 text-sm font-medium rounded-md transition-colors capitalize",
-                      statusFilter === status 
-                        ? "bg-background text-foreground shadow-sm" 
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {status}
-                  </button>
-                ))}
-              </div>
-              
-              <div className="flex items-center gap-2 ml-auto">
-                <Select value={meetingFilter} onValueChange={setMeetingFilter}>
-                  <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">
-                    <Filter className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
-                    <SelectValue placeholder="All meetings" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All meetings</SelectItem>
-                    {meetingGroups.map(g => (
-                      <SelectItem key={g.id} value={g.id}>{g.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                
-                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                  <SelectTrigger className="w-full sm:w-[140px] h-9 text-sm">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="date">By date</SelectItem>
-                    <SelectItem value="priority">By priority</SelectItem>
-                    <SelectItem value="due">By due date</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+        <div className="flex flex-wrap gap-2">
+          <Select value={meetingFilter} onValueChange={setMeetingFilter}>
+            <SelectTrigger className="h-8 w-[180px] rounded-pill border-eb-border bg-eb-card font-dmsans text-[12.5px]">
+              <SelectValue placeholder="All meetings" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All meetings</SelectItem>
+              {groups.map((g) => (
+                <SelectItem key={g.id} value={g.id}>
+                  {g.title || 'Untitled meeting'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            {/* Meeting Groups */}
-            <div className="space-y-6">
-              {filteredGroups.map((group) => (
-                <Collapsible
-                  key={group.id}
-                  open={expandedMeetings.has(group.id)}
-                  onOpenChange={() => toggleMeetingExpanded(group.id)}
-                >
-                  <CollapsibleTrigger asChild>
-                    <button
-                      className="group flex w-full items-center gap-3 py-3.5 text-left transition-colors"
-                      style={{ borderTop: '1px solid var(--rule)' }}
-                    >
-                      {expandedMeetings.has(group.id) ? (
-                        <ChevronDown className="h-4 w-4" strokeWidth={1.75} style={{ color: 'var(--ink-soft)' }} />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" strokeWidth={1.75} style={{ color: 'var(--ink-soft)' }} />
-                      )}
-                      <span
-                        className="text-[15px] font-semibold"
-                        style={{ color: 'var(--ink)', letterSpacing: '-0.005em' }}
+          <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+            <SelectTrigger className="h-8 w-[150px] rounded-pill border-eb-border bg-eb-card font-dmsans text-[12.5px]">
+              <SelectValue placeholder="Anyone" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Anyone</SelectItem>
+              {owners.map((o) => (
+                <SelectItem key={o} value={o}>
+                  {o}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+            <SelectTrigger className="h-8 w-[160px] rounded-pill border-eb-border bg-eb-card font-dmsans text-[12.5px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="due">By due date</SelectItem>
+              <SelectItem value="priority">By priority</SelectItem>
+              <SelectItem value="date">By meeting order</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {loading ? (
+        <ListSkeleton />
+      ) : totalShown === 0 ? (
+        <Card className="text-center">
+          <p className="font-dmsans text-sm font-medium text-eb-text">
+            {groups.length === 0 ? 'No action items yet' : 'Nothing matches these filters'}
+          </p>
+          <p className="mt-1 font-dmsans text-[13px] text-eb-secondary">
+            {groups.length === 0
+              ? 'Items appear here once a recorded meeting has been summarised.'
+              : 'Try All, or clear the meeting and owner filters.'}
+          </p>
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {visible.map((group) => {
+            const isCollapsed = collapsed.has(group.id);
+            const openCount = group.items.filter((i) => !completed.has(i.id)).length;
+            return (
+              <Card key={group.id} padded={false}>
+                <div className="flex items-center gap-2 border-b border-eb-divider py-3 pl-[18px] pr-[18px]">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCollapsed((prev) => {
+                        const s = new Set(prev);
+                        if (s.has(group.id)) s.delete(group.id);
+                        else s.add(group.id);
+                        return s;
+                      })
+                    }
+                    aria-label={isCollapsed ? `Expand ${group.title}` : `Collapse ${group.title}`}
+                    className="flex-none text-eb-muted"
+                  >
+                    <ChevronDown
+                      size={15}
+                      strokeWidth={1.75}
+                      className={cn('transition-transform', isCollapsed && '-rotate-90')}
+                    />
+                  </button>
+                  <Link
+                    to={`/meeting/${group.id}`}
+                    className="truncate font-outfit text-[15px] font-semibold leading-tight text-eb-text no-underline hover:underline"
+                  >
+                    {group.title || 'Untitled meeting'}
+                  </Link>
+                  <span className="flex-none font-dmsans text-[12.5px] text-eb-secondary">
+                    {groupDate(group.date)}
+                  </span>
+                  <span className="ml-auto flex-none font-dmsans text-[12.5px] text-eb-secondary">
+                    {openCount} open
+                  </span>
+                </div>
+
+                {!isCollapsed &&
+                  group.items.map((item) => {
+                    const done = completed.has(item.id);
+                    const due = dueLabel(item);
+                    const overdue = isOverdue(item, done);
+                    return (
+                      <div
+                        key={item.id}
+                        className="group flex items-center gap-3 border-t border-eb-divider px-[18px] py-[13px] hover:bg-eb-row-hover"
                       >
-                        {group.title}
-                      </span>
-                      <span className="text-[13px]" style={{ color: 'var(--ink-soft)' }}>
-                        {formatIST(new Date(group.date), 'MMM d, yyyy')}
-                      </span>
-                      <span
-                        className="ml-auto rounded-full px-2 py-0.5 text-[11.5px] font-medium"
-                        style={{
-                          background: 'color-mix(in oklch, var(--ember) 10%, transparent)',
-                          color: 'var(--ember-deep)',
-                        }}
-                      >
-                        {group.actionItems.filter((i) => !completedItems.has(i.id)).length} open
-                      </span>
-                    </button>
-                  </CollapsibleTrigger>
-                  
-                  <CollapsibleContent>
-                    <div className="ml-6 mt-2 space-y-1">
-                      {group.actionItems.map((item) => {
-                        const isCompleted = completedItems.has(item.id);
-                        const isEditing = editingId === item.id;
-                        
-                        return (
-                          <div
-                            key={item.id}
+                        <EbCheckbox
+                          checked={done}
+                          onChange={() => toggleComplete(item, group.id)}
+                          label={item.task}
+                        />
+
+                        {editingId === item.id ? (
+                          <input
+                            autoFocus
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            onBlur={() => saveEdit(group, item)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveEdit(group, item);
+                              if (e.key === 'Escape') setEditingId(null);
+                            }}
+                            className="min-w-0 flex-1 rounded-input border border-eb-border bg-eb-card px-2 py-1 font-dmsans text-[13.5px] text-eb-text outline-none"
+                          />
+                        ) : (
+                          <span
                             className={cn(
-                              "group flex items-start gap-3 py-3 px-3 -mx-3 rounded-lg transition-colors",
-                              "hover:bg-muted/50",
-                              isCompleted && "opacity-60"
+                              'min-w-0 flex-1 font-dmsans text-[13.5px] text-eb-text',
+                              done && 'text-eb-secondary line-through',
                             )}
                           >
-                            {/* Checkbox */}
-                            <button
-                              onClick={() => toggleComplete(item.id, group.id, item.index)}
-                              role="checkbox"
-                              aria-checked={isCompleted}
-                              aria-label={isCompleted ? 'Mark as not done' : 'Mark as done'}
-                              className="check-box relative mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[4px] border-[1.5px] transition-all before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-11 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] md:before:hidden"
-                              data-checked={isCompleted}
-                              style={{
-                                background: isCompleted ? 'var(--ember)' : 'transparent',
-                                borderColor: isCompleted ? 'var(--ember)' : 'var(--rule)',
-                              }}
-                            >
-                              {isCompleted && <Check className="w-3 h-3 text-white" strokeWidth={2.5} />}
-                            </button>
-                            
-                            {/* Task content */}
-                            <div className="flex-1 min-w-0">
-                              {isEditing ? (
-                                <div className="flex items-center gap-2">
-                                  <Input
-                                    value={editText}
-                                    onChange={(e) => setEditText(e.target.value)}
-                                    className="h-8 text-sm"
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') saveEdit();
-                                      if (e.key === 'Escape') cancelEdit();
-                                    }}
-                                  />
-                                  <Button size="sm" variant="ghost" onClick={saveEdit} className="h-8 px-2">
-                                    Save
-                                  </Button>
-                                  <Button size="sm" variant="ghost" onClick={cancelEdit} className="h-8 px-2 text-muted-foreground">
-                                    Cancel
-                                  </Button>
-                                </div>
-                              ) : (
-                                <>
-                                  <p className={cn("text-foreground", isCompleted && "line-through")}>
-                                    {item.task}
-                                  </p>
-                                  
-                                  <div className="flex items-center gap-2 mt-1.5">
-                                    {item.owner && (
-                                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                        <User className="w-3 h-3" />{item.owner}
-                                      </span>
-                                    )}
-                                    {item.priority && (
-                                      <span className={cn(
-                                        "text-xs px-1.5 py-0.5 rounded font-medium",
-                                        item.priority === 'high' && "bg-destructive/10 text-destructive",
-                                        item.priority === 'medium' && "bg-warning/10 text-warning",
-                                        item.priority === 'low' && "bg-muted text-muted-foreground"
-                                      )}>
-                                        {item.priority}
-                                      </span>
-                                    )}
-                                    {dueChipLabel(item) && (
-                                      <span className={cn(
-                                        "inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium",
-                                        isOverdue(item, isCompleted)
-                                          ? "bg-destructive/10 text-destructive"
-                                          : "text-muted-foreground"
-                                      )}>
-                                        <Calendar className="w-3 h-3" />
-                                        {dueChipLabel(item)}
-                                      </span>
-                                    )}
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                            
-                            {/* Hover actions */}
-                            {!isEditing && (
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => startEditing(item)}
-                                  className="h-7 w-7 p-0"
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </Button>
-                                <Link to={`/meeting/${group.id}`}>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-7 w-7 p-0"
-                                  >
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </Button>
-                                </Link>
-                              </div>
+                            {item.task}
+                          </span>
+                        )}
+
+                        {editingId !== item.id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingId(item.id);
+                              setEditText(item.task);
+                            }}
+                            aria-label={`Edit: ${item.task}`}
+                            className="flex-none text-eb-muted opacity-0 transition-opacity group-hover:opacity-100"
+                          >
+                            <Pencil size={13} strokeWidth={1.75} />
+                          </button>
+                        )}
+
+                        {item.owner && (
+                          <span className="hidden flex-none items-center gap-1.5 font-dmsans text-[12.5px] text-eb-secondary sm:flex">
+                            <Avatar name={item.owner} size={20} round />
+                            {item.owner}
+                          </span>
+                        )}
+
+                        {item.priority && (
+                          <Badge tone={PRIORITY_TONE[item.priority]} className="flex-none">
+                            {item.priority}
+                          </Badge>
+                        )}
+
+                        {due && (
+                          <span
+                            className={cn(
+                              'hidden flex-none items-center gap-1.5 font-dmsans text-[12.5px] sm:flex',
+                              overdue ? 'text-eb-red' : done ? 'text-eb-muted' : 'text-eb-secondary',
                             )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              ))}
-              
-              {filteredGroups.length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">
-                  No action items match your filters.
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    </DashboardLayout>
+                          >
+                            <CalendarClock size={13} strokeWidth={1.75} />
+                            {due}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </AppShell>
   );
 }

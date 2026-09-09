@@ -1,270 +1,443 @@
-import { useState, useEffect } from 'react';
-import { formatIST } from '@/lib/time';
+/**
+ * ⌘K search — Console (UI v2), from mockup 00d.
+ *
+ * The reads: meeting titles, transcript bodies, the action items inside
+ * meeting_insights, and contacts. Nothing here is separately indexed and no
+ * endpoint backs it — it is four filtered selects run together.
+ *
+ * What is new is that a group only appears when it has something in it, the
+ * matched term is marked in the row, and a transcript hit resolves to the
+ * segment that contains it — so it opens the recording at that moment rather
+ * than at the top of the meeting.
+ *
+ * The Ask row is always last and always present: it is the answer to "none of
+ * these", and it hands the question to /chat rather than pretending to answer.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, FileText, CheckSquare, Clock, ArrowRight } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+import { CheckSquare, Mic, Quote, Search, Sparkles, User } from 'lucide-react';
+import { Dialog as ShadDialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatIST } from '@/lib/time';
+import { ChipGroup } from '@/ui';
 import { cn } from '@/lib/utils';
 
+type Group = 'meetings' | 'transcripts' | 'actions' | 'contacts';
+type Scope = 'all' | Group;
 
-interface SearchResult {
+type Row = {
   id: string;
-  type: 'meeting' | 'action_item' | 'transcript';
+  group: Group;
   title: string;
   subtitle: string;
-  meetingId: string;
+  /** Right-hand marker: a timestamp, a status, a priority. */
+  meta?: string;
+  to: string;
+};
+
+const GROUP_LABEL: Record<Group, string> = {
+  meetings: 'Meetings',
+  transcripts: 'In transcripts',
+  actions: 'Action items',
+  contacts: 'Contacts',
+};
+
+const GROUP_ICON: Record<Group, typeof Mic> = {
+  meetings: Mic,
+  transcripts: Quote,
+  actions: CheckSquare,
+  contacts: User,
+};
+
+const SCOPES: readonly { value: Scope; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'meetings', label: 'Meetings' },
+  { value: 'transcripts', label: 'Transcripts' },
+  { value: 'actions', label: 'Action items' },
+  { value: 'contacts', label: 'Contacts' },
+];
+
+type Segment = { speaker?: string; text?: string; start?: number };
+
+/** m:ss, and h:mm:ss once a meeting passes an hour. */
+function clock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    : `${m}:${String(sec).padStart(2, '0')}`;
 }
 
-interface GlobalSearchProps {
+export function GlobalSearch({
+  open,
+  onOpenChange,
+}: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-}
-
-export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
+}) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [scope, setScope] = useState<Scope>('all');
+  const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [cursor, setCursor] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) {
-      setQuery('');
-      setResults([]);
-      setSelectedIndex(0);
-    }
+    if (open) return;
+    setQuery('');
+    setRows([]);
+    setScope('all');
+    setCursor(0);
   }, [open]);
 
   useEffect(() => {
-    const searchData = async () => {
-      if (!query.trim() || !user) {
-        setResults([]);
-        return;
-      }
+    const term = query.trim();
+    if (!term || !user) {
+      setRows([]);
+      return;
+    }
+    let cancelled = false;
+    const like = `%${term}%`;
+    const lower = term.toLowerCase();
 
+    const run = async () => {
       setLoading(true);
-      const searchResults: SearchResult[] = [];
-      const searchTerm = `%${query.toLowerCase()}%`;
-
+      const found: Row[] = [];
+      const jobs: Promise<void>[] = [];
       try {
-        // Search meetings
-        const { data: meetings } = await supabase
-          .from('meetings')
-          .select('id, title, start_time')
-          .eq('user_id', user.id)
-          .ilike('title', searchTerm)
-          .limit(5);
-
-        if (meetings) {
-          meetings.forEach((m) => {
-            searchResults.push({
+        if (scope === 'all' || scope === 'meetings') jobs.push((async () => {
+          const { data } = await supabase
+            .from('meetings')
+            .select('id, title, start_time, status')
+            .eq('user_id', user.id)
+            .ilike('title', like)
+            .order('start_time', { ascending: false })
+            .limit(5);
+          (data ?? []).forEach((m) => {
+            found.push({
               id: `meeting-${m.id}`,
-              type: 'meeting',
-              title: m.title,
-              subtitle: formatIST(new Date(m.start_time), 'MMM d, yyyy'),
-              meetingId: m.id,
+              group: 'meetings',
+              title: m.title || 'Untitled meeting',
+              subtitle: m.start_time ? formatIST(new Date(m.start_time), 'EEE, MMM d · h:mm a') : '',
+              meta: m.status === 'completed' ? 'Summarized' : m.status,
+              to: `/meeting/${m.id}`,
             });
           });
-        }
+        })());
 
-        // Search transcripts
-        const { data: transcripts } = await supabase
-          .from('transcripts')
-          .select('id, content, meeting_id, meetings!inner(title, user_id)')
-          .eq('meetings.user_id', user.id)
-          .ilike('content', searchTerm)
-          .limit(3);
-
-        if (transcripts) {
-          transcripts.forEach((t: any) => {
-            // Find the matching text snippet
-            const content = t.content.toLowerCase();
-            const index = content.indexOf(query.toLowerCase());
-            let snippet = '';
-            if (index !== -1) {
-              const start = Math.max(0, index - 30);
-              const end = Math.min(content.length, index + query.length + 30);
-              snippet = '...' + t.content.slice(start, end) + '...';
-            }
-
-            searchResults.push({
+        if (scope === 'all' || scope === 'transcripts') jobs.push((async () => {
+          const { data } = await supabase
+            .from('transcripts')
+            .select('id, content, speakers, meeting_id, meetings!inner(title, user_id)')
+            .eq('meetings.user_id', user.id)
+            .ilike('content', like)
+            .limit(4);
+          (data ?? []).forEach((t: Record<string, unknown>) => {
+            const meeting = t.meetings as { title?: string };
+            // Prefer the segment carrying the term: it names who said it and
+            // when, which is what makes the row worth opening.
+            const segments = Array.isArray(t.speakers) ? (t.speakers as Segment[]) : [];
+            const hit = segments.find((s) => s?.text?.toLowerCase().includes(lower));
+            const content = String(t.content ?? '');
+            const at = content.toLowerCase().indexOf(lower);
+            const snippet = hit?.text
+              ? hit.text
+              : at >= 0
+                ? `…${content.slice(Math.max(0, at - 40), at + term.length + 60)}…`
+                : 'Transcript match';
+            const stamp = typeof hit?.start === 'number' ? clock(hit.start) : undefined;
+            found.push({
               id: `transcript-${t.id}`,
-              type: 'transcript',
-              title: t.meetings.title,
-              subtitle: snippet || 'Transcript match',
-              meetingId: t.meeting_id,
+              group: 'transcripts',
+              title: hit?.speaker ? `${hit.speaker} · "${snippet}"` : snippet,
+              subtitle: [meeting?.title, stamp].filter(Boolean).join(' · '),
+              meta: stamp,
+              to: stamp
+                ? `/meeting/${t.meeting_id}?t=${Math.floor(hit!.start!)}`
+                : `/meeting/${t.meeting_id}`,
             });
           });
-        }
+        })());
 
-        // Search action items
-        const { data: insights } = await supabase
-          .from('meeting_insights')
-          .select('id, action_items, meeting_id, meetings!inner(title, user_id)')
-          .eq('meetings.user_id', user.id)
-          .limit(20);
-
-        if (insights) {
-          insights.forEach((insight: any) => {
-            if (Array.isArray(insight.action_items)) {
-              insight.action_items.forEach((item: any, idx: number) => {
-                const taskText = typeof item === 'string' ? item : item.task;
-                if (taskText?.toLowerCase().includes(query.toLowerCase())) {
-                  searchResults.push({
-                    id: `action-${insight.id}-${idx}`,
-                    type: 'action_item',
-                    title: taskText,
-                    subtitle: `From: ${insight.meetings.title}`,
-                    meetingId: insight.meeting_id,
-                  });
-                }
+        if (scope === 'all' || scope === 'actions') jobs.push((async () => {
+          const { data } = await supabase
+            .from('meeting_insights')
+            .select('id, action_items, meeting_id, meetings!inner(title, user_id)')
+            .eq('meetings.user_id', user.id)
+            .limit(20);
+          (data ?? []).forEach((row: Record<string, unknown>) => {
+            const meeting = row.meetings as { title?: string };
+            const items = Array.isArray(row.action_items) ? row.action_items : [];
+            items.forEach((item: unknown, idx: number) => {
+              const task = typeof item === 'string' ? item : (item as { task?: string })?.task;
+              if (!task?.toLowerCase().includes(lower)) return;
+              const owner = typeof item === 'object' ? (item as { owner?: string })?.owner : undefined;
+              const priority = typeof item === 'object' ? (item as { priority?: string })?.priority : undefined;
+              found.push({
+                id: `action-${row.id}-${idx}`,
+                group: 'actions',
+                title: task,
+                subtitle: [meeting?.title, owner].filter(Boolean).join(' · '),
+                meta: priority,
+                to: `/meeting/${row.meeting_id}`,
               });
-            }
+            });
           });
-        }
+        })());
 
-        setResults(searchResults.slice(0, 10));
-      } catch (error) {
-        console.error('Search error:', error);
+        if (scope === 'all' || scope === 'contacts') jobs.push((async () => {
+          const { data } = await supabase
+            .from('contacts')
+            .select('id, name, email, company, meeting_count')
+            .eq('user_id', user.id)
+            .or(`name.ilike.${like},email.ilike.${like}`)
+            .limit(4);
+          (data ?? []).forEach((c) => {
+            found.push({
+              id: `contact-${c.id}`,
+              group: 'contacts',
+              title: c.name || c.email,
+              subtitle: [c.company, c.meeting_count ? `${c.meeting_count} meetings` : null]
+                .filter(Boolean)
+                .join(' · '),
+              to: '/contacts',
+            });
+          });
+        })());
+
+        await Promise.all(jobs);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setRows(found);
+          setCursor(0);
+          setLoading(false);
+        }
       }
     };
 
-    const debounce = setTimeout(searchData, 200);
-    return () => clearTimeout(debounce);
-  }, [query, user]);
+    const debounce = setTimeout(run, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(debounce);
+    };
+  }, [query, user, scope]);
 
-  const handleSelect = (result: SearchResult) => {
-    onOpenChange(false);
-    navigate(`/meeting/${result.meetingId}`);
-  };
+  const askTo = `/chat?q=${encodeURIComponent(query.trim())}`;
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  // The Ask row is the last navigable row, so ↓ walks into it.
+  const navigable = useMemo(() => (query.trim() ? [...rows, { id: 'ask', to: askTo } as Row] : []), [rows, query, askTo]);
+
+  const go = useCallback(
+    (to: string) => {
+      onOpenChange(false);
+      navigate(to);
+    },
+    [navigate, onOpenChange],
+  );
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex((prev) => Math.min(prev + 1, results.length - 1));
+      setCursor((c) => Math.min(c + 1, navigable.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex((prev) => Math.max(prev - 1, 0));
-    } else if (e.key === 'Enter' && results[selectedIndex]) {
-      handleSelect(results[selectedIndex]);
+      setCursor((c) => Math.max(c - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if ((e.metaKey || e.ctrlKey) && query.trim()) return go(askTo);
+      const target = navigable[cursor];
+      if (target) go(target.to);
     }
   };
 
-  const getIcon = (type: SearchResult['type']) => {
-    switch (type) {
-      case 'meeting':
-        return Clock;
-      case 'transcript':
-        return FileText;
-      case 'action_item':
-        return CheckSquare;
-    }
-  };
+  useEffect(() => {
+    listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [cursor]);
+
+  const grouped = useMemo(() => {
+    const order: Group[] = ['meetings', 'transcripts', 'actions', 'contacts'];
+    return order
+      .map((g) => ({ group: g, items: rows.filter((r) => r.group === g) }))
+      .filter((g) => g.items.length > 0);
+  }, [rows]);
+
+  let flatIndex = -1;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 gap-0 max-w-lg overflow-hidden">
-        {/* Search Input */}
-        <div className="flex items-center border-b border-border px-4">
-          <Search className="w-4 h-4 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setSelectedIndex(0);
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder="Search meetings, transcripts, action items..."
-            className="border-0 focus-visible:ring-0 h-12 px-3"
+    <ShadDialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        style={{ maxWidth: 640 }}
+        className="top-[120px] translate-y-0 gap-0 overflow-hidden rounded-[18px] border-eb-border bg-eb-card p-0 shadow-eb-card [&>button:last-child]:hidden"
+      >
+        <DialogTitle className="sr-only">Search</DialogTitle>
+        <DialogDescription className="sr-only">
+          Search meetings, transcripts, action items and contacts
+        </DialogDescription>
+
+        <div className="flex items-center gap-3 border-b border-eb-divider px-4 py-3.5">
+          <Search size={17} strokeWidth={1.75} className="shrink-0 text-eb-accent" />
+          <input
             autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Search meetings, transcripts, action items…"
+            className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[15px] text-eb-text outline-none placeholder:text-eb-secondary"
           />
+          <Kbd>Esc</Kbd>
         </div>
 
-        {/* Results */}
-        <div className="max-h-80 overflow-y-auto">
-          {query && results.length === 0 && !loading && (
-            <div className="py-12 text-center">
-              <p className="text-sm text-muted-foreground">No results found</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Try searching for meeting titles or keywords
-              </p>
-            </div>
-          )}
-
-          {results.length > 0 && (
-            <div className="p-2">
-              {results.map((result, index) => {
-                const Icon = getIcon(result.type);
-                return (
-                  <button
-                    key={result.id}
-                    onClick={() => handleSelect(result)}
-                    className={cn(
-                      'w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition-colors',
-                      index === selectedIndex
-                        ? 'bg-accent/10 text-foreground'
-                        : 'text-muted-foreground hover:bg-secondary'
-                    )}
-                  >
-                    <div className={cn(
-                      'w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0',
-                      result.type === 'meeting' && 'bg-accent/10 text-accent',
-                      result.type === 'transcript' && 'bg-success/10 text-success',
-                      result.type === 'action_item' && 'bg-warning/10 text-warning'
-                    )}>
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {result.title}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {result.subtitle}
-                      </p>
-                    </div>
-                    <ArrowRight className={cn(
-                      'w-4 h-4 flex-shrink-0 transition-opacity',
-                      index === selectedIndex ? 'opacity-100' : 'opacity-0'
-                    )} />
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {!query && (
-            <div className="py-12 text-center">
-              <p className="text-sm text-muted-foreground">
-                Search across your meetings
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Find summaries, transcripts, and action items
-              </p>
-            </div>
+        <div className="flex items-center justify-between gap-3 border-b border-eb-divider px-4 py-2.5">
+          <ChipGroup<Scope>
+            ariaLabel="Search scope"
+            size="sm"
+            options={SCOPES}
+            value={scope}
+            onChange={setScope}
+          />
+          {query.trim() && (
+            <span className="shrink-0 font-dmsans text-[12.5px] text-eb-secondary">
+              {loading ? 'Searching…' : `${rows.length} result${rows.length === 1 ? '' : 's'}`}
+            </span>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-border px-4 py-2 flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <kbd className="kbd">↑↓</kbd> Navigate
-          </span>
-          <span className="flex items-center gap-1">
-            <kbd className="kbd">↵</kbd> Open
-          </span>
-          <span className="flex items-center gap-1">
-            <kbd className="kbd">Esc</kbd> Close
+        <div ref={listRef} className="max-h-[46vh] overflow-y-auto px-2 py-2">
+          {!query.trim() ? (
+            <p className="px-2 py-8 text-center font-dmsans text-[13px] text-eb-secondary">
+              Search across every meeting — titles, what was said, and what was promised.
+            </p>
+          ) : (
+            <>
+              {grouped.map(({ group, items }) => (
+                <div key={group} className="mb-1">
+                  <div className="px-3 pb-1 pt-2 font-dmsans text-[11px] font-semibold uppercase tracking-[.09em] text-eb-secondary">
+                    {GROUP_LABEL[group]}
+                  </div>
+                  {items.map((row) => {
+                    flatIndex += 1;
+                    const index = flatIndex;
+                    const Icon = GROUP_ICON[row.group];
+                    return (
+                      <button
+                        key={row.id}
+                        type="button"
+                        data-active={index === cursor}
+                        onMouseEnter={() => setCursor(index)}
+                        onClick={() => go(row.to)}
+                        className={cn(
+                          'flex w-full items-center gap-3 rounded-input px-3 py-2.5 text-left transition-colors',
+                          index === cursor ? 'bg-eb-accent-soft' : 'hover:bg-eb-row-hover',
+                        )}
+                      >
+                        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-pill border border-eb-border bg-white text-eb-secondary">
+                          <Icon size={14} strokeWidth={1.75} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-dmsans text-[13.5px] text-eb-text">
+                            <Mark text={row.title} term={query.trim()} />
+                          </span>
+                          {row.subtitle && (
+                            <span className="block truncate font-dmsans text-[12.5px] text-eb-secondary">
+                              {row.subtitle}
+                            </span>
+                          )}
+                        </span>
+                        {row.meta && (
+                          <span className="shrink-0 font-mono text-[11.5px] text-eb-secondary">{row.meta}</span>
+                        )}
+                        {index === cursor && <Kbd>↵</Kbd>}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+
+              {!loading && rows.length === 0 && (
+                <p className="px-3 pb-1 pt-3 font-dmsans text-[13px] text-eb-secondary">
+                  Nothing matched “{query.trim()}”.
+                </p>
+              )}
+
+              <div className="mb-1">
+                <div className="px-3 pb-1 pt-2 font-dmsans text-[11px] font-semibold uppercase tracking-[.09em] text-eb-secondary">
+                  Ask
+                </div>
+                <button
+                  type="button"
+                  data-active={rows.length === cursor}
+                  onMouseEnter={() => setCursor(rows.length)}
+                  onClick={() => go(askTo)}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-input px-3 py-2.5 text-left transition-colors',
+                    rows.length === cursor ? 'bg-eb-accent-soft' : 'hover:bg-eb-row-hover',
+                  )}
+                >
+                  <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-pill border border-eb-border bg-white text-eb-accent">
+                    <Sparkles size={14} strokeWidth={1.75} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-dmsans text-[13.5px] text-eb-text">
+                      Ask: “{query.trim()}”
+                    </span>
+                    <span className="block font-dmsans text-[12.5px] text-eb-secondary">
+                      Answer from your transcripts, with citations
+                    </span>
+                  </span>
+                  {rows.length === cursor && <Kbd>↵</Kbd>}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 border-t border-eb-divider bg-eb-card-alt px-4 py-2.5">
+          <Hint keys="↑↓">Navigate</Hint>
+          <Hint keys="↵">Open</Hint>
+          <Hint keys="⌘↵">Open in Ask</Hint>
+          <span className="ml-auto">
+            <Hint keys="Esc">Close</Hint>
           </span>
         </div>
       </DialogContent>
-    </Dialog>
+    </ShadDialog>
+  );
+}
+
+/** Marks the matched term. Case-insensitive, first occurrence only. */
+function Mark({ text, term }: { text: string; term: string }) {
+  if (!term) return <>{text}</>;
+  const at = text.toLowerCase().indexOf(term.toLowerCase());
+  if (at < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, at)}
+      <span className="rounded-[3px] bg-eb-accent-soft px-0.5 text-eb-accent-text">
+        {text.slice(at, at + term.length)}
+      </span>
+      {text.slice(at + term.length)}
+    </>
+  );
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="shrink-0 rounded-[6px] border border-eb-border bg-white px-1.5 py-0.5 font-mono text-[11px] text-eb-secondary">
+      {children}
+    </span>
+  );
+}
+
+function Hint({ keys, children }: { keys: string; children: React.ReactNode }) {
+  return (
+    <span className="flex items-center gap-1.5 font-dmsans text-[12px] text-eb-secondary">
+      <Kbd>{keys}</Kbd>
+      {children}
+    </span>
   );
 }

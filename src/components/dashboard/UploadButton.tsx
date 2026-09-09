@@ -38,8 +38,8 @@ interface UploadButtonProps {
   onUploaded?: (meetingId: string) => void;
   /**
    * Draw a different trigger and keep this component's picker and upload logic.
-   * The V2 shell passes the Console icon button; omitting it keeps the V1
-   * button exactly as it was, so no existing call site changes.
+   * The shell passes the Console icon button; omitting it falls back to this
+   * component's own button.
    */
   renderTrigger?: (open: () => void, busy: boolean) => React.ReactNode;
 }

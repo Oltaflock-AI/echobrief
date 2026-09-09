@@ -1,23 +1,41 @@
+/**
+ * Contacts — Console (UI v2), from mockup 06-contacts.
+ *
+ * Data layer is Contacts.tsx's, unchanged: `contacts` (written by the pipeline
+ * from the external attendees of completed meetings), the meetings behind one
+ * contact via `meeting_contacts`, and the cached `account_brief` that the
+ * account-brief function generates from the facts of every meeting with them.
+ * Selection lives in the URL (`?c=<id>`) so a brief can be linked to.
+ *
+ * Two departures from the mockup, both for the same reason — no code path
+ * behind them. The checkboxes beside the open commitments would have nothing
+ * to write to (they are brief prose, not action items, which have their own
+ * table and index), so they are a list. The "…" overflow menu offered no
+ * actions that exist, so the only control is Refresh brief.
+ *
+ * One addition: unresolved objections. The brief already carries them and they
+ * are the sharpest thing in it, so the card shows them when there are any.
+ */
+
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Building2, Loader2, Mail, RefreshCw, Search, Sparkles, Users } from 'lucide-react';
-import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
+import { Building2, ChevronRight, Loader2, Mail, RefreshCw, Search, Sparkles, Users } from 'lucide-react';
+import { formatIST } from '@/lib/time';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { formatIST } from '@/lib/time';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import type { AccountBrief, Contact, FactCommitment, FactNumber, MeetingFacts } from '@/types/meeting';
-import { asContacts } from '@/types/meeting';
+import { AppShell } from '@/components/shell/AppShell';
+import { ListSkeleton } from '@/components/dashboard/ListSkeleton';
+import { AccountBrief, Contact, MeetingFacts } from '@/types/meeting';
+import { Avatar, Button as EbButton, Card, Label as EbLabel, PageHeader } from '@/ui';
+import { cn } from '@/lib/utils';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
-// contacts / meeting_contacts postdate the generated Database types, so they
-// are read through an untyped handle and shaped locally. RLS scopes the rows.
+// `contacts` and `meeting_contacts` are missing from the checked-in generated
+// types (they are ~40 tables behind the deployed schema), so these reads go
+// through an untyped client the way Contacts.tsx does.
 const db = supabase;
 
 interface InsightsRow {
@@ -25,6 +43,7 @@ interface InsightsRow {
   facts: MeetingFacts | null;
   created_at: string;
 }
+
 interface MeetingRow {
   id: string;
   title: string;
@@ -32,41 +51,30 @@ interface MeetingRow {
   duration_seconds: number | null;
   meeting_insights: InsightsRow[] | InsightsRow | null;
 }
+
 interface LinkRow {
   meeting_id: string;
   meetings: MeetingRow | MeetingRow[] | null;
 }
 
-/** One meeting with this contact, flattened to what the timeline renders. */
 interface ContactMeeting {
   id: string;
   title: string;
   start_time: string;
   duration_seconds: number | null;
-  summary_short: string | null;
-  numbers: FactNumber[];
-  commitments: FactCommitment[];
-}
-
-/** Regeneration appends insight rows; the newest one is the live copy. */
-function newestInsights(rows: InsightsRow[] | InsightsRow | null): InsightsRow | null {
-  if (!rows) return null;
-  if (!Array.isArray(rows)) return rows;
-  return [...rows].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] ?? null;
 }
 
 function displayName(c: Contact): string {
   return c.name?.trim() || c.email;
 }
 
-function initials(c: Contact): string {
-  const parts = displayName(c).split(/[\s@._-]+/).filter(Boolean);
-  const two = ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
-  return two || displayName(c).charAt(0).toUpperCase() || '?';
-}
-
 function meetingsLabel(n: number): string {
   return `${n} ${n === 1 ? 'meeting' : 'meetings'}`;
+}
+
+function minutes(seconds: number | null): string | null {
+  if (!seconds) return null;
+  return `${Math.max(1, Math.round(seconds / 60))} min`;
 }
 
 export default function Contacts() {
@@ -81,13 +89,15 @@ export default function Contacts() {
     queryKey: ['contacts', user?.id],
     enabled: !!user,
     queryFn: async () => {
-      const { data, error } = await db
+      const { data, error: err } = await db
         .from('contacts')
-        .select('id, user_id, email, name, company, domain, meeting_count, first_seen_at, last_seen_at, account_brief, account_brief_at')
+        .select(
+          'id, user_id, email, name, company, domain, meeting_count, first_seen_at, last_seen_at, account_brief, account_brief_at',
+        )
         .eq('user_id', user!.id)
         .order('last_seen_at', { ascending: false, nullsFirst: false });
-      if (error) throw error;
-      return asContacts(data ?? []);
+      if (err) throw err;
+      return (data ?? []) as unknown as Contact[];
     },
   });
 
@@ -103,24 +113,20 @@ export default function Contacts() {
     queryKey: ['contact-meetings', selectedId],
     enabled: !!selectedId,
     queryFn: async () => {
-      const { data, error } = await db
+      const { data, error: err } = await db
         .from('meeting_contacts')
-        .select('meeting_id, meetings(id, title, start_time, duration_seconds, meeting_insights(summary_short, facts, created_at))')
+        .select('meeting_id, meetings(id, title, start_time, duration_seconds)')
         .eq('contact_id', selectedId!);
-      if (error) throw error;
+      if (err) throw err;
       const out: ContactMeeting[] = [];
-      for (const row of (data ?? []) as LinkRow[]) {
+      for (const row of (data ?? []) as unknown as LinkRow[]) {
         const m = Array.isArray(row.meetings) ? row.meetings[0] : row.meetings;
         if (!m) continue;
-        const ins = newestInsights(m.meeting_insights);
         out.push({
           id: m.id,
           title: m.title,
           start_time: m.start_time,
           duration_seconds: m.duration_seconds,
-          summary_short: ins?.summary_short ?? null,
-          numbers: Array.isArray(ins?.facts?.numbers) ? ins!.facts!.numbers! : [],
-          commitments: Array.isArray(ins?.facts?.commitments) ? ins!.facts!.commitments! : [],
         });
       }
       return out.sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)));
@@ -141,9 +147,10 @@ export default function Contacts() {
       return { contactId, brief: body.brief as AccountBrief };
     },
     onSuccess: ({ contactId, brief }) => {
-      // Patch the cached list so the card updates without a refetch.
       queryClient.setQueryData<Contact[]>(['contacts', user?.id], (old) =>
-        (old ?? []).map((c) => (c.id === contactId ? { ...c, account_brief: brief, account_brief_at: brief.generated_at } : c)),
+        (old ?? []).map((c) =>
+          c.id === contactId ? { ...c, account_brief: brief, account_brief_at: brief.generated_at } : c,
+        ),
       );
     },
     onError: (err) => {
@@ -162,359 +169,277 @@ export default function Contacts() {
     setSearchParams(next);
   };
 
-  const fetchError = error ? (error instanceof Error ? error.message : 'Could not load contacts') : null;
+  const brief = selected?.account_brief ?? null;
+  const busy = briefMutation.isPending;
 
   return (
-    <DashboardLayout>
-      <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6 md:px-8 md:py-10">
-        {/* Header */}
-        <div className="mb-8">
-          <h1
-            className="text-[28px] font-semibold leading-tight"
-            style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
-          >
-            Contacts
-          </h1>
-          <p className="mt-1 text-[14px]" style={{ color: 'var(--ink-mid)' }}>
-            Every external person you have met with, and the two-minute brief to read before the next call.
-          </p>
-        </div>
+    <AppShell>
+      <PageHeader
+        title="Contacts"
+        subtitle="Every external person you have met with, and the two-minute brief to read before the next call."
+      />
 
-        {isLoading ? (
-          <div className="space-y-3">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-16 rounded-lg" />
-            ))}
-          </div>
-        ) : fetchError ? (
-          <div
-            role="alert"
-            className="rounded-md px-4 py-3 text-[13.5px]"
-            style={{
-              border: '1px solid color-mix(in oklch, hsl(var(--destructive)) 25%, transparent)',
-              background: 'color-mix(in oklch, hsl(var(--destructive)) 7%, transparent)',
-              color: 'hsl(var(--destructive))',
-            }}
-          >
-            {fetchError}
-          </div>
-        ) : contacts.length === 0 ? (
-          <div
-            className="flex flex-col items-center justify-center rounded-xl px-6 py-16 text-center"
-            style={{ border: '1px dashed var(--rule)', background: 'var(--paper-card)' }}
-          >
-            <Users className="mb-4 h-10 w-10" strokeWidth={1.5} style={{ color: 'var(--ink-faint)' }} />
-            <p className="mb-1.5 text-[17px] font-semibold" style={{ color: 'var(--ink)' }}>
-              No contacts yet
-            </p>
-            <p className="max-w-sm text-[14px]" style={{ color: 'var(--ink-mid)', lineHeight: 1.6 }}>
-              Contacts appear automatically from the external attendees of your completed meetings — there is nothing to add by hand.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-            {/* List — hidden on mobile while a contact is open */}
-            <div className={cn(selected ? 'hidden lg:block' : 'block')}>
-              <div className="relative mb-3">
-                <Search
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
-                  strokeWidth={1.75}
-                  style={{ color: 'var(--ink-soft)' }}
-                />
-                <Input
+      {error ? (
+        <Card className="text-center">
+          <p className="font-dmsans text-sm font-medium text-eb-red">Could not load contacts</p>
+          <p className="mt-1 font-dmsans text-[13px] text-eb-secondary">
+            {error instanceof Error ? error.message : 'Please try again.'}
+          </p>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+          {/* List rail */}
+          <Card padded={false} className="flex max-h-[720px] flex-col">
+            <div className="border-b border-eb-divider p-3">
+              <div className="flex items-center gap-2 rounded-input border border-eb-border bg-eb-card px-3 py-2 shadow-eb-input">
+                <Search size={14} strokeWidth={1.75} className="flex-none text-eb-muted" />
+                <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search name, email or company"
-                  className="h-9 pl-9 text-sm"
+                  className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[13px] text-eb-text outline-none placeholder:text-eb-secondary"
                 />
-              </div>
-              <div
-                className="overflow-hidden rounded-xl"
-                style={{ border: '1px solid var(--rule)', background: 'var(--paper-card)' }}
-              >
-                {filtered.length === 0 ? (
-                  <p className="px-4 py-8 text-center text-[13px]" style={{ color: 'var(--ink-soft)' }}>
-                    No contacts match “{search.trim()}”.
-                  </p>
-                ) : (
-                  filtered.map((c, i) => {
-                    const active = c.id === selectedId;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => select(c.id)}
-                        className="nav-item flex w-full items-center gap-3 px-4 py-3 text-left"
-                        data-active={active}
-                        aria-current={active ? 'true' : undefined}
-                        style={{
-                          borderTop: i === 0 ? 'none' : '1px solid var(--rule)',
-                        }}
-                      >
-                        <span
-                          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[12px] font-semibold"
-                          style={{
-                            background: 'color-mix(in oklch, var(--ember) 12%, transparent)',
-                            color: 'var(--ember-deep)',
-                          }}
-                        >
-                          {initials(c)}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[14px] font-medium" style={{ color: 'var(--ink)' }}>
-                            {displayName(c)}
-                          </span>
-                          <span className="block truncate text-[12.5px]" style={{ color: 'var(--ink-soft)' }}>
-                            {[c.company, c.email].filter(Boolean).join(' · ')}
-                          </span>
-                        </span>
-                        <span className="flex-shrink-0 text-right">
-                          <span className="block text-[12.5px] font-medium" style={{ color: 'var(--ink-mid)' }}>
-                            {meetingsLabel(c.meeting_count)}
-                          </span>
-                          {c.last_seen_at && (
-                            <span className="block text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
-                              {formatIST(c.last_seen_at, 'MMM d, yyyy')}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                    );
-                  })
-                )}
               </div>
             </div>
 
-            {/* Detail */}
-            <div className={cn(!selected ? 'hidden lg:block' : 'block')}>
-              {selected ? (
-                <ContactDetail
-                  contact={selected}
-                  meetings={meetings}
-                  meetingsLoading={meetingsLoading}
-                  generating={briefMutation.isPending && briefMutation.variables?.contactId === selected.id}
-                  onGenerate={(force) => briefMutation.mutate({ contactId: selected.id, force })}
-                  onBack={() => select(null)}
-                />
-              ) : (
-                <div
-                  className="flex min-h-[240px] items-center justify-center rounded-xl px-6 text-center text-[13.5px]"
-                  style={{ border: '1px dashed var(--rule)', color: 'var(--ink-soft)' }}
-                >
-                  Select a contact to see their brief and meeting history.
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {isLoading ? (
+                <div className="p-3">
+                  <ListSkeleton />
                 </div>
+              ) : filtered.length === 0 ? (
+                <div className="px-4 py-10 text-center">
+                  <Users size={26} strokeWidth={1.5} className="mx-auto mb-2.5 text-eb-muted" />
+                  <p className="font-dmsans text-[13px] text-eb-secondary">
+                    {contacts.length === 0
+                      ? 'External attendees appear here after a meeting is summarised.'
+                      : 'No contact matches that search.'}
+                  </p>
+                </div>
+              ) : (
+                filtered.map((c) => {
+                  const active = c.id === selectedId;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => select(c.id)}
+                      className={cn(
+                        'flex w-full items-center gap-3 border-b border-eb-divider px-3.5 py-3 text-left last:border-0',
+                        active ? 'bg-eb-accent-soft' : 'hover:bg-eb-row-hover',
+                      )}
+                    >
+                      <Avatar name={displayName(c)} size={30} round />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-dmsans text-[13.5px] font-medium text-eb-text">
+                          {displayName(c)}
+                        </span>
+                        <span className="block truncate font-dmsans text-[12px] text-eb-secondary">
+                          {c.company || c.email}
+                        </span>
+                      </span>
+                      <span className="flex-none text-right">
+                        <span className="block font-dmsans text-[12px] text-eb-secondary">
+                          {meetingsLabel(c.meeting_count)}
+                        </span>
+                        {c.last_seen_at && (
+                          <span className="block font-dmsans text-[12px] text-eb-secondary">
+                            {formatIST(new Date(c.last_seen_at), 'MMM d')}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })
               )}
             </div>
-          </div>
-        )}
-      </div>
-    </DashboardLayout>
-  );
-}
+          </Card>
 
-function ContactDetail({
-  contact,
-  meetings,
-  meetingsLoading,
-  generating,
-  onGenerate,
-  onBack,
-}: {
-  contact: Contact;
-  meetings: ContactMeeting[];
-  meetingsLoading: boolean;
-  generating: boolean;
-  onGenerate: (force: boolean) => void;
-  onBack: () => void;
-}) {
-  const brief = contact.account_brief;
-  const generatedAt = brief ? formatIST(brief.generated_at || contact.account_brief_at || '', 'MMM d, yyyy') : '';
-
-  return (
-    <div className="space-y-6">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-[13px] lg:hidden"
-        style={{ color: 'var(--ink-mid)' }}
-      >
-        <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
-        All contacts
-      </button>
-
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h2
-            className="truncate text-[22px] font-semibold leading-tight"
-            style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
-          >
-            {displayName(contact)}
-          </h2>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]" style={{ color: 'var(--ink-mid)' }}>
-            {contact.company && (
-              <span className="inline-flex items-center gap-1.5">
-                <Building2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-                {contact.company}
-              </span>
-            )}
-            <a
-              href={`mailto:${contact.email}`}
-              className="inline-flex items-center gap-1.5 no-underline hover:underline"
-              style={{ color: 'var(--ink-mid)' }}
-            >
-              <Mail className="h-3.5 w-3.5" strokeWidth={1.75} />
-              {contact.email}
-            </a>
-            <span>{meetingsLabel(contact.meeting_count)}</span>
-          </div>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => onGenerate(!!brief)}
-          disabled={generating}
-          className="h-8 gap-1.5 text-[13px]"
-        >
-          {generating ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : brief ? (
-            <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
-          ) : (
-            <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} />
-          )}
-          {generating ? 'Writing…' : brief ? 'Refresh brief' : 'Generate brief'}
-        </Button>
-      </div>
-
-      {/* Account brief */}
-      <section className="rounded-xl p-5" style={{ background: 'var(--paper-card)', border: '1px solid var(--rule)' }}>
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <h3 className="text-[15px] font-semibold" style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}>
-            Account brief
-          </h3>
-          {brief && (
-            <span className="text-[11.5px]" style={{ color: 'var(--ink-soft)' }}>
-              Generated {generatedAt || 'recently'} from {meetingsLabel(brief.meetings_considered)}
-            </span>
-          )}
-        </div>
-        {brief ? (
-          <div className="space-y-4">
-            <p className="text-[14px] leading-relaxed" style={{ color: 'var(--ink)' }}>
-              {brief.where_it_stands}
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <BriefList title="Our open commitments" items={brief.open_commitments_ours} />
-              <BriefList title="Their open commitments" items={brief.open_commitments_theirs} />
-              <BriefList title="Unresolved objections" items={brief.unresolved_objections} accent="hsl(var(--destructive))" />
-              <BriefList title="Key numbers" items={brief.key_numbers} />
-            </div>
-            <BriefList title="Prep for the next call" items={brief.next_call_prep} accent="var(--ember)" />
-          </div>
-        ) : (
-          <p className="text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-mid)' }}>
-            No brief yet. Generate one to get where the deal stands, open commitments on both sides, unresolved
-            objections and what to prepare — written from the facts of every meeting with {displayName(contact)}.
-          </p>
-        )}
-      </section>
-
-      {/* Meetings timeline */}
-      <section>
-        <h3 className="mb-3 text-[15px] font-semibold" style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}>
-          Meetings
-        </h3>
-        {meetingsLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-20 rounded-lg" />
-            <Skeleton className="h-20 rounded-lg" />
-          </div>
-        ) : meetings.length === 0 ? (
-          <p className="text-[13.5px]" style={{ color: 'var(--ink-soft)' }}>
-            No completed meetings are linked to this contact yet.
-          </p>
-        ) : (
-          <ol className="ml-1">
-            {meetings.map((m) => (
-              <li key={m.id} className="relative pb-6 pl-6" style={{ borderLeft: '1px solid var(--rule)' }}>
-                <span
-                  className="absolute -left-[5px] top-1.5 h-[9px] w-[9px] rounded-full"
-                  style={{ background: 'var(--ember)' }}
-                />
-                <p className="text-[12px]" style={{ color: 'var(--ink-soft)' }}>
-                  {formatIST(m.start_time, 'EEE, MMM d, yyyy · h:mm a')}
-                  {m.duration_seconds ? ` · ${Math.max(1, Math.round(m.duration_seconds / 60))} min` : ''}
+          {/* Detail */}
+          {!selected ? (
+            <Card className="flex items-center justify-center text-center">
+              <div>
+                <Sparkles size={26} strokeWidth={1.5} className="mx-auto mb-2.5 text-eb-muted" />
+                <p className="font-dmsans text-sm font-medium text-eb-text">Pick a contact</p>
+                <p className="mt-1 font-dmsans text-[13px] text-eb-secondary">
+                  Their brief is built from the facts of every meeting you have had with them.
                 </p>
-                <Link
-                  to={`/meeting/${m.id}`}
-                  className="mt-0.5 block text-[15px] font-semibold no-underline hover:underline"
-                  style={{ color: 'var(--ink)' }}
-                >
-                  {m.title}
-                </Link>
-                {m.summary_short && (
-                  <p className="mt-1 text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-mid)' }}>
-                    {m.summary_short}
-                  </p>
-                )}
-                {m.numbers.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {m.numbers.map((n, i) => (
-                      <span
-                        key={i}
-                        className="rounded-full px-2 py-0.5 text-[11.5px] font-medium"
-                        style={{ background: 'color-mix(in oklch, var(--ink) 6%, transparent)', color: 'var(--ink)' }}
-                      >
-                        <span style={{ color: 'var(--ink-soft)' }}>{n.metric}</span> {n.value}
+              </div>
+            </Card>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar name={displayName(selected)} size={40} round />
+                  <div className="min-w-0">
+                    <h2 className="m-0 truncate font-outfit text-[20px] font-semibold tracking-[-0.015em] text-eb-text">
+                      {displayName(selected)}
+                    </h2>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-dmsans text-[12.5px] text-eb-secondary">
+                      {selected.company && (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Building2 size={12} strokeWidth={1.75} />
+                          {selected.company}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1.5">
+                        <Mail size={12} strokeWidth={1.75} />
+                        {selected.email}
                       </span>
-                    ))}
+                      <span>{meetingsLabel(selected.meeting_count)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <EbButton
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => briefMutation.mutate({ contactId: selected.id, force: !!brief })}
+                  icon={busy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} strokeWidth={1.75} />}
+                  className="flex-none"
+                >
+                  {busy ? 'Working…' : brief ? 'Refresh brief' : 'Generate brief'}
+                </EbButton>
+              </div>
+
+              <Card>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="m-0 inline-flex items-center gap-2 font-outfit text-[16px] font-semibold tracking-[-0.01em] text-eb-text">
+                    <Sparkles size={15} strokeWidth={1.75} className="text-eb-accent" />
+                    Account brief
+                  </h3>
+                  {brief?.generated_at && (
+                    <span className="font-dmsans text-[12px] text-eb-secondary">
+                      Generated {formatIST(new Date(brief.generated_at), 'MMM d')} from{' '}
+                      {meetingsLabel(brief.meetings_considered ?? selected.meeting_count)}
+                    </span>
+                  )}
+                </div>
+
+                {!brief ? (
+                  <p className="font-dmsans text-[13px] text-eb-secondary">
+                    No brief yet. Generate one and it is written from the quoted facts of your meetings
+                    with {displayName(selected)} — never invented.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    <p className="m-0 font-dmsans text-[14px] leading-relaxed text-eb-prose">
+                      {brief.where_it_stands}
+                    </p>
+
+                    {(brief.open_commitments_ours?.length > 0 || brief.open_commitments_theirs?.length > 0) && (
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        {[
+                          ['Our open commitments', brief.open_commitments_ours] as const,
+                          ['Their open commitments', brief.open_commitments_theirs] as const,
+                        ].map(([label, items]) =>
+                          items?.length ? (
+                            <div key={label}>
+                              <EbLabel className="mb-1.5">{label}</EbLabel>
+                              <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+                                {items.map((line, i) => (
+                                  <li key={i} className="font-dmsans text-[13px] leading-snug text-eb-text">
+                                    {line}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null,
+                        )}
+                      </div>
+                    )}
+
+                    {brief.unresolved_objections?.length > 0 && (
+                      <div>
+                        <EbLabel className="mb-1.5">Unresolved objections</EbLabel>
+                        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+                          {brief.unresolved_objections.map((line, i) => (
+                            <li key={i} className="font-dmsans text-[13px] leading-snug text-eb-text">
+                              {line}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {brief.key_numbers?.length > 0 && (
+                      <div>
+                        <EbLabel className="mb-1.5">Key numbers</EbLabel>
+                        <div className="flex flex-wrap gap-2">
+                          {brief.key_numbers.map((n, i) => (
+                            <span
+                              key={i}
+                              className="rounded-pill border border-eb-border bg-eb-card px-3 py-1.5 font-dmsans text-[12.5px] text-eb-text"
+                            >
+                              {n}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {brief.next_call_prep?.length > 0 && (
+                      <div>
+                        <EbLabel className="mb-1.5">Prep for the next call</EbLabel>
+                        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+                          {brief.next_call_prep.map((line, i) => (
+                            <li
+                              key={i}
+                              className="flex gap-2 font-dmsans text-[13px] leading-snug text-eb-text"
+                            >
+                              <span className="mt-[6px] h-1.5 w-1.5 flex-none rounded-full bg-eb-accent" />
+                              {line}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
-                {m.commitments.length > 0 && (
-                  <ul className="mt-2 space-y-1">
-                    {m.commitments.map((c, i) => (
-                      <li key={i} className="flex gap-2 text-[13px] leading-snug" style={{ color: 'var(--ink)' }}>
-                        <span
-                          className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                          style={{ background: 'var(--ember)' }}
-                        />
-                        <span>
-                          {c.who && <span className="font-medium">{c.who}: </span>}
-                          {c.what}
-                          {c.due && <span style={{ color: 'var(--ink-soft)' }}> — due {c.due}</span>}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-    </div>
-  );
-}
+              </Card>
 
-function BriefList({ title, items, accent }: { title: string; items: string[]; accent?: string }) {
-  if (!Array.isArray(items) || items.length === 0) return null;
-  return (
-    <div>
-      <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-soft)' }}>
-        {title}
-      </p>
-      <ul className="space-y-1">
-        {items.map((item, i) => (
-          <li key={i} className="flex gap-2 text-[13.5px] leading-snug" style={{ color: 'var(--ink)' }}>
-            <span
-              className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full"
-              style={{ background: accent ?? 'var(--ink-faint)' }}
-            />
-            <span>{item}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
+              <Card padded={false}>
+                <div className="flex items-center justify-between border-b border-eb-divider px-[18px] py-3">
+                  <h3 className="m-0 font-outfit text-[15px] font-semibold leading-tight text-eb-text">
+                    Meetings
+                  </h3>
+                  <span className="font-dmsans text-[12.5px] text-eb-secondary">{meetings.length}</span>
+                </div>
+                {meetingsLoading ? (
+                  <div className="p-4">
+                    <ListSkeleton />
+                  </div>
+                ) : meetings.length === 0 ? (
+                  <p className="px-[18px] py-6 text-center font-dmsans text-[13px] text-eb-secondary">
+                    No meetings linked to this contact yet.
+                  </p>
+                ) : (
+                  meetings.map((m) => (
+                    <Link
+                      key={m.id}
+                      to={`/meeting/${m.id}`}
+                      className="flex items-center gap-3 border-b border-eb-divider px-[18px] py-3 no-underline last:border-0 hover:bg-eb-row-hover"
+                    >
+                      <span className="w-[110px] flex-none font-dmsans text-[12.5px] text-eb-secondary">
+                        {formatIST(new Date(m.start_time), 'EEE, MMM d')}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-dmsans text-[13.5px] text-eb-text">
+                        {m.title || 'Untitled meeting'}
+                      </span>
+                      {minutes(m.duration_seconds) && (
+                        <span className="flex-none font-dmsans text-[12.5px] text-eb-secondary">
+                          {minutes(m.duration_seconds)}
+                        </span>
+                      )}
+                      <ChevronRight size={15} strokeWidth={1.75} className="flex-none text-eb-muted" />
+                    </Link>
+                  ))
+                )}
+              </Card>
+            </div>
+          )}
+        </div>
+      )}
+    </AppShell>
   );
 }

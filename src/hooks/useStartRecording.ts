@@ -1,13 +1,12 @@
 /**
  * Starting a bot — the one implementation.
  *
- * V1's dialog (`RecordingButton`) and the Console dialog (`RecordDialogV2`)
- * draw different forms over identical behaviour: the same URL validation, the
- * same `start-recall-recording` call, and the same unwrapping of the
- * function's own error text (429 "You already have 3 recordings in progress",
- * 402 over quota, 400 for a link we do not support) instead of the generic
- * FunctionsHttpError message. Keeping that here is what stops the two dialogs
- * from disagreeing about what a failure means while both are live.
+ * One place for the URL validation, the `start-recall-recording` call, and the
+ * unwrapping of the function's own error text (429 "You already have 3
+ * recordings in progress", 402 over quota, 400 for a link we do not support)
+ * instead of the generic FunctionsHttpError message. Extracted when two
+ * dialogs rendered it; kept because the error text a customer reads on a
+ * refused recording deserves exactly one definition.
  */
 import { useState } from 'react';
 import { FunctionsHttpError } from '@supabase/supabase-js';

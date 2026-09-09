@@ -1,10 +1,24 @@
+/**
+ * Billing — Console (UI v2).
+ *
+ * Every read, handler and derived value above the render is the V1 BillingCard's,
+ * untouched: the parallel profile + usage read, the server's answer to "which
+ * plan am I on" (planForProfile here is only a floor — it has no Dodo product
+ * map, so an annual Pro would read as Starter), the checkout/portal invoke, the
+ * early-access redemption, and the seat count that the server raises to the
+ * workspace's real size so it can never sell fewer seats than the account uses.
+ *
+ * Only the render is new: three Sections instead of two rounded-2xl divs, plan
+ * cards as bordered tiles inside one card level, and the billing-period switch
+ * as a ChipGroup rather than a bespoke segmented control.
+ */
+
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Check, CreditCard, ExternalLink, Loader2 } from 'lucide-react';
+import { Check, ExternalLink, Loader2 } from 'lucide-react';
+import { Badge, Button, ChipGroup, Field, Input, Section } from '@/ui';
 import { useToast } from '@/hooks/use-toast';
 import {
   formatHours,
@@ -219,124 +233,92 @@ export function BillingCard() {
     : null;
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm">
-        <div className="mb-1 flex items-center gap-2">
-          <CreditCard className="h-4 w-4" style={{ color: 'var(--ink-mid)' }} />
-          <h2 className="text-base font-semibold text-foreground">Subscription</h2>
-        </div>
-        <p className="mb-5 text-[13px]" style={{ color: 'var(--ink-mid)' }}>
-          Meeting bots, transcription in 22 Indian languages, and AI summaries.
-        </p>
-
+    <>
+      <Section title="Subscription" description="Meeting bots, transcription in 22 Indian languages, and AI summaries.">
         {loading ? (
-          <div className="flex items-center gap-2 text-[13px]" style={{ color: 'var(--ink-mid)' }}>
+          <div className="flex items-center gap-2 font-dmsans text-[13px] text-eb-secondary">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </div>
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-[14px] font-medium text-foreground">
-                {STATUS_LABELS[status] ?? status}
-              </p>
-              {isActive && renewsAt && (
-                <p className="text-[12.5px]" style={{ color: 'var(--ink-soft)' }}>
-                  Renews on {renewsAt}
-                </p>
-              )}
-              {status === 'cancelled' && renewsAt && (
-                <p className="text-[12.5px]" style={{ color: 'var(--ink-soft)' }}>
-                  Access until {renewsAt}
-                </p>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-dmsans text-sm font-medium">
+                    {STATUS_LABELS[status] ?? status}
+                  </span>
+                  {isActive && <Badge tone="green" dot>Active</Badge>}
+                  {status === 'on_hold' && <Badge tone="amber" dot>Payment failed</Badge>}
+                </div>
+                {isActive && renewsAt && (
+                  <p className="mt-0.5 font-dmsans text-[12.5px] text-eb-secondary">Renews on {renewsAt}</p>
+                )}
+                {status === 'cancelled' && renewsAt && (
+                  <p className="mt-0.5 font-dmsans text-[12.5px] text-eb-secondary">Access until {renewsAt}</p>
+                )}
+              </div>
               {profile?.dodo_customer_id && (
                 <Button
-                  variant="outline"
                   size="sm"
                   disabled={working}
                   onClick={() => invoke('portal')}
+                  icon={<ExternalLink size={14} strokeWidth={1.75} />}
                 >
-                  <ExternalLink className="mr-1.5 h-4 w-4" />
                   Manage billing
                 </Button>
               )}
             </div>
-          </div>
-        )}
 
-        {!loading && usage && (
-          <div className="mt-5 border-t border-border pt-5">
-            <div className="mb-2 flex items-baseline justify-between gap-3">
-              <span className="text-[13px] font-medium text-foreground">
-                {limits.label} plan — this month
-              </span>
-              <span className="text-[12.5px]" style={{ color: 'var(--ink-soft)' }}>
-                {allowanceLabel}
-              </span>
-            </div>
-            <div
-              className="h-1.5 w-full overflow-hidden rounded-full"
-              style={{ background: 'var(--paper-deep)' }}
-              role="progressbar"
-              aria-valuenow={Math.round(usedFraction * 100)}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Plan usage this month"
-            >
-              <div
-                className="h-full rounded-full transition-[width]"
-                style={{
-                  width: `${Math.min(100, usedFraction * 100)}%`,
-                  background: usedFraction >= 1 ? 'var(--stop)' : 'var(--ember)',
-                }}
-              />
-            </div>
-            <p className="mt-2 text-[12.5px]" style={{ color: 'var(--ink-soft)' }}>
-              Meetings are capped at {Math.round(limits.maxMeetingSeconds / 60)} minutes each,
-              and content is kept for {limits.retentionDays} days.
-            </p>
-          </div>
+            {usage && (
+              <div className="mt-5 border-t border-eb-divider pt-5">
+                <div className="mb-2 flex items-baseline justify-between gap-3">
+                  <span className="font-dmsans text-[13px] font-medium">
+                    {limits.label} plan — this month
+                  </span>
+                  <span className="font-mono text-[12px] text-eb-secondary">{allowanceLabel}</span>
+                </div>
+                <div
+                  className="h-1.5 w-full overflow-hidden rounded-pill bg-eb-chip"
+                  role="progressbar"
+                  aria-valuenow={Math.round(usedFraction * 100)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Plan usage this month"
+                >
+                  <div
+                    className={`h-full rounded-pill transition-[width] ${usedFraction >= 1 ? 'bg-eb-red' : 'bg-eb-accent'}`}
+                    style={{ width: `${Math.min(100, usedFraction * 100)}%` }}
+                  />
+                </div>
+                <p className="mt-2 font-dmsans text-[12.5px] text-eb-secondary">
+                  Meetings are capped at {Math.round(limits.maxMeetingSeconds / 60)} minutes each, and
+                  content is kept for {limits.retentionDays} days.
+                </p>
+              </div>
+            )}
+          </>
         )}
-      </div>
+      </Section>
 
       {!loading && (
-        <div className="rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm">
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">
-                {isActive ? 'Your plan' : 'Choose a plan'}
-              </h2>
-              <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-mid)' }}>
-                {isActive
-                  ? 'Switch plans or cancel from Manage billing above.'
-                  : 'A plan is what lets the bot join and record. Prices include tax; cancel anytime.'}
-              </p>
-            </div>
-            <div
-              className="inline-flex shrink-0 rounded-md p-0.5"
-              style={{ background: 'var(--paper-deep)' }}
-              role="group"
-              aria-label="Billing period"
-            >
-              {(['monthly', 'annual'] as BillingPeriod[]).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setPeriod(option)}
-                  aria-pressed={period === option}
-                  className="rounded-[5px] px-3 py-1 text-[12.5px] font-medium capitalize transition-colors"
-                  style={
-                    period === option
-                      ? { background: 'var(--paper-card)', color: 'var(--ink)' }
-                      : { color: 'var(--ink-soft)' }
-                  }
-                >
-                  {option === 'annual' ? 'Yearly · 2 months free' : 'Monthly'}
-                </button>
-              ))}
-            </div>
+        <Section
+          title={isActive ? 'Your plan' : 'Choose a plan'}
+          description={
+            isActive
+              ? 'Switch plans or cancel from Manage billing above.'
+              : 'A plan is what lets the bot join and record. Prices include tax; cancel anytime.'
+          }
+        >
+          <div className="mb-5">
+            <ChipGroup
+              ariaLabel="Billing period"
+              value={period}
+              onChange={(v) => setPeriod(v as BillingPeriod)}
+              options={[
+                { value: 'monthly', label: 'Monthly' },
+                { value: 'annual', label: 'Yearly · 2 months free' },
+              ]}
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -350,50 +332,36 @@ export function BillingCard() {
               return (
                 <div
                   key={plan}
-                  className="flex flex-col rounded-xl border p-5"
-                  style={{
-                    borderColor: isCurrent || isRecommended ? 'var(--ember)' : 'var(--rule)',
-                    background: 'var(--paper-card)',
-                  }}
+                  className={`flex flex-col rounded-input border p-5 ${
+                    isCurrent || isRecommended ? 'border-eb-accent' : 'border-eb-border'
+                  }`}
                 >
                   <div className="flex items-baseline justify-between gap-2">
-                    <h3 className="text-[15px] font-semibold text-foreground">
-                      {PLANS[plan].label}
-                    </h3>
+                    <h3 className="font-outfit text-[15px] font-semibold">{PLANS[plan].label}</h3>
                     {(isCurrent || isRecommended) && (
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
-                        style={{
-                          background: 'color-mix(in oklch, var(--ember) 14%, transparent)',
-                          color: 'var(--ember-deep)',
-                        }}
-                      >
-                        {isCurrent ? 'Current' : 'Recommended'}
-                      </span>
+                      <Badge tone="accent">{isCurrent ? 'Current' : 'Recommended'}</Badge>
                     )}
                   </div>
-                  <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--ink-soft)' }}>
-                    {copy.tagline}
-                  </p>
+                  <p className="mt-0.5 font-dmsans text-[12.5px] text-eb-secondary">{copy.tagline}</p>
 
-                  <p className="mt-3 text-[24px] font-semibold leading-none text-foreground">
+                  <p className="mt-3 font-outfit text-[24px] font-semibold leading-none">
                     ₹{formatINR(price)}
-                    <span className="text-[13px] font-normal" style={{ color: 'var(--ink-soft)' }}>
+                    <span className="font-dmsans text-[13px] font-normal text-eb-secondary">
                       {perSeat
                         ? period === 'annual' ? '/user/year' : '/user/month'
                         : period === 'annual' ? '/year' : '/month'}
                     </span>
                   </p>
-                  <p className="mt-1 text-[12px]" style={{ color: 'var(--ink-soft)' }}>
+                  <p className="mt-1 font-dmsans text-[12px] text-eb-secondary">
                     {perSeat
                       ? `${seats} seats — ₹${formatINR(price * seats)} ${period === 'annual' ? 'a year' : 'a month'} in total`
                       : period === 'annual'
-                      ? `Works out to ₹${formatINR(Math.round(price / 12))}/month, billed yearly`
-                      : 'Billed monthly'}
+                        ? `Works out to ₹${formatINR(Math.round(price / 12))}/month, billed yearly`
+                        : 'Billed monthly'}
                   </p>
 
                   {perSeat && !isCurrent && (
-                    <label className="mt-3 flex items-center gap-2 text-[12.5px]" style={{ color: 'var(--ink-mid)' }}>
+                    <label className="mt-3 flex items-center gap-2 font-dmsans text-[12.5px] text-eb-secondary">
                       Seats
                       <input
                         type="number"
@@ -401,75 +369,49 @@ export function BillingCard() {
                         max={200}
                         value={seats}
                         onChange={(e) => setSeats(Math.min(200, Math.max(1, Number(e.target.value) || 1)))}
-                        className="h-8 w-20 rounded-md border border-border bg-background px-2 text-[13px] text-foreground"
+                        className="h-8 w-20 rounded-input border border-eb-border bg-white px-2 font-dmsans text-[13px] shadow-eb-input outline-none"
                         aria-label="Number of seats"
                       />
-                      <span style={{ color: 'var(--ink-soft)' }}>
-                        × {Math.round((PLANS.teams.includedSeconds ?? 0) / 3600)} hrs each
-                      </span>
+                      × {Math.round((PLANS.teams.includedSeconds ?? 0) / 3600)} hrs each
                     </label>
                   )}
 
                   <ul className="mt-4 flex-1 space-y-2">
-                    {[...copy.features, copy.overage].map((feature) => (
-                      <li
-                        key={feature}
-                        className="flex items-start gap-2 text-[13px] leading-[1.5]"
-                        style={{ color: 'var(--ink-mid)' }}
-                      >
-                        <Check
-                          className="mt-[3px] h-3.5 w-3.5 shrink-0"
-                          style={{ color: 'var(--ember)' }}
-                          strokeWidth={2.5}
-                        />
+                    {[...copy.features, copy.overage, `Up to ${Math.round(PLANS[plan].maxMeetingSeconds / 3600)} hours per meeting`].map((feature) => (
+                      <li key={feature} className="flex items-start gap-2 font-dmsans text-[13px] leading-[1.5] text-eb-prose">
+                        <Check className="mt-[3px] h-3.5 w-3.5 shrink-0 text-eb-accent" strokeWidth={2.5} />
                         {feature}
                       </li>
                     ))}
-                    <li
-                      className="flex items-start gap-2 text-[13px] leading-[1.5]"
-                      style={{ color: 'var(--ink-mid)' }}
-                    >
-                      <Check
-                        className="mt-[3px] h-3.5 w-3.5 shrink-0"
-                        style={{ color: 'var(--ember)' }}
-                        strokeWidth={2.5}
-                      />
-                      Up to {Math.round(PLANS[plan].maxMeetingSeconds / 3600)} hours per meeting
-                    </li>
                   </ul>
 
                   <Button
                     className="mt-5 w-full"
-                    variant={isRecommended ? 'default' : 'outline'}
+                    variant={isRecommended ? 'primary' : 'secondary'}
                     disabled={working || isCurrent}
                     onClick={() => invoke('checkout', plan)}
                   >
-                    {working && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-                    {isCurrent
-                      ? 'Current plan'
-                      : isActive
-                      ? `Switch to ${PLANS[plan].label}`
-                      : `Choose ${PLANS[plan].label}`}
+                    {working && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {isCurrent ? 'Current plan' : isActive ? `Switch to ${PLANS[plan].label}` : `Choose ${PLANS[plan].label}`}
                   </Button>
                 </div>
               );
             })}
           </div>
+        </Section>
+      )}
 
-          <div className="mt-6 rounded-xl border border-border p-4">
-            <p className="text-[13px] font-medium text-foreground">
-              Have an early-access code?
-            </p>
-            <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--ink-mid)' }}>
-              {onEarlyAccess
-                ? `Early access is active until ${overrideEndsAt!.toLocaleDateString(undefined, {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })}.`
-                : 'Redeem it here and your plan switches on straight away.'}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+      {!loading && (
+        <Section
+          title="Early access code"
+          description={
+            onEarlyAccess
+              ? `Early access is active until ${overrideEndsAt!.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}.`
+              : 'Redeem it here and your plan switches on straight away.'
+          }
+        >
+          <div className="flex flex-wrap items-end gap-2">
+            <Field label="Code" className="max-w-[240px] flex-1">
               <Input
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
@@ -481,33 +423,16 @@ export function BillingCard() {
                 autoCapitalize="characters"
                 autoCorrect="off"
                 spellCheck={false}
-                className="h-9 w-full max-w-[220px] font-mono text-[13px] uppercase"
+                className="font-mono uppercase"
               />
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={redeeming || !code.trim()}
-                onClick={redeem}
-              >
-                {redeeming && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-                Redeem
-              </Button>
-            </div>
+            </Field>
+            <Button disabled={redeeming || !code.trim()} onClick={redeem}>
+              {redeeming && <Loader2 className="h-4 w-4 animate-spin" />}
+              Redeem
+            </Button>
           </div>
-
-          <p className="mt-5 text-[12.5px]" style={{ color: 'var(--ink-soft)' }}>
-            Need a shared workspace, pooled hours or SSO?{' '}
-            <a
-              href="mailto:hello@echobrief.in?subject=EchoBrief%20for%20teams"
-              className="font-medium no-underline"
-              style={{ color: 'var(--ember-deep)' }}
-            >
-              Talk to us about Teams
-            </a>
-            .
-          </p>
-        </div>
+        </Section>
       )}
-    </div>
+    </>
   );
 }

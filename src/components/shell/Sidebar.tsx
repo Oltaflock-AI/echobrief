@@ -165,7 +165,7 @@ function UserCard() {
   );
 }
 
-export function SidebarV2({ onNavigate }: { onNavigate?: () => void }) {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
   return (
     <div className="flex h-full w-[232px] flex-col bg-eb-sidebar">

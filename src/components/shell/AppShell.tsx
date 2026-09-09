@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { SidebarV2 } from "./SidebarV2";
-import { HeaderV2 } from "./HeaderV2";
-import { MobileTabBarV2 } from "./MobileTabBarV2";
+import { Sidebar } from "./Sidebar";
+import { Header } from "./Header";
+import { MobileTabBar } from "./MobileTabBar";
 
 /**
  * The Console frame — DESIGN_SPEC §1. Fixed 232px sidebar, 60px header, content
@@ -14,7 +14,7 @@ import { MobileTabBarV2 } from "./MobileTabBarV2";
  * reach a destination the five tabs do not carry. The frame is light-only, as
  * every mockup is; dark mode is still unresolved for V2.
  */
-export function AppShellV2({ children }: { children: ReactNode }) {
+export function AppShell({ children }: { children: ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const location = useLocation();
 
@@ -26,7 +26,7 @@ export function AppShellV2({ children }: { children: ReactNode }) {
 
       {/* Desktop rail */}
       <aside className="fixed bottom-0 left-0 top-0 z-40 hidden lg:block">
-        <SidebarV2 />
+        <Sidebar />
       </aside>
 
       {/* Below lg the rail becomes a drawer, reached from the header. */}
@@ -34,12 +34,12 @@ export function AppShellV2({ children }: { children: ReactNode }) {
         <SheetContent side="left" className="w-[232px] border-0 bg-eb-sidebar p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <SheetDescription className="sr-only">EchoBrief sections</SheetDescription>
-          <SidebarV2 onNavigate={() => setMobileNavOpen(false)} />
+          <Sidebar onNavigate={() => setMobileNavOpen(false)} />
         </SheetContent>
       </Sheet>
 
       <div className="min-h-screen lg:ml-[232px]">
-        <HeaderV2 onMenuClick={() => setMobileNavOpen(true)} />
+        <Header onMenuClick={() => setMobileNavOpen(true)} />
         {/* The 68px bar plus the home indicator, so the last row clears both.
             A flat pb-24 was 6px short on a device with a safe-area inset. */}
         <main
@@ -51,7 +51,7 @@ export function AppShellV2({ children }: { children: ReactNode }) {
         </main>
       </div>
 
-      <MobileTabBarV2 />
+      <MobileTabBar />
     </div>
   );
 }

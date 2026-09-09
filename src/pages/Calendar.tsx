@@ -1,354 +1,377 @@
-import { useEffect, useState } from 'react';
+/**
+ * Calendar — Console (UI v2), from mockup 05-calendar.
+ *
+ * The list is read from `calendar_events` joined to `calendars`, not from the
+ * sync response V1 uses. Two reasons: the server keeps that table fresh on its
+ * own (auto-join-meetings folds a 24 h sync into its 5-minute tick), and the
+ * row carries the calendar it came from, which is what makes the "All
+ * calendars" filter and the per-row calendar name real rather than decorative.
+ * "Sync now" still calls sync-google-calendar, then re-reads.
+ *
+ * The mockup's per-row bot toggle is NOT here. Auto-join is a single per-user
+ * flag (`profiles.auto_join_enabled`) and `calendar_events` has no per-event
+ * opt-out column, so a switch per row would be a picture of a control. The row
+ * states what is actually true — the bot will join, or there is no link to join
+ * — and offers the one action that does exist: record this meeting now.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { isToday, isTomorrow, parseISO } from 'date-fns';
+import { CalendarDays, Loader2, RefreshCw, Video, Mic } from 'lucide-react';
+import { GoogleMeetIcon } from '@/components/icons/GoogleMeetIcon';
+import { useNavigate } from 'react-router-dom';
 import { formatIST } from '@/lib/time';
-import { Link } from 'react-router-dom';
-import { ListSkeleton } from '@/components/dashboard/ListSkeleton';
-import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
-import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIcon, RefreshCw, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCalendar } from '@/contexts/CalendarContext';
-import {isToday, isTomorrow, parseISO} from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { MeetingDetailModal } from '@/components/dashboard/MeetingDetailModal';
-import { GoogleReconnectBanner } from '@/components/dashboard/GoogleReconnectBanner';
+import { AppShell } from '@/components/shell/AppShell';
+import { ListSkeleton } from '@/components/dashboard/ListSkeleton';
+import { Badge, Button as EbButton, Card, PageHeader } from '@/ui';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
-function mapServerEventsToCalendar(raw: unknown[]): CalendarEvent[] {
-  return raw
-    .filter((e): e is Record<string, unknown> => !!e && typeof e === 'object')
-    .map((e) => ({
-      id: String(e.id ?? ''),
-      title: String(e.title ?? 'No title'),
-      start_time: String(e.start_time ?? e.start ?? ''),
-      end_time: String(e.end_time ?? e.end ?? ''),
-      is_all_day: Boolean(e.is_all_day),
-      meetingUrl: typeof e.meetingUrl === 'string' ? e.meetingUrl : undefined,
-      hasMeetingLink: Boolean(e.hasMeetingLink),
-      attendees: Array.isArray(e.attendees)
-        ? (e.attendees as CalendarEvent['attendees'])
-        : undefined,
-    }))
-    .filter((e) => e.id && e.start_time);
-}
-
-async function syncCalendarViaEdgeFunction(accessToken: string): Promise<{
-  events: CalendarEvent[];
-  error?: string;
-  hint?: string;
-}> {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-calendar`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  const data = (await res.json()) as {
-    error?: string;
-    hint?: string;
-    upcomingEvents?: unknown[];
-  };
-  if (!res.ok) {
-    return {
-      events: [],
-      error: data.error || 'Calendar sync failed',
-      hint: data.hint,
-    };
-  }
-  const raw = Array.isArray(data.upcomingEvents) ? data.upcomingEvents : [];
-  return { events: mapServerEventsToCalendar(raw) };
-}
-
-interface CalendarEvent {
+interface Row {
   id: string;
+  eventId: string;
   title: string;
-  start_time: string;
-  end_time: string;
-  is_all_day: boolean;
-  meetingUrl?: string;
-  hasMeetingLink?: boolean;
-  attendees?: Array<{ email: string; displayName?: string; responseStatus?: string; organizer?: boolean }>;
+  start: string;
+  end: string | null;
+  meetingLink: string | null;
+  calendarId: string;
+  calendarName: string;
+}
+
+/** Google Meet / Zoom / Teams from the link itself — no icon pack needed. */
+function isGoogleMeet(link: string | null): boolean {
+  return !!link && link.includes('meet.google');
+}
+
+function platformOf(link: string | null): string {
+  if (!link) return 'In person';
+  if (isGoogleMeet(link)) return 'Google Meet';
+  if (link.includes('zoom.')) return 'Zoom';
+  if (link.includes('teams.microsoft') || link.includes('teams.live')) return 'Teams';
+  return 'Video call';
+}
+
+function durationLabel(start: string, end: string | null): string | null {
+  if (!end) return null;
+  const mins = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000);
+  if (!Number.isFinite(mins) || mins <= 0) return null;
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m === 0 ? `${h} hr` : `${h} hr ${m} min`;
+}
+
+function dayLabel(iso: string): { label: string; sub: string } {
+  const d = parseISO(iso);
+  if (isToday(d)) return { label: 'Today', sub: formatIST(d, 'EEE, MMM d') };
+  if (isTomorrow(d)) return { label: 'Tomorrow', sub: formatIST(d, 'EEE, MMM d') };
+  return { label: formatIST(d, 'EEEE'), sub: formatIST(d, 'MMM d') };
 }
 
 export default function Calendar() {
   const { user, session } = useAuth();
-  const { events, setEvents, synced, setSynced, lastSyncTime, setLastSyncTime } = useCalendar();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<{ count: number; visible: boolean }>({ count: 0, visible: false });
-  const [upcomingExpanded, setUpcomingExpanded] = useState(false);
-  const [autoFetched, setAutoFetched] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [calendarFilter, setCalendarFilter] = useState('all');
+  const [autoJoin, setAutoJoin] = useState(false);
+  const [starting, setStarting] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const openModal = (event: CalendarEvent) => setSelectedEvent(event);
-  const closeModal = () => setSelectedEvent(null);
+  const load = useCallback(async () => {
+    if (!user) return;
+    const nowIso = new Date().toISOString();
 
-  // Auto-fetch via Edge Function (OAuth tokens are not readable from the browser when RLS blocks user_oauth_tokens)
-  useEffect(() => {
-    if (autoFetched || events.length > 0 || !user || !session?.access_token) return;
+    // calendar_events.calendar_id holds the PROVIDER's calendar id (an email),
+    // not a foreign key to calendars.id — the deployed schema differs from the
+    // migration, and PostgREST has no relationship to embed. So: two reads,
+    // joined here on that provider id.
+    const [eventsRes, calendarsRes, profileRes] = await Promise.all([
+      supabase
+        .from('calendar_events')
+        .select('id, event_id, title, start_time, end_time, meeting_link, calendar_id')
+        .eq('user_id', user.id)
+        .gte('start_time', nowIso)
+        .order('start_time', { ascending: true })
+        .limit(60),
+      supabase.from('calendars').select('calendar_id, calendar_name').eq('user_id', user.id),
+      supabase.from('profiles').select('auto_join_enabled').eq('user_id', user.id).maybeSingle(),
+    ]);
 
-    const autoFetch = async () => {
-      try {
-        const { events: ev, error } = await syncCalendarViaEdgeFunction(session.access_token);
-        if (error) return;
-        setEvents(ev);
-        if (ev.length > 0) {
-          setSynced(true);
-          setLastSyncTime(new Date());
-        }
-      } catch (err) {
-        console.error('Auto-fetch error:', err);
-      } finally {
-        setAutoFetched(true);
-      }
-    };
+    if (eventsRes.error) {
+      // An empty calendar and a failed read look identical to a reader, so say
+      // which one this is.
+      console.error('[Calendar] could not read calendar_events:', eventsRes.error);
+      setLoadError(eventsRes.error.message);
+      setLoading(false);
+      return;
+    }
 
-    void autoFetch();
-  }, [user, session?.access_token, autoFetched, events.length, setEvents, setSynced, setLastSyncTime]);
-
-  // Group events by date
-  const groupedEvents = {
-    today: events.filter(e => isToday(parseISO(e.start_time))).sort((a, b) => a.start_time.localeCompare(b.start_time)),
-    tomorrow: events.filter(e => isTomorrow(parseISO(e.start_time))).sort((a, b) => a.start_time.localeCompare(b.start_time)),
-    upcoming: events.filter(e => {
-      const eventDate = parseISO(e.start_time);
-      return !isToday(eventDate) && !isTomorrow(eventDate);
-    }).sort((a, b) => a.start_time.localeCompare(b.start_time)),
-  };
-
-  const upcomingByDate = groupedEvents.upcoming.reduce((acc, event) => {
-    const dateKey = formatIST(parseISO(event.start_time), 'yyyy-MM-dd');
-    if (!acc[dateKey]) acc[dateKey] = [];
-    acc[dateKey].push(event);
-    return acc;
-  }, {} as Record<string, CalendarEvent[]>);
-
-  const handleRecordWithBot = async (event: CalendarEvent): Promise<{ meeting_id: string }> => {
-    if (!user || !event.hasMeetingLink || !event.meetingUrl) throw new Error('Missing meeting info');
-
-    const { data: session } = await supabase.auth.getSession();
-    if (!session?.session?.access_token) throw new Error('Not authenticated');
-
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/start-recall-recording`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        meeting_url: event.meetingUrl,
-        calendar_event_id: event.id,
-        title: event.title,
-      }),
+    const names = new Map<string, string>();
+    (calendarsRes.data ?? []).forEach((c) => {
+      if (c.calendar_id) names.set(c.calendar_id, c.calendar_name || 'Calendar');
     });
 
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Failed to start recording');
-    return { meeting_id: result.meeting_id };
-  };
+    setLoadError(null);
+    setAutoJoin(Boolean(profileRes.data?.auto_join_enabled));
+    setRows(
+      (eventsRes.data ?? []).map((e) => ({
+        id: e.id,
+        eventId: e.event_id,
+        title: e.title || 'No title',
+        start: e.start_time,
+        end: e.end_time,
+        meetingLink: e.meeting_link,
+        calendarId: e.calendar_id ?? '',
+        calendarName: names.get(e.calendar_id ?? '') || 'Calendar',
+      })),
+    );
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const handleSync = async () => {
+    if (!session?.access_token) return;
     setSyncing(true);
     try {
-      if (!user || !session?.access_token) throw new Error('Not logged in');
-
-      const { events: ev, error, hint } = await syncCalendarViaEdgeFunction(session.access_token);
-
-      if (error) {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-calendar`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
         toast({
           title: 'Calendar',
-          description: hint || error,
+          description: body?.hint || body?.error || 'Calendar sync failed',
           variant: 'destructive',
         });
         return;
       }
-
-      setEvents(ev);
-      setSynced(true);
-      setLastSyncTime(new Date());
-
-      setSyncMessage({ count: ev.length, visible: true });
-      setTimeout(() => setSyncMessage((prev) => ({ ...prev, visible: false })), 3000);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to sync';
-      toast({ title: 'Error', description: message, variant: 'destructive' });
+      await load();
+      toast({ title: 'Calendar synced', description: `${body?.events ?? 0} upcoming meetings.` });
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to sync',
+        variant: 'destructive',
+      });
     } finally {
       setSyncing(false);
     }
   };
 
-  const EventCard = ({ event }: { event: CalendarEvent }) => {
-    const isEventToday = isToday(parseISO(event.start_time));
-    const borderColor = isEventToday ? 'var(--ember)' : 'hsl(var(--muted-foreground) / 0.35)';
-
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => openModal(event)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') openModal(event);
-        }}
-        className="flex cursor-pointer items-center justify-between rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm transition-all hover:-translate-y-px hover:border-ember/35 hover:bg-secondary/60 hover:shadow-md"
-        style={{ borderLeftWidth: 3, borderLeftColor: borderColor }}
-      >
-        <div className="min-w-0 flex-1">
-          <h3 className="mb-2 font-semibold text-foreground" style={{ fontSize: 15, margin: 0, fontFamily: 'var(--font-display)' }}>
-            {event.title}
-          </h3>
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="m-0 text-[13px] text-muted-foreground" style={{ fontFamily: 'var(--font-body)' }}>
-              {!event.is_all_day
-                ? `${formatIST(parseISO(event.start_time), 'h:mm a')} – ${formatIST(parseISO(event.end_time), 'h:mm a')}`
-                : 'All day'}
-            </p>
-            {!event.hasMeetingLink && (
-              <p className="m-0 text-[11px] text-muted-foreground" style={{ fontFamily: 'var(--font-body)' }}>
-                No meeting link
-              </p>
-            )}
-          </div>
-        </div>
-        <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
-      </div>
-    );
+  const recordNow = async (row: Row) => {
+    if (!row.meetingLink || !session?.access_token) return;
+    setStarting(row.id);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/start-recall-recording`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meeting_url: row.meetingLink,
+          calendar_event_id: row.eventId,
+          title: row.title,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || 'Failed to start recording');
+      toast({ title: 'Bot is joining', description: 'It will appear in the meeting shortly.' });
+      if (body?.meeting_id) navigate(`/meeting/${body.meeting_id}`);
+    } catch (err) {
+      toast({
+        title: 'Could not start the bot',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setStarting(null);
+    }
   };
 
-  const SectionHeader = ({ label, tone = 'accent' }: { label: string; tone?: 'accent' | 'muted' }) => (
-    <h2
-      className={
-        tone === 'accent'
-          ? 'mb-4 mt-8 text-[11px] font-semibold uppercase tracking-[0.12em] text-ember-deep first:mt-0 dark:text-ember-light'
-          : 'mb-4 mt-8 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground first:mt-0'
-      }
-    >
-      {label}
-    </h2>
+  const calendars = useMemo(() => {
+    const map = new Map<string, string>();
+    rows.forEach((r) => map.set(r.calendarId, r.calendarName));
+    return [...map.entries()];
+  }, [rows]);
+
+  const visible = useMemo(
+    () => (calendarFilter === 'all' ? rows : rows.filter((r) => r.calendarId === calendarFilter)),
+    [rows, calendarFilter],
   );
 
-  return (
-    <DashboardLayout>
-      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 md:px-10 md:py-10">
-        {/* Header */}
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-[-0.02em] text-foreground" style={{ fontFamily: 'var(--font-display)' }}>
-              Calendar
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">Your upcoming meetings</p>
-          </div>
+  /** One entry per day, in order, each with that day's meetings. */
+  const days = useMemo(() => {
+    const out: { key: string; label: string; sub: string; items: Row[] }[] = [];
+    visible.forEach((row) => {
+      const key = formatIST(parseISO(row.start), 'yyyy-MM-dd');
+      const last = out[out.length - 1];
+      if (last?.key === key) last.items.push(row);
+      else out.push({ key, ...dayLabel(row.start), items: [row] });
+    });
+    return out;
+  }, [visible]);
 
-          <div className="flex flex-wrap items-center gap-3">
-            {syncMessage.visible && (
-              <div className="flex items-center gap-2 text-[13px] text-success dark:text-success">
-                <CheckCircle2 size={16} />
-                <span>Synced · {syncMessage.count} events</span>
-              </div>
+  return (
+    <AppShell>
+      <PageHeader
+        title="Calendar"
+        subtitle={
+          calendars.length > 0
+            ? `Upcoming meetings from your ${calendars.length} connected calendar${calendars.length === 1 ? '' : 's'}.`
+            : 'Upcoming meetings from your connected calendars.'
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            {calendars.length > 1 && (
+              <Select value={calendarFilter} onValueChange={setCalendarFilter}>
+                <SelectTrigger className="h-9 w-[190px] rounded-pill border-eb-border bg-eb-card font-dmsans text-[12.5px]">
+                  <SelectValue placeholder="All calendars" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All calendars</SelectItem>
+                  {calendars.map(([id, name]) => (
+                    <SelectItem key={id} value={id}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
-            <Button
+            <EbButton
+              size="md"
               onClick={handleSync}
               disabled={syncing}
-              className="gap-2 bg-ember text-white hover:bg-ember-deep disabled:opacity-70"
+              icon={syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} strokeWidth={1.75} />}
             >
-              <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-              Sync Now
-            </Button>
+              {syncing ? 'Syncing…' : 'Sync now'}
+            </EbButton>
           </div>
-        </div>
-
-        <GoogleReconnectBanner />
-
-        {/* Events, loading, or empty state */}
-        {events.length === 0 && !autoFetched && !!session?.access_token ? (
-          <ListSkeleton rows={4} boxed={false} />
-        ) : events.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center">
-            <CalendarIcon className="mb-4 h-10 w-10 text-muted-foreground" strokeWidth={1.5} />
-            <h3 className="mb-2 text-base font-semibold text-foreground">No upcoming meetings found</h3>
-            <p className="max-w-[360px] text-[13px] leading-relaxed text-muted-foreground">
-              Add Calendar in{' '}
-              <Link to="/settings?tab=integrations" className="font-medium text-ember-deep underline underline-offset-2 hover:text-ember-deep dark:text-ember-light">
-                Settings → Integrations
-              </Link>{' '}
-              to run Google OAuth for this EchoBrief account. Project secrets alone do not connect your calendar.
-            </p>
-          </div>
-        ) : (
-          <div>
-            {/* TODAY */}
-            <SectionHeader label={`Today · ${formatIST(new Date(), 'EEEE, MMMM d')}`} tone="accent" />
-            {groupedEvents.today.length > 0 ? (
-              <div className="mb-6 flex flex-col gap-3">
-                {groupedEvents.today.map(event => (
-                  <EventCard key={event.id} event={event} />
-                ))}
-              </div>
-            ) : (
-              <p className="mb-6 text-[13px] text-muted-foreground">No meetings scheduled for today</p>
-            )}
-
-            {/* TOMORROW */}
-            <SectionHeader label={`Tomorrow · ${formatIST(new Date(Date.now() + 86400000), 'EEEE, MMMM d')}`} tone="muted" />
-            {groupedEvents.tomorrow.length > 0 ? (
-              <div className="mb-6 flex flex-col gap-3">
-                {groupedEvents.tomorrow.map(event => (
-                  <EventCard key={event.id} event={event} />
-                ))}
-              </div>
-            ) : (
-              <p className="mb-6 text-[13px] text-muted-foreground">No meetings scheduled for tomorrow</p>
-            )}
-
-            {/* UPCOMING */}
-            {Object.keys(upcomingByDate).length > 0 && (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setUpcomingExpanded(!upcomingExpanded)}
-                  className="mb-4 mt-6 flex cursor-pointer items-center gap-2 border-none bg-transparent p-0 text-left transition-colors hover:opacity-90"
-                >
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Upcoming
-                  </span>
-                  <ChevronDown
-                    size={16}
-                    className={cn('text-muted-foreground transition-transform duration-200', upcomingExpanded ? 'rotate-0' : '-rotate-90')}
-                  />
-                </button>
-
-                {upcomingExpanded && (
-                  <div className="flex flex-col gap-6">
-                    {Object.entries(upcomingByDate).map(([dateKey, dateEvents]) => (
-                      <div key={dateKey}>
-                        <h4 className="mb-3 text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-body)' }}>
-                          {formatIST(parseISO(dateKey), 'EEEE, MMMM d')}
-                        </h4>
-                        <div className="flex flex-col gap-3">
-                          {dateEvents.map(event => (
-                            <EventCard key={event.id} event={event} />
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-      </div>
-
-      {/* Meeting Detail Modal */}
-      <MeetingDetailModal
-        event={selectedEvent}
-        onClose={closeModal}
-        onRecordWithBot={handleRecordWithBot}
+        }
       />
-    </DashboardLayout>
+
+      {loading ? (
+        <ListSkeleton />
+      ) : loadError ? (
+        <Card className="text-center">
+          <p className="font-dmsans text-sm font-medium text-eb-red">Could not load your calendar</p>
+          <p className="mt-1 font-dmsans text-[13px] text-eb-secondary">{loadError}</p>
+        </Card>
+      ) : days.length === 0 ? (
+        <Card className="text-center">
+          <CalendarDays size={28} strokeWidth={1.5} className="mx-auto mb-3 text-eb-muted" />
+          <p className="font-dmsans text-sm font-medium text-eb-text">No upcoming meetings</p>
+          <p className="mt-1 font-dmsans text-[13px] text-eb-secondary">
+            Connect a calendar in Settings → Integrations, or use Sync now if you just added one.
+          </p>
+        </Card>
+      ) : (
+        <Card padded={false} className="px-[18px] py-2">
+          {days.map((day) => (
+            <div key={day.key} className="flex flex-col gap-2 py-3 sm:flex-row sm:gap-4">
+              <div className="w-[150px] flex-none pt-3">
+                <div className="font-outfit text-[15px] font-semibold leading-tight text-eb-text">
+                  {day.label}
+                </div>
+                <div className="font-dmsans text-[12.5px] text-eb-secondary">{day.sub}</div>
+              </div>
+
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                {day.items.map((row) => {
+                  const willJoin = autoJoin && !!row.meetingLink;
+                  const duration = durationLabel(row.start, row.end);
+                  return (
+                    <div
+                      key={row.id}
+                      /* At 390px the fixed columns (time, icon, the badge, and
+                         a "Record now" button that is invisible at opacity-0
+                         but still occupies ~110px) left the title column no
+                         room, so every event WITH a meeting link rendered with
+                         no title at all — the one thing the row exists to say.
+                         On a phone the row is a grid and the actions drop to
+                         their own line; `sm:contents` hands the children back
+                         to the flex row from sm up, where it always fitted. */
+                      className="group grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-card border border-eb-border bg-eb-card px-3.5 py-3 shadow-eb-card sm:flex"
+                    >
+                      <span className="w-[74px] flex-none font-dmsans text-[12.5px] font-medium text-eb-secondary">
+                        {formatIST(parseISO(row.start), 'h:mm a')}
+                      </span>
+
+                      <span
+                        className={cn(
+                          'flex h-8 w-8 flex-none items-center justify-center rounded-input border border-eb-border',
+                          row.meetingLink ? 'text-eb-accent' : 'text-eb-muted',
+                        )}
+                      >
+                        {isGoogleMeet(row.meetingLink) ? (
+                          <GoogleMeetIcon size={16} />
+                        ) : (
+                          <Video size={15} strokeWidth={1.75} />
+                        )}
+                      </span>
+
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-dmsans text-sm font-medium text-eb-text">
+                          {row.title}
+                        </span>
+                        <span className="block truncate font-dmsans text-[12.5px] text-eb-secondary">
+                          {[duration, platformOf(row.meetingLink), row.calendarName]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      </span>
+
+                      {/* Second line on a phone, part of the flex row from sm up. */}
+                      <div className="col-span-3 flex items-center justify-between gap-2 sm:contents">
+                        {row.meetingLink && (
+                          <EbButton
+                            size="sm"
+                            onClick={() => recordNow(row)}
+                            disabled={starting === row.id}
+                            /* Revealed on hover only where a pointer can hover;
+                               on touch there is no hover, so the button was
+                               permanently invisible and permanently in the way. */
+                            className="flex-none sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus:opacity-100"
+                            icon={
+                              starting === row.id ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Mic size={13} strokeWidth={1.75} />
+                              )
+                            }
+                          >
+                            Record now
+                          </EbButton>
+                        )}
+
+                        <Badge tone={willJoin ? 'green' : 'neutral'} dot={willJoin} className="flex-none">
+                          {row.meetingLink ? (willJoin ? 'Bot will join' : 'Auto-join off') : 'No video link'}
+                        </Badge>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+    </AppShell>
   );
 }

@@ -31,7 +31,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatIST } from '@/lib/time';
 import { fetchUsageMeter, planLabel, type UsageMeter } from '@/lib/usageMeter';
 import { Avatar, Badge, Card, Label as EbLabel } from '@/ui';
-import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
+import { AppShell } from '@/components/shell/AppShell';
 
 const db = supabase;
 
@@ -88,7 +88,7 @@ function Row({
   );
 }
 
-export default function MoreV2() {
+export default function More() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [meter, setMeter] = useState<UsageMeter | null>(null);
@@ -127,7 +127,7 @@ export default function MoreV2() {
   const name = state?.fullName || user?.email || 'Your account';
 
   return (
-    <DashboardLayout>
+    <AppShell>
       <div className="flex flex-col gap-5">
       <h1 className="m-0 font-outfit text-[26px] font-semibold leading-[1.15] tracking-[-.02em] text-eb-text">
         More
@@ -242,6 +242,6 @@ export default function MoreV2() {
         </Card>
       </div>
       </div>
-    </DashboardLayout>
+    </AppShell>
   );
 }

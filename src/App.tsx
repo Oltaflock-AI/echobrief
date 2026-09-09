@@ -35,7 +35,7 @@ const Docs = lazy(() => import("./pages/Docs"));
 const OAuthConsent = lazy(() => import("./pages/OAuthConsent"));
 const SharedMeeting = lazy(() => import("./pages/SharedMeeting"));
 const Workspace = lazy(() => import("./pages/Workspace"));
-const MoreV2 = lazy(() => import("./pages/MoreV2"));
+const More = lazy(() => import("./pages/More"));
 const AcceptInvite = lazy(() => import("./pages/AcceptInvite"));
 
 // Cache server reads so revisiting a page renders instantly from cache and
@@ -60,10 +60,6 @@ function RouteFallback() {
   );
 }
 
-/**
- * Picks the V1 or V2 render of one page. Phase 2 adds a pair here per page; when
- * V1 is deleted the wrapper goes with it and the V2 file takes the plain name.
- */
 function AppRoutes() {
   const { user, loading, isPasswordRecovery } = useAuth();
 
@@ -133,7 +129,7 @@ function AppRoutes() {
           path="/more"
           element={
             <ProtectedRoute>
-              <Settings />
+              <More />
             </ProtectedRoute>
           }
         />

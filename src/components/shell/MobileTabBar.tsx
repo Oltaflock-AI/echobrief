@@ -26,7 +26,7 @@ const TABS = [
   },
 ];
 
-export function MobileTabBarV2() {
+export function MobileTabBar() {
   const { pathname } = useLocation();
 
   return (

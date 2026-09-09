@@ -1,119 +1,215 @@
 /**
- * Profile, custom vocabulary and the automation webhook.
+ * Account — Console (UI v2). Profile, custom vocabulary, preferences.
  *
- * Split out of Settings.tsx, which had reached 1,217 lines holding six tabs'
- * worth of state and handlers in one component — the file every new setting
- * had to land in, and the one nobody could change quickly.
+ * Every handler is the V1 AccountPanel's, unchanged; only the render tree is
+ * new. Two differences from the V1 panel, both deliberate:
+ *
+ *  - The automation webhook moved to the Developer tab, where DESIGN_SPEC §7
+ *    puts it. It is the same section, rendered by WebhookSection.
+ *  - Preferences shows the mockup's three toggles. The first two write the same
+ *    columns the V1 Integrations and Bot tabs write, so until those tabs move to
+ *    V2 the same switch appears in two places. The third writes
+ *    profiles.summary_language, which post-transcription.ts reads and passes to
+ *    the synthesis prompt — it was decorative until that landed, and is not now.
  */
 
-import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Copy, Loader2, RefreshCw, X } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
-import { useToast } from '@/hooks/use-toast';
-import { formatIST } from '@/lib/time';
-import type { Profile, WebhookEvent } from './types';
+import { useEffect, useRef, useState } from "react";
+import { Loader2, X } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { displayNameFromUserMetadata } from "@/lib/userDisplayName";
+import { Button, Divider, Field, Input, Section, Toggle } from "@/ui";
+import type { Profile } from "./types";
 
 interface PanelProps {
   profile: Profile | null;
   setProfile: React.Dispatch<React.SetStateAction<Profile | null>>;
 }
 
+type Prefs = {
+  email_summaries_enabled: boolean;
+  auto_join_enabled: boolean;
+  /** profiles.summary_language: 'en' | 'hi'. Held as a boolean for one switch. */
+  summary_in_hindi: boolean;
+};
+
 export function AccountPanel({ profile, setProfile }: PanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const [fullName, setFullName] = useState('');
+  const [fullName, setFullName] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
   const [vocabulary, setVocabulary] = useState<string[]>([]);
-  const [vocabInput, setVocabInput] = useState('');
+  const [vocabInput, setVocabInput] = useState("");
   const [savingVocab, setSavingVocab] = useState(false);
 
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
-  const [savingWebhook, setSavingWebhook] = useState(false);
-  const [regeneratingSecret, setRegeneratingSecret] = useState(false);
-  const [webhookEvents, setWebhookEvents] = useState<WebhookEvent[]>([]);
+  const [prefs, setPrefs] = useState<Prefs>({
+    email_summaries_enabled: true,
+    auto_join_enabled: false,
+    summary_in_hindi: false,
+  });
 
-  // The shell owns the profile fetch; these forms mirror it once it lands.
   useEffect(() => {
     if (!profile) return;
-    setFullName((profile.full_name || '').trim());
+    setFullName((profile.full_name || "").trim());
     setVocabulary(Array.isArray(profile.custom_vocabulary) ? profile.custom_vocabulary : []);
-    setWebhookUrl(profile.webhook_url ?? '');
-    setWebhookSecret(profile.webhook_secret ?? null);
+    setAvatarUrl(profile.avatar_url ?? null);
   }, [profile]);
 
-  // Delivery history is only ever shown here, so it is fetched here rather than
-  // being loaded for every tab.
+  // auto_join_enabled is not on the shared Profile shape (the Bot tab owns it),
+  // so the toggles read their own row rather than widening that type.
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
     void (async () => {
-      const { data, error } = await supabase
-        .from('webhook_events')
-        .select('id, event_type, status_code, error, delivered_at, created_at, meeting_id')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      if (error) {
-        console.warn('[Settings] webhook events fetch:', error);
-      } else if (data) {
-        setWebhookEvents(data);
-      }
+      const { data } = await supabase
+        .from("profiles")
+        .select("email_summaries_enabled, auto_join_enabled, summary_language")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      setPrefs({
+        email_summaries_enabled: data.email_summaries_enabled !== false,
+        auto_join_enabled: data.auto_join_enabled === true,
+        summary_in_hindi: data.summary_language === "hi",
+      });
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
-  // Account handlers
+  /**
+   * Profile photo. The path is <user id>/avatar-<timestamp>.<ext>: the bucket is
+   * public and CDN-cached, so a stable filename would keep serving the old face
+   * after a replace. The previous object is removed after the profile row points
+   * at the new one, so a failure mid-way leaves a working avatar, not a broken
+   * link.
+   */
+  const handleAvatarFile = async (file: File) => {
+    if (!user) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Error", description: "Choose an image file.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "Error", description: "Images must be under 2 MB.", variant: "destructive" });
+      return;
+    }
+
+    setUploadingAvatar(true);
+    const previous = avatarUrl;
+    try {
+      const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const path = `${user.id}/avatar-${Date.now()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, file, { contentType: file.type, upsert: false });
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrl } = supabase.storage.from("avatars").getPublicUrl(path);
+      const url = publicUrl.publicUrl;
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({ avatar_url: url })
+        .eq("user_id", user.id);
+      if (error) throw error;
+
+      setAvatarUrl(url);
+      setProfile((prev) => (prev ? { ...prev, avatar_url: url } : null));
+      void removeStoredAvatar(previous);
+      toast({ title: "Saved", description: "Your photo has been updated." });
+    } catch (error) {
+      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
+    } finally {
+      setUploadingAvatar(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  };
+
+  /** Deletes the object a public avatar URL points at. Best effort. */
+  const removeStoredAvatar = async (url: string | null) => {
+    if (!url || !user) return;
+    const marker = "/avatars/";
+    const at = url.indexOf(marker);
+    if (at === -1) return;
+    const path = url.slice(at + marker.length).split("?")[0];
+    if (!path.startsWith(`${user.id}/`)) return;
+    await supabase.storage.from("avatars").remove([path]);
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!user || !avatarUrl) return;
+    setUploadingAvatar(true);
+    const previous = avatarUrl;
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ avatar_url: null })
+        .eq("user_id", user.id);
+      if (error) throw error;
+      setAvatarUrl(null);
+      setProfile((prev) => (prev ? { ...prev, avatar_url: null } : null));
+      void removeStoredAvatar(previous);
+      toast({ title: "Removed", description: "Your photo has been removed." });
+    } catch (error) {
+      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     if (!user) return;
     setSaving(true);
     try {
       const trimmed = fullName.trim();
       const { error } = await supabase
-        .from('profiles')
+        .from("profiles")
         .update({ full_name: trimmed })
-        .eq('user_id', user.id);
-
+        .eq("user_id", user.id);
       if (error) throw error;
 
       const { error: authErr } = await supabase.auth.updateUser({
         data: { full_name: trimmed, name: trimmed },
       });
       if (authErr) {
-        console.warn('[Settings] Auth display name sync:', authErr);
+        console.warn("[Settings] Auth display name sync:", authErr);
       }
-
-      toast({ title: 'Saved', description: 'Your profile has been updated.' });
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      setProfile((prev) => (prev ? { ...prev, full_name: trimmed } : null));
+      toast({ title: "Saved", description: "Your profile has been updated." });
+    } catch (error) {
+      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
   };
 
-  // Custom vocabulary handlers. Each add/remove persists immediately, same as
-  // the other single-field profile updates on this page.
   const saveVocabulary = async (next: string[]) => {
-    if (!user) return;
+    if (!user) return false;
     const previous = vocabulary;
     setSavingVocab(true);
     setVocabulary(next);
     try {
       const { error } = await supabase
-        .from('profiles')
+        .from("profiles")
         .update({ custom_vocabulary: next })
-        .eq('user_id', user.id);
-
+        .eq("user_id", user.id);
       if (error) throw error;
-      setProfile(prev => (prev ? { ...prev, custom_vocabulary: next } : null));
-      toast({ title: 'Saved', description: 'Your custom vocabulary has been updated.' });
+      setProfile((prev) => (prev ? { ...prev, custom_vocabulary: next } : null));
+      toast({ title: "Saved", description: "Your custom vocabulary has been updated." });
       return true;
-    } catch (error: any) {
+    } catch (error) {
       setVocabulary(previous);
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
       return false;
     } finally {
       setSavingVocab(false);
@@ -123,313 +219,195 @@ export function AccountPanel({ profile, setProfile }: PanelProps) {
   const handleAddVocabularyTerm = async () => {
     const term = vocabInput.trim();
     if (term.length < 3) {
-      toast({ title: 'Error', description: 'Terms must be at least 3 characters.', variant: 'destructive' });
+      toast({ title: "Error", description: "Terms must be at least 3 characters.", variant: "destructive" });
       return;
     }
-    if (vocabulary.some(v => v.toLowerCase() === term.toLowerCase())) {
-      toast({ title: 'Error', description: `"${term}" is already in your vocabulary.`, variant: 'destructive' });
+    if (vocabulary.some((v) => v.toLowerCase() === term.toLowerCase())) {
+      toast({ title: "Error", description: `"${term}" is already in your vocabulary.`, variant: "destructive" });
       return;
     }
-    const saved = await saveVocabulary([...vocabulary, term]);
-    if (saved) setVocabInput('');
+    if (await saveVocabulary([...vocabulary, term])) setVocabInput("");
   };
 
-  const handleRemoveVocabularyTerm = (term: string) => {
-    saveVocabulary(vocabulary.filter(v => v !== term));
-  };
-
-  // Automation webhook handlers. The secret is minted client-side and stored on
-  // the profile; supabase/functions/_shared/webhooks.ts signs deliveries with it.
-  const generateWebhookSecret = () => {
-    const bytes = new Uint8Array(24); // 24 bytes → exactly 32 base64url chars, no padding
-    crypto.getRandomValues(bytes);
-    const base64 = btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
-    return `whsec_${base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
-  };
-
-  const isHttpsUrl = (value: string) => {
-    try {
-      return new URL(value).protocol === 'https:';
-    } catch {
-      return false;
-    }
-  };
-
-  const handleSaveWebhookUrl = async () => {
+  const setPreference = async (key: keyof Prefs, value: boolean) => {
     if (!user) return;
-    const trimmed = webhookUrl.trim();
-    if (trimmed && !isHttpsUrl(trimmed)) {
-      toast({ title: 'Error', description: 'Endpoint URL must start with https://', variant: 'destructive' });
+    const previous = prefs;
+    setPrefs({ ...prefs, [key]: value });
+    // One switch is not a boolean column: summary_language is text.
+    const patch =
+      key === "summary_in_hindi"
+        ? { summary_language: value ? "hi" : "en" }
+        : { [key]: value };
+    const { error } = await supabase
+      .from("profiles")
+      .update(patch)
+      .eq("user_id", user.id);
+    if (error) {
+      setPrefs(previous);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
       return;
     }
-    // The first saved endpoint mints a signing secret so delivery #1 is already verifiable.
-    const mintedSecret = trimmed && !webhookSecret ? generateWebhookSecret() : null;
-    setSavingWebhook(true);
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update(
-          mintedSecret
-            ? { webhook_url: trimmed || null, webhook_secret: mintedSecret }
-            : { webhook_url: trimmed || null }
-        )
-        .eq('user_id', user.id);
-
-      if (error) throw error;
-      setWebhookUrl(trimmed);
-      if (mintedSecret) setWebhookSecret(mintedSecret);
-      setProfile(prev =>
-        prev
-          ? { ...prev, webhook_url: trimmed || null, webhook_secret: mintedSecret ?? prev.webhook_secret }
-          : null
-      );
-      toast({
-        title: 'Saved',
-        description: trimmed
-          ? 'Meeting insights will be posted to your endpoint.'
-          : 'Automation webhook turned off.',
-      });
-    } catch (error) {
-      toast({ title: 'Error', description: (error as Error).message, variant: 'destructive' });
-    } finally {
-      setSavingWebhook(false);
+    if (key === "email_summaries_enabled") {
+      setProfile((prev) => (prev ? { ...prev, email_summaries_enabled: value } : null));
     }
   };
 
-  const handleRegenerateWebhookSecret = async () => {
-    if (!user) return;
-    setRegeneratingSecret(true);
-    try {
-      const next = generateWebhookSecret();
-      const { error } = await supabase
-        .from('profiles')
-        .update({ webhook_secret: next })
-        .eq('user_id', user.id);
-
-      if (error) throw error;
-      setWebhookSecret(next);
-      setProfile(prev => (prev ? { ...prev, webhook_secret: next } : null));
-      toast({
-        title: 'Secret regenerated',
-        description: 'Update the secret on your receiver — deliveries signed with the old one will no longer verify.',
-      });
-    } catch (error) {
-      toast({ title: 'Error', description: (error as Error).message, variant: 'destructive' });
-    } finally {
-      setRegeneratingSecret(false);
-    }
-  };
-
-  const handleCopyWebhookSecret = async () => {
-    if (!webhookSecret) return;
-    try {
-      await navigator.clipboard.writeText(webhookSecret);
-      toast({ title: 'Copied to clipboard' });
-    } catch (error) {
-      toast({ title: 'Error', description: (error as Error).message, variant: 'destructive' });
-    }
-  };
+  const displayName = fullName || displayNameFromUserMetadata(user) || user?.email || "?";
 
   return (
-    <div className="space-y-6">
-      {/* Profile */}
-      <div className="rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm">
-        <h2 className="mb-4 text-base font-semibold text-foreground">Profile Information</h2>
-        <div className="mb-4">
-          <label className="mb-2 block text-[13px] font-medium text-foreground">Full Name</label>
-          <Input
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            className="border-border bg-background text-foreground"
+    <>
+      <Section title="Profile">
+        <div className="mb-5 flex items-center gap-3">
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt=""
+              className="h-12 w-12 flex-none rounded-full object-cover shadow-[inset_0_0_0_1px_rgba(28,25,23,.08)]"
+            />
+          ) : (
+            /* Accent-filled, matching the mockup and the sidebar user card —
+               not the pastel Avatar set, which keys colour to the initial so
+               rows of different people stay tellable apart. */
+            <span className="inline-flex h-12 w-12 flex-none items-center justify-center rounded-full bg-gradient-to-b from-eb-accent-top to-eb-accent font-outfit text-[19px] font-semibold text-white">
+              {(displayName[0] || "?").toUpperCase()}
+            </span>
+          )}
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleAvatarFile(file);
+            }}
           />
+          <Button size="sm" onClick={() => fileInput.current?.click()} disabled={uploadingAvatar}>
+            {uploadingAvatar && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Upload photo
+          </Button>
+          {avatarUrl && (
+            <button
+              type="button"
+              onClick={handleRemoveAvatar}
+              disabled={uploadingAvatar}
+              className="font-dmsans text-[13px] text-eb-secondary hover:text-eb-red disabled:opacity-50"
+            >
+              Remove
+            </button>
+          )}
         </div>
-        <div className="mb-4">
-          <label className="mb-2 block text-[13px] font-medium text-foreground">Email</label>
-          <Input
-            disabled
-            value={user?.email || ''}
-            className="border-border bg-muted/50 text-muted-foreground"
-          />
-        </div>
-        <Button onClick={handleSaveProfile} disabled={saving} className="bg-ember text-white hover:bg-ember-deep">
-          {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-          Save Changes
-        </Button>
-      </div>
 
-      {/* Custom vocabulary */}
-      <div className="rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm">
-        <h2 className="mb-1 text-base font-semibold text-foreground">Custom vocabulary</h2>
-        <p className="mb-4 text-[13px] text-muted-foreground">
-          Canonical spellings of company, product and client names. These exact spellings are
-          enforced in your transcripts and summaries.
-        </p>
-        <div className="mb-4 flex gap-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Full name">
+            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          </Field>
+          <Field label="Email" hint="Used for sign-in and email summaries.">
+            <Input disabled value={user?.email || ""} className="bg-eb-card-alt text-eb-secondary" />
+          </Field>
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <Button variant="primary" onClick={handleSaveProfile} disabled={saving}>
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            Save changes
+          </Button>
+        </div>
+      </Section>
+
+      <Section
+        title="Custom vocabulary"
+        description="Canonical spellings of company, product and client names. These exact spellings are enforced in transcripts and summaries."
+      >
+        <div className="flex gap-2">
           <Input
             value={vocabInput}
             onChange={(e) => setVocabInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              if (e.key === "Enter") {
                 e.preventDefault();
-                handleAddVocabularyTerm();
+                void handleAddVocabularyTerm();
               }
             }}
-            placeholder='e.g. "Oltaflock"'
-            className="border-border bg-background text-foreground"
+            placeholder='Add a term, e.g. "Oltaflock"'
           />
-          <Button
-            onClick={handleAddVocabularyTerm}
-            disabled={savingVocab}
-            className="bg-ember text-white hover:bg-ember-deep"
-          >
-            {savingVocab ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          <Button onClick={handleAddVocabularyTerm} disabled={savingVocab} className="flex-none">
+            {savingVocab && <Loader2 className="h-4 w-4 animate-spin" />}
             Add
           </Button>
         </div>
+
         {vocabulary.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-1.5">
             {vocabulary.map((term) => (
               <span
                 key={term}
-                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1 text-[13px] text-foreground"
+                className="inline-flex h-8 items-center gap-1.5 rounded-pill border border-eb-border bg-white px-3 font-dmsans text-[13px] shadow-eb-card"
               >
                 {term}
                 <button
                   type="button"
-                  onClick={() => handleRemoveVocabularyTerm(term)}
+                  onClick={() => saveVocabulary(vocabulary.filter((v) => v !== term))}
                   disabled={savingVocab}
-                  className="cursor-pointer border-none bg-transparent p-0 text-muted-foreground hover:text-destructive disabled:opacity-50"
-                  title={`Remove ${term}`}
+                  aria-label={`Remove ${term}`}
+                  className="text-eb-muted hover:text-eb-red disabled:opacity-50"
                 >
-                  <X size={13} />
+                  <X size={13} strokeWidth={1.75} />
                 </button>
               </span>
             ))}
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">
+          <p className="mt-4 font-dmsans text-[12.5px] text-eb-secondary">
             No terms yet. Add names the transcriber tends to misspell.
           </p>
         )}
+      </Section>
+
+      <Section title="Preferences">
+        <PreferenceRow
+          title="Email me the summary"
+          description="When a meeting finishes processing, send the summary, decisions and action items."
+          on={prefs.email_summaries_enabled}
+          onChange={(v) => setPreference("email_summaries_enabled", v)}
+        />
+        <Divider className="my-1" />
+        <PreferenceRow
+          title="Auto-join meetings from calendar"
+          description="The bot joins every meeting with a video link on connected calendars."
+          on={prefs.auto_join_enabled}
+          onChange={(v) => setPreference("auto_join_enabled", v)}
+        />
+        <Divider className="my-1" />
+        <PreferenceRow
+          title="Summaries in Hindi"
+          description="Keep the transcript in the spoken language; write the summary in Hindi. Action items and decisions stay in the words they were spoken in."
+          on={prefs.summary_in_hindi}
+          onChange={(v) => setPreference("summary_in_hindi", v)}
+        />
+      </Section>
+    </>
+  );
+}
+
+function PreferenceRow({
+  title,
+  description,
+  on,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  on: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-6 py-3">
+      <div>
+        <div className="font-dmsans text-sm font-medium">{title}</div>
+        <div className="mt-0.5 font-dmsans text-[12.5px] text-eb-secondary">{description}</div>
       </div>
-
-      {/* Automation webhook */}
-      <div className="rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm">
-        <h2 className="mb-1 text-base font-semibold text-foreground">Automation webhook</h2>
-        <p className="mb-4 text-[13px] text-muted-foreground">
-          When a meeting&apos;s insights are ready, EchoBrief POSTs a JSON payload (summary, action
-          items, extracted facts, coaching summary — never the transcript) to this URL. Requests are
-          signed with Standard Webhooks headers (<code>webhook-id</code>, <code>webhook-timestamp</code>,{' '}
-          <code>webhook-signature</code> = <code>v1,&lt;base64 HMAC-SHA256 of id.timestamp.body&gt;</code>)
-          so n8n, Make, Zapier or your own endpoint can verify them. Events:{' '}
-          <code>meeting.insights_ready</code>, <code>meeting.insights_regenerated</code>.
-        </p>
-
-        <div className="mb-4">
-          <label className="mb-2 block text-[13px] font-medium text-foreground">Endpoint URL</label>
-          <div className="flex gap-2">
-            <Input
-              type="url"
-              value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleSaveWebhookUrl();
-                }
-              }}
-              placeholder="https://your-n8n.example.com/webhook/echobrief"
-              className="border-border bg-background text-foreground"
-            />
-            <Button
-              onClick={handleSaveWebhookUrl}
-              disabled={savingWebhook}
-              className="bg-ember text-white hover:bg-ember-deep"
-            >
-              {savingWebhook ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Save
-            </Button>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            https:// only. Save an empty field to turn the webhook off.
-          </p>
-        </div>
-
-        <div className="mb-4">
-          <label className="mb-2 block text-[13px] font-medium text-foreground">Signing secret</label>
-          {webhookSecret ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <code className="rounded-lg border border-border bg-muted/50 px-3 py-1.5 text-[13px] text-foreground">
-                {webhookSecret.slice(0, 8)}••••••••••••••••
-              </code>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCopyWebhookSecret}
-                className="border-border text-foreground hover:bg-muted"
-              >
-                <Copy size={14} className="mr-2" />
-                Copy
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRegenerateWebhookSecret}
-                disabled={regeneratingSecret}
-                className="border-border text-foreground hover:bg-muted"
-              >
-                {regeneratingSecret ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw size={14} className="mr-2" />
-                )}
-                Regenerate
-              </Button>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              A secret is generated the first time you save an endpoint URL.
-            </p>
-          )}
-        </div>
-
-        <div>
-          <h3 className="mb-2 text-[13px] font-medium text-foreground">Recent deliveries</h3>
-          {webhookEvents.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              {webhookEvents.map((ev) => (
-                <div
-                  key={ev.id}
-                  className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="m-0 text-[13px] font-medium text-foreground">{ev.event_type}</p>
-                    <p className="m-0 text-[11px] text-muted-foreground">
-                      {formatIST(ev.created_at, 'MMM d, yyyy h:mm a')}
-                    </p>
-                    {ev.error ? (
-                      <p className="m-0 mt-1 truncate text-[11px] text-destructive" title={ev.error}>
-                        {ev.error}
-                      </p>
-                    ) : null}
-                  </div>
-                  <span
-                    className={
-                      ev.error
-                        ? 'shrink-0 rounded bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive'
-                        : 'shrink-0 rounded bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success dark:text-success'
-                    }
-                  >
-                    {ev.status_code ? `HTTP ${ev.status_code}` : ev.error ? 'Failed' : 'Delivered'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">No deliveries yet.</p>
-          )}
-        </div>
-      </div>
+      <Toggle on={on} onChange={onChange} label={title} />
     </div>
   );
 }

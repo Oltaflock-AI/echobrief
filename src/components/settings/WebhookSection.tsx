@@ -31,7 +31,7 @@ function isHttpsUrl(value: string) {
   }
 }
 
-export function WebhookSectionV2({
+export function WebhookSection({
   profile,
   setProfile,
 }: {

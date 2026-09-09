@@ -1,11 +1,10 @@
 /**
  * Everything the share dialog does — the one implementation.
  *
- * V1's dialog and the Console one draw different forms over the same five
- * calls into `manage-meeting-share`: list, create, revoke, update what an
- * existing link carries, and share/unshare with the workspace. Sharing is the
- * feature where a UI that disagrees with itself is most expensive, so the
- * calls live here and the dialogs only render.
+ * The five calls into `manage-meeting-share`: list, create, revoke, update
+ * what an existing link carries, and share/unshare with the workspace.
+ * Sharing is the feature where a UI that disagrees with itself is most
+ * expensive, so the calls live here and the dialog only renders.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';

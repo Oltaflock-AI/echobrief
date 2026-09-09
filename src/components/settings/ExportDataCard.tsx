@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, Section } from '@/ui';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,10 @@ import { useToast } from '@/hooks/use-toast';
 const db = supabase as unknown as SupabaseClient;
 
 /**
+ * Data export — Console (UI v2). Handlers are the V1 card's, unchanged.
+ *
+ * Original note kept because it is the reason this has no server endpoint:
+ *
  * Data export — the DPDP portability right, and the thing the privacy policy
  * promises. Everything is read through the caller's own session, so RLS scopes
  * it: there is no server endpoint to secure, and no way for this to return
@@ -83,21 +87,23 @@ export function ExportDataCard() {
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm">
-      <h3 className="mb-2 text-[15px] font-semibold text-foreground">Export Your Data</h3>
-      <p className="mb-4 text-[13px] text-muted-foreground">
-        Download every meeting, transcript, summary and contact on your account as a single
-        JSON file. Nothing leaves your browser except the queries that fetch it.
-      </p>
+    <Section
+      title="Export your data"
+      description="Download every meeting, transcript, summary and contact on your account as a single JSON file. Nothing leaves your browser except the queries that fetch it."
+    >
       <Button
-        variant="outline"
         onClick={handleExport}
         disabled={working || !user}
-        className="border-border text-foreground hover:bg-muted"
+        icon={
+          working ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : (
+            <Download size={15} strokeWidth={1.75} />
+          )
+        }
       >
-        {working ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Download size={14} className="mr-2" />}
         {working ? 'Preparing…' : 'Download my data'}
       </Button>
-    </div>
+    </Section>
   );
 }

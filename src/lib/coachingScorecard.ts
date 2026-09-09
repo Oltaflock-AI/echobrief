@@ -3,7 +3,7 @@
  *
  * These are the pure parts of Coaching.tsx — reading one meeting's coaching
  * report into a row, averaging rows into a scorecard, and bucketing them by ISO
- * week. Extracted so CoachingV2 computes the same numbers as V1 rather than a
+ * week. Extracted so every caller computes the same numbers rather than a
  * second copy of them that can drift.
  */
 import { formatIST } from '@/lib/time';

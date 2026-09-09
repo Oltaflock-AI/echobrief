@@ -3,8 +3,8 @@ import { useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Loader2, Menu, Mic, Search, Upload } from "lucide-react";
-import { GlobalSearchV2 } from "@/components/dashboard/GlobalSearchV2";
-import { RecordDialogV2 } from "@/components/dashboard/RecordDialogV2";
+import { GlobalSearch } from "@/components/dashboard/GlobalSearch";
+import { RecordDialog } from "@/components/dashboard/RecordDialog";
 import { UploadButton } from "@/components/dashboard/UploadButton";
 import { Button, SplitButton } from "@/ui";
 
@@ -25,7 +25,7 @@ type PrefillMeeting = {
   attendees?: Array<{ email: string; displayName?: string | null; responseStatus?: string | null; organizer?: boolean }>;
 };
 
-export function HeaderV2({ onMenuClick }: { onMenuClick?: () => void }) {
+export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const location = useLocation();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -116,7 +116,7 @@ export function HeaderV2({ onMenuClick }: { onMenuClick?: () => void }) {
         )}
       </header>
 
-      <RecordDialogV2
+      <RecordDialog
         open={recordOpen}
         onOpenChange={setRecordOpen}
         prefillTitle={prefill?.title}
@@ -124,7 +124,7 @@ export function HeaderV2({ onMenuClick }: { onMenuClick?: () => void }) {
         prefillCalendarEventId={prefill?.calendarEventId}
       />
 
-      <GlobalSearchV2 open={searchOpen} onOpenChange={setSearchOpen} />
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </>
   );
 }

@@ -162,7 +162,7 @@ Delete the `legacy` block, the Warm Dispatch imports and this note when the last
 
 The decision and its scope are recorded in [`echobrief-ui-v2/BRAND_DECISION.md`](echobrief-ui-v2/BRAND_DECISION.md); the design handoff (spec, mockups, migration plan, reference kit) is [`echobrief-ui-v2/`](echobrief-ui-v2/README.md), excluded from `brand:check` because it is documentation. The full brand kit is [`brand/`](brand/README.md); [`BRAND.md`](BRAND.md) is the quick reference.
 
-**UI v2 rollout:** pages ship behind `profiles.ui_v2` (per user, default false, founders seeded) with a `?ui=v2` / `?ui=v1` override that beats the column — [`src/lib/uiVersion.ts`](src/lib/uiVersion.ts), [`src/contexts/UiVersionContext.tsx`](src/contexts/UiVersionContext.tsx). The shared kit is [`src/ui/`](src/ui/). Never edit a V1 page while its V2 is in progress.
+**UI v2 rollout: finished (9 Sep 2026).** The Console is the only UI. The `profiles.ui_v2` flag, the `?ui=` override, `V2Route`, `uiVersion.ts` and `UiVersionContext` are deleted, every V1 page and its V1-only components are gone, and the V2 files hold the plain names. The shared kit is [`src/ui/`](src/ui/); the frame is [`src/components/shell/AppShell.tsx`](src/components/shell/AppShell.tsx). The `profiles.ui_v2` **column is still in the database**, now unread — drop it in a migration when convenient. Marketing surfaces (landing, emails, Slack posts, the brand PDF) are still Warm Dispatch; see Brand above.
 
 ## Environment Variables
 

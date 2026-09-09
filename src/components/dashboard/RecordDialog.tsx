@@ -2,9 +2,8 @@
  * Record a meeting — Console (UI v2), from mockups 00c (desktop) and 01b
  * (mobile sheet).
  *
- * The form is new; starting a bot is not. Both this and V1's dialog call
- * `useStartRecording`, so the validation, the quota refusal and the error text
- * a customer reads are identical in either UI.
+ * Starting a bot lives in `useStartRecording` — the validation, the quota
+ * refusal and the error text a customer reads.
  *
  * Two mockup controls are deliberately absent. `start-recall-recording` takes
  * `meeting_url`, `calendar_event_id` and `title` — there is nowhere to put a
@@ -34,7 +33,7 @@ type UpcomingEvent = {
   meeting_link: string | null;
 };
 
-export function RecordDialogV2({
+export function RecordDialog({
   open,
   onOpenChange,
   prefillTitle,

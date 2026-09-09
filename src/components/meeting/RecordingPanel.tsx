@@ -37,7 +37,7 @@ function clock(seconds: number): string {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
-export function RecordingPanelV2({
+export function RecordingPanel({
   meetingId,
   segments,
   topics,
