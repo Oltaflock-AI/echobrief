@@ -53,6 +53,28 @@ export function UiVersionProvider({ children }: { children: React.ReactNode }) {
     [override, profileFlag, loading],
   );
 
+  /**
+   * Mark the document while the Console is on.
+   *
+   * The Console palette is light-only — every `--eb-*` token is declared once,
+   * on `:root`, and there is no dark set yet. `ThemeProvider` meanwhile puts
+   * `.dark` on the same element when the OS asks for dark, which flips the V1
+   * `--foreground` to bone. Anything that did not carry an explicit `text-eb-*`
+   * class then rendered bone-on-paper: every bare `<h1>`/`<h2>` (the base
+   * stylesheet colours them `hsl(var(--foreground))`) and every shadcn
+   * primitive using `text-foreground`. On a phone defaulting to dark that made
+   * page titles all but invisible — reported 2026-09-09 with screenshots.
+   *
+   * `.ui-v2` in index.css restates the V1 shadcn tokens in Console values and
+   * sits after `.dark`, so it wins. It goes on the root element rather than the
+   * shell because dialogs and sheets render in a portal outside it.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle("ui-v2", value.ui === "v2");
+    return () => root.classList.remove("ui-v2");
+  }, [value.ui]);
+
   return <UiVersionContext.Provider value={value}>{children}</UiVersionContext.Provider>;
 }
 

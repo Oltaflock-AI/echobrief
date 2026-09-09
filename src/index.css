@@ -1133,3 +1133,53 @@
   --eb-input-h: 38px;
   --eb-mobile-tabbar-h: 84px;
 }
+
+/* ─── Console light-lock (UI v2) ───────────────────────────────────────────
+   The Console palette above is light-only: every --eb-* token is declared once
+   on :root and there is no dark set yet. ThemeProvider still puts `.dark` on
+   the same element when the OS asks for dark, which flips the V1 --foreground
+   to bone while the Console surfaces stay paper. Anything without an explicit
+   text-eb-* class then rendered bone-on-paper — every bare <h1>/<h2> (the base
+   layer colours headings hsl(var(--foreground))) and every shadcn primitive
+   built on text-foreground. On a phone defaulting to dark, page titles were
+   all but invisible (reported 2026-09-09).
+
+   So while the Console is on, the V1 shadcn tokens are restated in Console
+   values. This block sits after `.dark` and matches its specificity, so it
+   wins. Delete it the day the Console gets a real dark palette — and then give
+   the --eb-* tokens a `.dark` set instead.
+   ────────────────────────────────────────────────────────────────────────── */
+.ui-v2 {
+  color-scheme: light;
+
+  --background: 36 25% 95%;          /* --eb-bg   #F5F1EC */
+  --foreground: 24 9% 10%;           /* --eb-text #1C1917 */
+
+  --card: 0 0% 100%;                 /* --eb-card #FFFFFF */
+  --card-foreground: 24 9% 10%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 24 9% 10%;
+
+  --primary: 24 9% 10%;
+  --primary-foreground: 36 25% 95%;
+
+  --secondary: 33 22% 90%;           /* --eb-chip #EBE5DE */
+  --secondary-foreground: 24 9% 10%;
+
+  --muted: 33 22% 90%;
+  --muted-foreground: 24 6% 46%;     /* --eb-text-secondary #78716C */
+
+  --accent: 21 90% 40%;              /* --eb-accent #C2410C */
+  --accent-foreground: 0 0% 100%;
+
+  --border: 30 26% 87%;              /* --eb-border  #E6DFD7 */
+  --input: 30 26% 87%;
+  --ring: 21 90% 40%;
+
+  --sidebar-background: 24 9% 11%;   /* --eb-sidebar #1F1B18 */
+  --sidebar-foreground: 30 12% 71%;  /* --eb-text-on-dark #B8B0A8 */
+  --sidebar-accent: 26 11% 15%;      /* --eb-sidebar-raised #2A2521 */
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-border: 26 11% 15%;
+}
