@@ -220,8 +220,8 @@ serve(withObservability("auto-join-meetings", async (req) => {
               // stored by us. Must stay in sync with start-recall-recording.
               video_mixed_mp4: {},
               // 168 h is Recall's free storage ceiling; past it they bill.
-              // 14 days — see start-recall-recording for the cost note. The two
-              // bot-creating call sites must stay in sync.
+              // 10 days — see RECORDING_RETENTION_HOURS for the cost note. The
+              // two bot-creating call sites must stay in sync.
               retention: { type: "timed", hours: RECORDING_RETENTION_HOURS },
               // Required for speaker-name resolution: without a transcript
               // provider Recall produces no transcript, so sarvam-webhook has

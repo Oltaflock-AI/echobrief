@@ -6,17 +6,21 @@
 /**
  * How long Recall keeps the mp4, in hours.
  *
- * 14 days. Recall stores media free for 7 and then bills $0.000069 per hour of
- * media per hour stored, so the second week costs about $0.012 per
- * recording-hour — single-digit dollars a month at our volume. It buys the two
- * things 168 h did not: a share link that outlives its own video (links default
- * to 7 days, and the video died the same day), and a customer who opens a
- * recording the week after the call.
+ * 10 days. Recall stores media free for 7 and then bills $0.000069 per hour of
+ * media per hour stored, so the extra 72 hours cost about $0.005 per
+ * recording-hour — cents a month at our volume. 30 days was considered and
+ * dropped: it is 552 billable hours, ~$0.038 per recording-hour, a real line
+ * item for reach almost nobody uses.
+ *
+ * It still buys the thing 168 h did not: a share link that outlives its own
+ * video. Links default to a 7-day expiry, so at 168 h the page and the player
+ * died the same week and the four links sent on 2026-09-09 outlived their
+ * recordings by two days.
  *
  * Both bot-creating call sites read this constant, because two literals is how
  * they drifted the first time.
  */
-export const RECORDING_RETENTION_HOURS = 336;
+export const RECORDING_RETENTION_HOURS = 240;
 import {
   createSarvamJob,
   uploadToSarvamJob,

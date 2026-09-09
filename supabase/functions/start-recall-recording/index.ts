@@ -136,12 +136,10 @@ serve(withObservability("start-recall-recording", async (req) => {
           // cap). MeetingDetail streams it straight from Recall through a
           // freshly signed URL. Must stay in sync with auto-join-meetings.
           video_mixed_mp4: {},
-          // 14 days, deliberately past Recall's 7-day free window. Storage past
-          // that is $0.000069 per hour of media per hour stored, so the second
-          // week costs ~$0.012 per recording-hour — a couple of dollars a month
-          // at our volume, against share links that outlived their own video
-          // and customers who open a recording the week after the call.
-          // Must stay in sync with the other bot-creating call site.
+          // 10 days. Past Recall's 7-day free window this is billed — see
+          // RECORDING_RETENTION_HOURS for the arithmetic. Must stay in sync
+          // with the other bot-creating call site, which is why it is a shared
+          // constant and not a literal.
           retention: { type: "timed", hours: RECORDING_RETENTION_HOURS },
           transcript: {
             provider: {
