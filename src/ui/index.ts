@@ -5,3 +5,4 @@ export * from "./Card";
 export * from "./Avatar";
 export * from "./Form";
 export * from "./Layout";
+export * from "./Dialog";

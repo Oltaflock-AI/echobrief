@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { formatIST } from '@/lib/time';
 import { Button } from '@/components/ui/button';
 import { 
   Dialog, 
@@ -12,10 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Mic, Loader2, Check } from 'lucide-react';
 import { parseMeetingUrl, PLATFORM_LABELS } from '@/lib/meetingUrl';
-import { supabase } from '@/integrations/supabase/client';
-import { FunctionsHttpError } from '@supabase/supabase-js';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { useStartRecording } from '@/hooks/useStartRecording';
 
 interface CalendarAttendee {
   email: string;
@@ -47,11 +45,11 @@ export function RecordingButton({
 }: RecordingButtonProps) {
   const [showDialog, setShowDialog] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState(prefillTitle || '');
-  const [isStarting, setIsStarting] = useState(false);
   const [meetingUrl, setMeetingUrl] = useState(propMeetingLink || '');
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
   const { toast } = useToast();
+  const { start, isStarting } = useStartRecording();
 
   useEffect(() => {
     if (prefillTitle) {
@@ -62,56 +60,19 @@ export function RecordingButton({
 
   const handleStartRecording = async () => {
     if (!user) return;
-
-    setIsStarting(true);
     setError(null);
-    
-    try {
-      const title = meetingTitle || `Meeting ${formatIST(new Date(), 'MMM d, yyyy')}`;
-
-      const parsed = parseMeetingUrl(meetingUrl);
-      if (!parsed.ok) {
-        throw new Error(parsed.error || 'Enter a valid meeting link.');
-      }
-
-      // The function derives the user from the JWT; user_id is no longer sent.
-      const { data, error: botError } = await supabase.functions.invoke('start-recall-recording', {
-        body: {
-          meeting_url: meetingUrl,
-          ...(calendarEventId ? { calendar_event_id: calendarEventId } : {}),
-          title: title,
-        },
-      });
-
-      if (botError) {
-        // Surface the function's own error text (429 "You already have 3
-        // recordings in progress", 400 for a non-Zoom/Meet/Teams URL, …)
-        // instead of the generic FunctionsHttpError message.
-        let message = botError.message || 'Failed to start recording';
-        if (botError instanceof FunctionsHttpError) {
-          try {
-            const body = await botError.context.json();
-            if (body?.error) message = body.error;
-          } catch {
-            // keep the generic message
-          }
-        }
-        throw new Error(message);
-      }
-      if (data?.error) throw new Error(data.error);
-
-      toast({ title: 'Bot started', description: `Bot is joining the meeting` });
-      setShowDialog(false);
-    } catch (err: any) {
-      setError(err.message || 'Failed to start recording');
-      toast({
-        title: 'Error',
-        description: err.message || 'Failed to start recording',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsStarting(false);
+    const message = await start({
+      meetingUrl,
+      title: meetingTitle,
+      calendarEventId,
+    });
+    if (message) {
+      setError(message);
+      toast({ title: 'Error', description: message, variant: 'destructive' });
+      return;
     }
+    toast({ title: 'Bot started', description: 'Bot is joining the meeting' });
+    setShowDialog(false);
   };
 
   // Named as you type, so it is obvious before pressing Start that a Zoom or

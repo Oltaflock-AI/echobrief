@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Loader2, Menu, Mic, Search, Upload } from "lucide-react";
 import { GlobalSearch } from "@/components/dashboard/GlobalSearch";
-import { RecordingButton } from "@/components/dashboard/RecordingButton";
+import { RecordDialogV2 } from "@/components/dashboard/RecordDialogV2";
 import { UploadButton } from "@/components/dashboard/UploadButton";
 import { Button, SplitButton } from "@/ui";
 
@@ -30,6 +30,7 @@ export function HeaderV2({ onMenuClick }: { onMenuClick?: () => void }) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
 
   // "Record this meeting" from a pre-meeting notification navigates to
   // /dashboard carrying the calendar event in router state. V1 read that in the
@@ -37,6 +38,13 @@ export function HeaderV2({ onMenuClick }: { onMenuClick?: () => void }) {
   // the prefill has to be read here or the flow silently starts a blank
   // recording.
   const prefill = (location.state as { prefillMeeting?: PrefillMeeting } | null)?.prefillMeeting;
+
+  // V1's RecordingButton opened itself when a prefill arrived. The dialog is
+  // separate now, so without this the notification's "Record this meeting"
+  // would land on the dashboard with nothing open.
+  useEffect(() => {
+    if (prefill?.meetingLink || prefill?.title) setRecordOpen(true);
+  }, [prefill?.meetingLink, prefill?.title]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -91,20 +99,24 @@ export function HeaderV2({ onMenuClick }: { onMenuClick?: () => void }) {
                 />
               )}
             />
-            <RecordingButton
-              prefillTitle={prefill?.title}
-              calendarEventId={prefill?.calendarEventId}
-              meetingLink={prefill?.meetingLink}
-              attendees={prefill?.attendees}
-              renderTrigger={(open) => (
-                <SplitButton icon={<Mic size={15} strokeWidth={2} />} onMain={open} onMenu={open}>
-                  Record
-                </SplitButton>
-              )}
-            />
+            <SplitButton
+              icon={<Mic size={15} strokeWidth={2} />}
+              onMain={() => setRecordOpen(true)}
+              onMenu={() => setRecordOpen(true)}
+            >
+              Record
+            </SplitButton>
           </div>
         )}
       </header>
+
+      <RecordDialogV2
+        open={recordOpen}
+        onOpenChange={setRecordOpen}
+        prefillTitle={prefill?.title}
+        prefillLink={prefill?.meetingLink}
+        prefillCalendarEventId={prefill?.calendarEventId}
+      />
 
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </>
