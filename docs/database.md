@@ -215,6 +215,28 @@ without re-running the match.
 
 ## Operational tables
 
+### `meeting_observers`
+
+Read-only grants for allowlisted reviewers who were on a meeting's invite. Primary key
+`(meeting_id, user_id)`; `email` and `reason` are kept for the audit trail, because
+"why can this account see this meeting?" has no answer anywhere else once a profile
+email changes.
+
+Written by `_shared/observers.ts` from `afterInsightsSaved` (and by
+`scripts/backfill_meeting_observers.py` for meetings that predate it), using exactly the
+rule that already decides the reviewer email copy: on
+`summary_recipient_allowlist` with `dashboard_access = true`, **and** on this meeting's
+attendee list, minus the owner. The grant is materialised rather than computed in a
+policy so RLS stays a primary-key lookup instead of re-deriving three attendee shapes on
+every row of every query.
+
+Policies grant SELECT and nothing else, on `meetings`, `meeting_insights` and
+`transcripts`, through the `SECURITY DEFINER` helper `i_observe_meeting(uuid)`. Unlike an
+org share this one **does** reach the transcript — an observer was in the room, so the
+pre/post-call zones the org share protects are zones they were present for. An observer
+cannot delete, regenerate, rename, re-share or edit anything, in the database or in the
+UI.
+
 ### `monitor_events`
 Audit trail of every stuck-meeting detection. **Service-role only** — no user-facing
 RLS policy. Deduped by a generated `hour_bucket` column so a persistently stuck
@@ -278,6 +300,8 @@ in filename order. The ones that carry non-obvious history:
 | `20260908090000_slack_connections.sql` | `slack_connections` (sealed per-user bot token, one row per user) + `slack_deliveries` (claim-before-send). Slack's second attempt, on a schema where the three failures that got it removed in August cannot recur |
 | `20260908160000_zoho_connections.sql` | `zoho_connections` (sealed tokens **plus the datacentre domain they are valid in**) + `zoho_deliveries` (one note per meeting per CRM record) |
 | `20260908180000_team_seats.sql` | `profiles.subscription_quantity` — the paid seat count behind per-seat Teams pricing. NULL on every flat-priced plan; `seatsForProfile` reads NULL as 1 so a misconfigured account degrades to one seat rather than to unlimited |
+| `20260909140000_meeting_observers.sql` | `meeting_observers` + `summary_recipient_allowlist.dashboard_access` — an allowlisted reviewer on the invite sees the meeting in their own dashboard, not just in their inbox |
+| `20260909150000_one_share_link.sql` | `meeting_shares.token_sealed` — the share token sealed with `TOKEN_ENCRYPTION_KEY` so the owner can see their own link again. One live link per meeting from here on, enforced in `manage-meeting-share`, not by an index: existing links are neither revoked nor broken |
 
 `cron.schedule()` with an existing job name **updates that job in place** — that is
 why the frequency migrations re-declare the jobs rather than unscheduling first.

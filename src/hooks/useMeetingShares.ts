@@ -1,10 +1,16 @@
 /**
  * Everything the share dialog does — the one implementation.
  *
- * The five calls into `manage-meeting-share`: list, create, revoke, update
- * what an existing link carries, and share/unshare with the workspace.
- * Sharing is the feature where a UI that disagrees with itself is most
- * expensive, so the calls live here and the dialog only renders.
+ * The calls into `manage-meeting-share`: list, create (which returns the
+ * meeting's existing link rather than minting a second one), rotate, revoke,
+ * update what the link carries and when it expires, and share/unshare with the
+ * workspace. Sharing is the feature where a UI that disagrees with itself is
+ * most expensive, so the calls live here and the dialog only renders.
+ *
+ * Since 20260909150000 a meeting has AT MOST ONE live link and its URL comes
+ * back on every list, because the token is sealed rather than only hashed.
+ * `url` is null for links minted before that — those are unrecoverable and the
+ * dialog offers to rotate them.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,6 +25,14 @@ export interface Share {
   created_at: string;
   include_transcript: boolean;
   include_recording: boolean;
+  /** null for a pre-20260909150000 link, whose plaintext is unrecoverable. */
+  url: string | null;
+}
+
+export interface ShareSettings {
+  expiresInDays: number | null;
+  includeTranscript: boolean;
+  includeRecording: boolean;
 }
 
 export function useMeetingShares(meetingId: string, open: boolean) {
@@ -75,12 +89,12 @@ export function useMeetingShares(meetingId: string, open: boolean) {
     [refresh],
   );
 
-  /** Returns the URL — the plaintext token exists only in this response. */
-  const create = (opts: {
-    expiresInDays: number | null;
-    includeTranscript: boolean;
-    includeRecording: boolean;
-  }) =>
+  /**
+   * Get this meeting's link, minting it if there is none. When one already
+   * exists the settings are applied to it and the same URL comes back —
+   * `reused` says which happened.
+   */
+  const create = (opts: ShareSettings) =>
     run(async () => {
       const data = await call({
         action: 'create',
@@ -88,33 +102,53 @@ export function useMeetingShares(meetingId: string, open: boolean) {
         include_transcript: opts.includeTranscript,
         include_recording: opts.includeRecording,
       });
-      return data.url as string;
+      return { url: data.url as string | null, reused: Boolean(data.reused) };
+    });
+
+  /** Kill the current link and mint a replacement. The old URL stops working. */
+  const rotate = (opts: ShareSettings) =>
+    run(async () => {
+      const data = await call({
+        action: 'rotate',
+        expires_in_days: opts.expiresInDays,
+        include_transcript: opts.includeTranscript,
+        include_recording: opts.includeRecording,
+      });
+      return { url: data.url as string | null, reused: false };
     });
 
   const revoke = (shareId: string) => run(() => call({ action: 'revoke', share_id: shareId }));
 
-  /** Change what an existing link carries. The URL keeps working either way. */
+  /**
+   * Change what the link carries, or when it expires. The URL keeps working
+   * either way — that is the point of editing it instead of replacing it.
+   */
   const setCarries = (
     shareId: string,
-    patch: Partial<Pick<Share, 'include_transcript' | 'include_recording'>>,
+    patch: Partial<Pick<Share, 'include_transcript' | 'include_recording'>> & {
+      expires_in_days?: number | null;
+    },
   ) => run(() => call({ action: 'update', share_id: shareId, ...patch }));
 
   const toggleOrgShare = (currentlyShared: boolean) =>
     run(() => call({ action: currentlyShared ? 'unshare_from_org' : 'share_to_org' }));
 
-  /** Live = not revoked and not past its expiry. */
+  /** Live = not revoked and not past its expiry. At most one, by construction. */
   const live = shares.filter(
     (s) => !s.revoked_at && (!s.expires_at || Date.parse(s.expires_at) > Date.now()),
   );
+  const link = live[0] ?? null;
 
   return {
     shares,
     live,
+    link,
     inWorkspace,
     sharedToOrg,
     loading,
     working,
     create,
+    rotate,
     revoke,
     setCarries,
     toggleOrgShare,

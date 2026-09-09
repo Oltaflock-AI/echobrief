@@ -40,6 +40,36 @@ export function extractAttendeeEmails(attendees: unknown): string[] {
 }
 
 /**
+ * Every attendee address on a meeting, whichever shape it reached us in.
+ *
+ * Exported because `observers.ts` asks the same question the summary copy does
+ * — "was this person on the invite?" — and two answers that could disagree
+ * would mean a reviewer gets the mail but not the meeting, or the reverse.
+ */
+export async function resolveMeetingAttendeeEmails(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  meeting: Record<string, any>,
+): Promise<string[]> {
+  let attendeeEmails = extractAttendeeEmails(meeting.attendees);
+
+  // Meetings created before auto-join persisted attendees (and manual
+  // dashboard recordings started from a calendar event) carry only the
+  // calendar_event_id — fall back to the synced event row.
+  if (attendeeEmails.length === 0 && meeting.calendar_event_id) {
+    const { data: event } = await supabase
+      .from("calendar_events")
+      .select("attendees")
+      .eq("user_id", meeting.user_id)
+      .eq("event_id", meeting.calendar_event_id)
+      .maybeSingle();
+    attendeeEmails = extractAttendeeEmails(event?.attendees);
+  }
+
+  return attendeeEmails;
+}
+
+/**
  * Allowlisted addresses that are on this meeting's invite, minus `excludeEmail`
  * (the owner — they are mailed by the normal path and the claim row would skip
  * a second send anyway).
@@ -53,20 +83,7 @@ export async function resolveAllowlistedRecipients(
   excludeEmail?: string | null,
 ): Promise<string[]> {
   try {
-    let attendeeEmails = extractAttendeeEmails(meeting.attendees);
-
-    // Meetings created before auto-join persisted attendees (and manual
-    // dashboard recordings started from a calendar event) carry only the
-    // calendar_event_id — fall back to the synced event row.
-    if (attendeeEmails.length === 0 && meeting.calendar_event_id) {
-      const { data: event } = await supabase
-        .from("calendar_events")
-        .select("attendees")
-        .eq("user_id", meeting.user_id)
-        .eq("event_id", meeting.calendar_event_id)
-        .maybeSingle();
-      attendeeEmails = extractAttendeeEmails(event?.attendees);
-    }
+    const attendeeEmails = await resolveMeetingAttendeeEmails(supabase, meeting);
 
     if (attendeeEmails.length === 0) return [];
 

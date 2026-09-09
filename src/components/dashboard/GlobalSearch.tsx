@@ -113,8 +113,9 @@ export function GlobalSearch({
         if (scope === 'all' || scope === 'meetings') jobs.push((async () => {
           const { data } = await supabase
             .from('meetings')
+            // Unfiltered by user_id: RLS covers own meetings and observer
+            // grants, and search must find what the user can actually open.
             .select('id, title, start_time, status')
-            .eq('user_id', user.id)
             .ilike('title', like)
             .order('start_time', { ascending: false })
             .limit(5);
@@ -134,7 +135,6 @@ export function GlobalSearch({
           const { data } = await supabase
             .from('transcripts')
             .select('id, content, speakers, meeting_id, meetings!inner(title, user_id)')
-            .eq('meetings.user_id', user.id)
             .ilike('content', like)
             .limit(4);
           (data ?? []).forEach((t: Record<string, unknown>) => {
@@ -168,7 +168,6 @@ export function GlobalSearch({
           const { data } = await supabase
             .from('meeting_insights')
             .select('id, action_items, meeting_id, meetings!inner(title, user_id)')
-            .eq('meetings.user_id', user.id)
             .limit(20);
           (data ?? []).forEach((row: Record<string, unknown>) => {
             const meeting = row.meetings as { title?: string };

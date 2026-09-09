@@ -72,6 +72,9 @@ interface Item {
 interface Group {
   id: string;
   insightsId: string;
+  /** False for a meeting read through an observer grant — its items are
+   *  visible and tickable, but the task text belongs to the owner. */
+  isOwner: boolean;
   title: string;
   date: string;
   items: Item[];
@@ -132,8 +135,10 @@ export default function ActionItems() {
       const [{ data: meetings }, { data: completions }] = await Promise.all([
         supabase
           .from('meetings')
-          .select('id, title, start_time, meeting_insights (id, action_items)')
-          .eq('user_id', user.id)
+          // RLS-scoped rather than user_id-scoped: it also returns meetings the
+          // user observes (allowlisted reviewer, on the invite), whose action
+          // items are as much theirs to track as their own.
+          .select('id, title, start_time, user_id, meeting_insights (id, action_items)')
           .order('start_time', { ascending: false }),
         supabase
           .from('action_item_completions')
@@ -172,6 +177,7 @@ export default function ActionItems() {
           next.push({
             id: meeting.id,
             insightsId: insights.id,
+            isOwner: meeting.user_id === user.id,
             title: meeting.title,
             date: meeting.start_time,
             items,
@@ -503,7 +509,7 @@ export default function ActionItems() {
                           </span>
                         )}
 
-                        {editingId !== item.id && (
+                        {editingId !== item.id && group.isOwner && (
                           <button
                             type="button"
                             onClick={() => {

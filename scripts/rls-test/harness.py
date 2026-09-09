@@ -71,6 +71,10 @@ VIA_MEETING = {
     "email_messages": "meeting_id",
     "action_item_completions": "meeting_id",
     "meeting_notifications": "meeting_id",
+    # Read-only reviewer grants. A row belongs to the reviewer, not the meeting
+    # owner, so the victim never owns one — but it is meeting-scoped and the
+    # detection control must still reach it.
+    "meeting_observers": "meeting_id",
 }
 
 # Tables that hold no per-user rows at all. Each one is listed with the reason,

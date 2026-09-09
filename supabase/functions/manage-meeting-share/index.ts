@@ -11,13 +11,42 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
 import { authenticate } from "../_shared/auth.ts";
 import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from "../_shared/rate-limit.ts";
-import { generateShareToken, SHARE_TOKEN_PREFIX } from "../_shared/share-token.ts";
+import { generateShareToken } from "../_shared/share-token.ts";
+import { openMaybe, sealMaybe } from "../_shared/crypto.ts";
 import { recordAudit } from "../_shared/audit.ts";
 
 const APP_URL = Deno.env.get("APP_URL") || "https://www.echobrief.in";
 
 /** Expiry choices offered in the UI. `null` means the link does not expire. */
 const ALLOWED_EXPIRY_DAYS = [1, 7, 30, 90, null] as const;
+
+const SHARE_COLUMNS =
+  "id, scope, org_id, token_prefix, token_sealed, expires_at, revoked_at, view_count, last_viewed_at, created_at, include_transcript, include_recording";
+
+/**
+ * The URL for a link whose token we can still open, or null for one minted
+ * before 20260909150000 (hash-only — unrecoverable, and the dialog says so
+ * rather than pretending). Those links still work; only their URL is lost.
+ *
+ * A failure to open is not an error the caller should see: the link still
+ * works, it just cannot be displayed, and that is exactly the null case.
+ */
+async function shareUrl(row: Record<string, unknown>): Promise<string | null> {
+  try {
+    const token = await openMaybe(row.token_sealed as string | null);
+    return token ? `${APP_URL}/share/${token}` : null;
+  } catch (err) {
+    console.warn("[manage-meeting-share] Could not open a sealed share token:", err);
+    return null;
+  }
+}
+
+/** A link row is live when it is neither revoked nor past its expiry. */
+function isLive(row: Record<string, unknown>): boolean {
+  if (row.scope !== "link" || row.revoked_at) return false;
+  const expires = row.expires_at as string | null;
+  return !expires || Date.parse(expires) > Date.now();
+}
 
 serve(async (req) => {
   const corsResponse = handleCorsPrelight(req);
@@ -59,37 +88,50 @@ serve(async (req) => {
       .maybeSingle();
     if (!meeting) return json({ error: "Meeting not found" }, 404);
 
-    if (action === "list") {
+    /** Every share row for this meeting, newest first. */
+    const loadShares = async () => {
       const { data, error } = await supabase
         .from("meeting_shares")
-        .select("id, scope, org_id, token_prefix, expires_at, revoked_at, view_count, last_viewed_at, created_at, include_transcript, include_recording")
+        .select(SHARE_COLUMNS)
         .eq("meeting_id", meetingId)
         .eq("created_by", userId)
         .order("created_at", { ascending: false });
       if (error) throw error;
+      return (data ?? []) as Record<string, unknown>[];
+    };
 
-      const { data: membership } = await supabase
-        .from("org_members").select("org_id").eq("user_id", userId).maybeSingle();
+    /** The row as the browser should see it: no sealed token, plus the URL. */
+    const present = async (row: Record<string, unknown>) => {
+      const { token_sealed: _sealed, ...rest } = row;
+      return { ...rest, url: await shareUrl(row) };
+    };
 
-      return json({
-        shares: (data ?? []).filter((row: Record<string, unknown>) => row.scope === "link"),
-        in_workspace: Boolean(membership),
-        shared_to_org: (data ?? []).some(
-          (row: Record<string, unknown>) =>
-            row.scope === "org" && row.org_id === membership?.org_id && !row.revoked_at,
-        ),
-      });
-    }
-
-    if (action === "create") {
+    const expiryFromBody = () => {
       const days = body.expires_in_days === null || body.expires_in_days === undefined
         ? 7
         : Number(body.expires_in_days);
-      const expiryChoice = ALLOWED_EXPIRY_DAYS.includes(days as never) ? days : 7;
-      const expiresAt = expiryChoice === null
+      const choice = ALLOWED_EXPIRY_DAYS.includes(days as never) ? days : 7;
+      return choice === null
         ? null
-        : new Date(Date.now() + Number(expiryChoice) * 86_400_000).toISOString();
+        : new Date(Date.now() + Number(choice) * 86_400_000).toISOString();
+    };
 
+    /**
+     * Seal the token for redisplay, or store nothing if sealing is impossible
+     * (no TOKEN_ENCRYPTION_KEY). A key problem must cost the ability to show
+     * the link again, never the ability to share the meeting at all.
+     */
+    const sealForRedisplay = async (token: string) => {
+      try {
+        return await sealMaybe(token);
+      } catch (err) {
+        console.warn("[manage-meeting-share] Could not seal the share token:", err);
+        return null;
+      }
+    };
+
+    /** Mint a link. `create` and `rotate` decide when that is the right move. */
+    const mintLink = async () => {
       const { token, hash, prefix } = await generateShareToken();
       const { data, error } = await supabase
         .from("meeting_shares")
@@ -99,21 +141,22 @@ serve(async (req) => {
           scope: "link",
           token_hash: hash,
           token_prefix: prefix,
-          expires_at: expiresAt,
-          // What this particular link carries, decided when it is minted. Both
-          // default to false, so an omitted flag narrows the link rather than
-          // widening it.
+          // Sealed so the owner can be shown their own link again. The digest
+          // above is still what the public path matches on; this copy is read
+          // only for the owner's dialog.
+          token_sealed: await sealForRedisplay(token),
+          expires_at: expiryFromBody(),
+          // What this link carries. An omitted flag narrows rather than widens:
+          // the dialog always sends both explicitly.
           include_transcript: body.include_transcript === true,
           include_recording: body.include_recording === true,
         })
-        .select("id, expires_at, created_at, include_transcript, include_recording")
+        .select(SHARE_COLUMNS)
         .single();
       if (error) throw error;
 
-      // The only time the plaintext exists. It is not stored and cannot be
-      // shown again — a lost link is revoked and replaced, not recovered.
-      // Hashed into the trail here so a later share.viewed row can be tied back
-      // to the moment this link was minted, and by whom.
+      // Hashed into the trail so a later share.viewed row can be tied back to
+      // the moment this link was minted, and by whom.
       await recordAudit(supabase, {
         action: "share.created",
         actorType: "user",
@@ -127,10 +170,87 @@ serve(async (req) => {
           include_recording: data?.include_recording ?? false,
         },
       }, req);
+
+      return json({ share: await present(data), url: `${APP_URL}/share/${token}`, reused: false });
+    };
+
+    if (action === "list") {
+      const rows = await loadShares();
+
+      const { data: membership } = await supabase
+        .from("org_members").select("org_id").eq("user_id", userId).maybeSingle();
+
+      const links = await Promise.all(
+        rows.filter((row) => row.scope === "link").map(present),
+      );
+
       return json({
-        share: data,
-        url: `${APP_URL}/share/${token}`,
+        shares: links,
+        in_workspace: Boolean(membership),
+        shared_to_org: rows.some(
+          (row) => row.scope === "org" && row.org_id === membership?.org_id && !row.revoked_at,
+        ),
       });
+    }
+
+    // A meeting gets ONE link from here on. Pressing "create" when it already
+    // has a live one hands back the same URL with the requested settings
+    // applied, instead of minting a second link nobody can tell apart from the
+    // first. Links minted before this rule stay live and are listed separately.
+    if (action === "create") {
+      const rows = await loadShares();
+      // Newest first, so this is the link the dialog is showing.
+      const existing = rows.find(isLive);
+
+      if (existing) {
+        const patch: Record<string, unknown> = {};
+        if (typeof body.include_transcript === "boolean") patch.include_transcript = body.include_transcript;
+        if (typeof body.include_recording === "boolean") patch.include_recording = body.include_recording;
+        if (body.expires_in_days !== undefined) patch.expires_at = expiryFromBody();
+
+        let row = existing;
+        if (Object.keys(patch).length > 0) {
+          const { data, error } = await supabase
+            .from("meeting_shares")
+            .update(patch)
+            .eq("id", existing.id as string)
+            .select(SHARE_COLUMNS)
+            .single();
+          if (error) throw error;
+          row = data as Record<string, unknown>;
+        }
+        const presented = await present(row);
+        return json({ share: presented, url: presented.url, reused: true });
+      }
+
+      return await mintLink();
+    }
+
+    // Replace the link: the old URL stops working, a new one is minted. This is
+    // the answer to "I lost the link" for a row that predates sealed tokens,
+    // and to "that link got forwarded further than I meant".
+    if (action === "rotate") {
+      const rows = await loadShares();
+      // Only the link being replaced. Older links from before this function
+      // enforced one-per-meeting keep working until they are revoked
+      // individually — rotating must not silently kill a URL somebody is
+      // already holding and did not ask about.
+      const current = rows.find(isLive);
+      if (current) {
+        await supabase
+          .from("meeting_shares")
+          .update({ revoked_at: new Date().toISOString() })
+          .eq("id", current.id as string);
+        await recordAudit(supabase, {
+          action: "share.revoked",
+          actorType: "user",
+          actorUserId: userId,
+          resourceType: "meeting",
+          resourceId: meetingId,
+          metadata: { share_id: current.id, reason: "rotate" },
+        }, req);
+      }
+      return await mintLink();
     }
 
     // ---- share to / unshare from the caller's workspace --------------------
@@ -172,9 +292,13 @@ serve(async (req) => {
       if (typeof shareId !== "string" || !shareId) {
         return json({ error: "share_id is required" }, 400);
       }
-      const patch: Record<string, boolean> = {};
+      const patch: Record<string, unknown> = {};
       if (typeof body.include_transcript === "boolean") patch.include_transcript = body.include_transcript;
       if (typeof body.include_recording === "boolean") patch.include_recording = body.include_recording;
+      // Expiry is editable on the live link too — otherwise "make this one last
+      // longer" would mean minting a second link, which is the thing this
+      // dialog no longer does.
+      if (body.expires_in_days !== undefined) patch.expires_at = expiryFromBody();
       if (Object.keys(patch).length === 0) {
         return json({ error: "Nothing to update" }, 400);
       }
@@ -185,7 +309,7 @@ serve(async (req) => {
         .eq("meeting_id", meetingId)
         .eq("created_by", userId)
         .eq("scope", "link")
-        .select("id, include_transcript, include_recording")
+        .select(SHARE_COLUMNS)
         .maybeSingle();
       if (error) throw error;
       if (!data) return json({ error: "Link not found" }, 404);
@@ -199,9 +323,10 @@ serve(async (req) => {
           share_id: data.id,
           include_transcript: data.include_transcript,
           include_recording: data.include_recording,
+          expires_at: data.expires_at,
         },
       }, req);
-      return json({ share: data });
+      return json({ share: await present(data as Record<string, unknown>) });
     }
 
     if (action === "revoke") {

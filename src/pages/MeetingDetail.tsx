@@ -85,6 +85,13 @@ interface Attendee {
 // All reads for the meeting-detail page, bundled into one cached query.
 interface MeetingDetailData {
   meeting: Meeting;
+  /**
+   * False when this meeting belongs to someone else and we are reading it as an
+   * allowlisted reviewer who was on the invite (a `meeting_observers` grant).
+   * Every write on this page is gated on it — the grant is SELECT-only in RLS,
+   * so an ungated button would fail at the database instead of at the UI.
+   */
+  isOwner: boolean;
   attendees: Attendee[];
   transcript: Transcript | null;
   speakerSegments: SpeakerSegment[];
@@ -411,16 +418,18 @@ export default function MeetingDetail() {
     queryKey: ['meeting-detail', id, user?.id],
     enabled: !!user && !!id,
     queryFn: async (): Promise<MeetingDetailData | null> => {
+      // No `user_id` filter: RLS decides. It returns the caller's own meetings
+      // and any they hold an observer grant on.
       const { data: meetingData } = await supabase
         .from('meetings')
         .select('*')
         .eq('id', id!)
-        .eq('user_id', user!.id)
-        .single();
+        .maybeSingle();
 
       if (!meetingData) return null;
 
       const meeting = asMeeting(meetingData);
+      const isOwner = meetingData.user_id === user!.id;
       let attendees: Attendee[] = [];
       if (meetingData.attendees && Array.isArray(meetingData.attendees)) {
         attendees = meetingData.attendees as unknown as Attendee[];
@@ -488,6 +497,7 @@ export default function MeetingDetail() {
 
       return {
         meeting,
+        isOwner,
         attendees,
         transcript,
         speakerSegments,
@@ -498,6 +508,7 @@ export default function MeetingDetail() {
   });
 
   const meeting = data?.meeting ?? null;
+  const isOwner = data?.isOwner ?? true;
   const attendees = data?.attendees ?? [];
   const transcript = data?.transcript ?? null;
   const speakerSegments = data?.speakerSegments ?? [];
@@ -890,7 +901,11 @@ export default function MeetingDetail() {
           )}
         </div>
 
-        {insights && (
+        {insights && !isOwner && (
+          <EbBadge tone="neutral">Shared with you · read-only</EbBadge>
+        )}
+
+        {insights && isOwner && (
           <div className="flex flex-wrap items-center gap-2">
             <EbButton size="sm" onClick={() => setEmailDialogOpen(true)} icon={<Mail size={14} strokeWidth={1.75} />}>
               Email
@@ -1108,7 +1123,9 @@ export default function MeetingDetail() {
                               <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-eb-accent no-underline hover:underline">
                                 <ExternalLink size={12} strokeWidth={1.75} /> Open calendar event
                               </a>
-                            ) : (
+                            ) : isOwner ? (
+                              // Creating the follow-up event writes the link
+                              // back onto the owner's insights row.
                               <button
                                 type="button"
                                 disabled={calendarBusy === i}
@@ -1118,6 +1135,8 @@ export default function MeetingDetail() {
                                 {calendarBusy === i ? <Loader2 size={12} className="animate-spin" /> : <CalendarPlus size={12} strokeWidth={1.75} />}
                                 Add {formatDueDate(item.due_date_resolved!)} to calendar
                               </button>
+                            ) : (
+                              <span className="text-eb-secondary">Due {formatDueDate(item.due_date_resolved!)}</span>
                             )}
                           </div>
                         )}
@@ -1194,6 +1213,10 @@ export default function MeetingDetail() {
                                     Cancel
                                   </button>
                                 </span>
+                              ) : !isOwner ? (
+                                // Renaming rewrites the transcript for the
+                                // owner too; an observer only reads.
+                                <span className="font-dmsans text-[13px] font-medium">{seg.speaker}</span>
                               ) : (
                                 <button
                                   type="button"

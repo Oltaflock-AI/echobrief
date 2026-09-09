@@ -137,10 +137,14 @@ export default function Dashboard() {
     queryKey: ["meetings", user?.id],
     enabled: !!user,
     queryFn: async () => {
+      // No `user_id` filter: RLS returns the caller's meetings plus any they
+      // hold an observer grant on (an allowlisted reviewer who was on the
+      // invite). `attention` and `due this week` below stay owner-scoped on
+      // purpose — someone else's failed meeting is not this user's to fix, and
+      // their action items are not this user's to do.
       const { data, error } = await supabase
         .from("meetings")
         .select("*")
-        .eq("user_id", user!.id)
         .not("status", "in", `(${[...HIDDEN_STATUSES].join(",")})`)
         .order("start_time", { ascending: false });
       if (error) throw error;
@@ -334,15 +338,23 @@ export default function Dashboard() {
 
   /* ── derived ───────────────────────────────────────────────────────────── */
 
+  // Stats count what this user recorded. Observed meetings belong to someone
+  // else's totals and would inflate "time saved" for everybody on the reviewer
+  // list.
+  const ownMeetings = useMemo(
+    () => meetings.filter((m) => (m as unknown as { user_id?: string }).user_id === user?.id),
+    [meetings, user?.id],
+  );
+
   const stats = useMemo(() => {
-    const totalDuration = meetings.reduce((sum, m) => sum + (m.duration_seconds || 0), 0);
+    const totalDuration = ownMeetings.reduce((sum, m) => sum + (m.duration_seconds || 0), 0);
     return {
-      totalMeetings: meetings.length,
+      totalMeetings: ownMeetings.length,
       totalDuration,
       summarized: Object.keys(insights).length,
       timeSavedMin: Math.round((totalDuration / 60) * 0.25),
     };
-  }, [meetings, insights]);
+  }, [ownMeetings, insights]);
 
   const visible = useMemo(() => {
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -572,6 +584,7 @@ export default function Dashboard() {
                 const attendees = (((meeting as unknown as { attendees?: Attendee[] }).attendees) ?? [])
                   .map((a) => a.displayName || a.email)
                   .filter(Boolean) as string[];
+                const shared = (meeting as unknown as { user_id?: string }).user_id !== user?.id;
                 return (
                   <Link
                     key={meeting.id}
@@ -593,6 +606,7 @@ export default function Dashboard() {
                     <span className="hidden w-14 flex-none text-right font-dmsans text-[12.5px] text-eb-secondary md:block">
                       {meeting.duration_seconds ? `${Math.floor(meeting.duration_seconds / 60)} min` : ""}
                     </span>
+                    {shared && <Badge tone="neutral">Shared</Badge>}
                     <Badge tone={status.tone} dot={status.tone !== "neutral"}>
                       {summarized ? "Summarized" : status.label}
                     </Badge>

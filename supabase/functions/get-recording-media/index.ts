@@ -63,12 +63,26 @@ serve(async (req) => {
 
     const { data: meeting } = await supabase
       .from("meetings")
-      .select("id, recall_bot_id, audio_url")
+      .select("id, user_id, recall_bot_id, audio_url")
       .eq("id", meeting_id)
-      .eq("user_id", user.id)
       .maybeSingle();
 
-    if (!meeting) {
+    // The client is a service-role client, so authorisation is decided here:
+    // the owner, or an allowlisted reviewer who was on the invite and holds a
+    // `meeting_observers` grant. Anything else is a 404, not a 403 — a
+    // stranger should not learn that the meeting exists.
+    let authorised = meeting?.user_id === user.id;
+    if (meeting && !authorised) {
+      const { data: observer } = await supabase
+        .from("meeting_observers")
+        .select("user_id")
+        .eq("meeting_id", meeting.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      authorised = !!observer;
+    }
+
+    if (!meeting || !authorised) {
       return new Response(JSON.stringify({ error: "Meeting not found" }), {
         status: 404,
         headers: jsonHeaders,

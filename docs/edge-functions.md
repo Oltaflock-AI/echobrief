@@ -172,8 +172,9 @@ Resolves a short-lived playback URL for one meeting and returns
 `{ kind: "video" | "audio" | "none", url?, video_status? }`. Video comes from Recall's
 `video_mixed` artifact (signed by Recall, expires in hours — resolved per view, never
 persisted); if there is no video it signs the archived mp3 in the `recordings` bucket
-instead. The meeting is read scoped to the caller's `user_id`, so a playback URL can
-only ever be minted for one's own meeting.
+instead. A playback URL is minted only for the meeting's owner, or for an allowlisted
+reviewer holding a `meeting_observers` grant on it (see `meeting_observers` in
+[`database.md`](database.md)); anyone else gets a 404, not a 403.
 
 The resolution itself lives in `_shared/recording-media.ts`, because
 `get-shared-meeting` serves the same media to anonymous readers of a share link that
@@ -186,17 +187,34 @@ carries the recording. Only the authorisation differs between the two call sites
 ### `manage-meeting-share`
 **Trigger:** meeting page, Share dialog · **Auth:** user JWT (`verify_jwt = true`)
 
-`create` mints a share link (`ebs_live_` token, stored as a sha256 digest, returned in
-plaintext exactly once), `list` lists the caller's links for that meeting, `update`
-changes what an existing link carries without invalidating it, `revoke` stamps
-`revoked_at`, and `share_to_org` / `unshare_from_org` add or remove the `scope='org'`
-row for the caller's workspace. Ownership is established from the JWT and never from
-the body. `meeting_shares` has no INSERT policy — only this function (service role) can
-write a valid token hash.
+**A meeting gets at most one live link from here on** (migration 20260909150000),
+enforced here rather than by a unique index: an index would have required revoking the
+existing backlog to be creatable, and links already in somebody's inbox must keep
+working. This function is the only writer — `meeting_shares` has no INSERT policy — so
+the rule holds. `create` returns the existing live link with the requested settings
+applied (`reused: true`) or mints a new `ebs_live_` token; `rotate` revokes **that one
+link** and mints a replacement — the answer to "that link went further than I meant" and
+the only way to get a displayable URL for a pre-20260909150000 link. Older live links are
+untouched and are listed in the dialog with their own revoke. `list` returns the caller's links for that meeting **with their URLs**, `update`
+changes what a link carries and when it expires without invalidating it, `revoke` stamps
+`revoked_at`, and `share_to_org` / `unshare_from_org` add or remove the `scope='org'` row
+for the caller's workspace. Ownership is established from the JWT and never from the
+body. `meeting_shares` has no INSERT policy — only this function (service role) can write
+a valid token hash.
 
-`create` and `update` take `include_transcript` and `include_recording`. Both columns
-default to `false`, so an omitted flag narrows a link rather than widening it, and no
-link minted before 2026-09-02 gained reach when the columns were added.
+The token is stored twice: a sha256 digest (`token_hash`, what `get-shared-meeting`
+matches on) and an AES-256-GCM sealed copy (`token_sealed`, opened only here so the owner
+can see their own link again). Sealing is a deliberate weakening over hash-only storage —
+a database dump plus `TOKEN_ENCRYPTION_KEY` yields live links — taken because a link
+nobody can look up is a link people replace by minting another. Rows created before
+20260909150000 have no sealed copy: they keep resolving, but their URL cannot be shown
+again and the dialog says so rather than pretending.
+
+`create`, `rotate` and `update` take `include_transcript` and `include_recording`. Both
+columns default to `false` server-side, so an omitted flag narrows a link rather than
+widening it, and no link minted before 2026-09-02 gained reach when the columns were
+added — but the dialog now sends both **on** by default, because a link carrying neither
+is a summary an attachment could have carried.
 
 ### `get-shared-meeting`
 **Trigger:** the public `/share/:token` page · **Auth:** none (`verify_jwt = false`) — the

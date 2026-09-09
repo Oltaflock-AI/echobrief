@@ -23,6 +23,7 @@ import { generateCoaching } from "./coaching.ts";
 import { applySpeakerOverrides } from "./rename.ts";
 import { estimateBoundariesWithLLM } from "./boundary-llm.ts";
 import { upsertMeetingContacts } from "./contacts.ts";
+import { grantMeetingObservers } from "./observers.ts";
 import { notifyInsightsReady } from "./webhooks.ts";
 import { deliverToSlack } from "./slack-delivery.ts";
 import { deliverToZoho } from "./zoho-delivery.ts";
@@ -219,6 +220,11 @@ export async function afterInsightsSaved(
   durationSeconds?: number,
 ): Promise<void> {
   await upsertMeetingContacts(supabase, meeting);
+  // Allowlisted reviewers who were on the invite get the meeting in their own
+  // dashboard, not just the summary mail. Idempotent and non-throwing, and it
+  // runs on regeneration too so a meeting reprocessed after a reviewer was
+  // added still reaches them.
+  await grantMeetingObservers(supabase, meeting);
   await notifyInsightsReady(supabase, meeting, insights, eventType);
   // Slack posts on regeneration too, which is why `deliverToSlack` claims a row
   // in `slack_deliveries` before it posts: the claim, not this call site, is
