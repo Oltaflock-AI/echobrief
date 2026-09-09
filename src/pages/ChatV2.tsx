@@ -89,7 +89,10 @@ export default function ChatV2() {
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [input, setInput] = useState('');
+  // The search palette's Ask row hands the question over as ?q=, so the
+  // composer opens holding what was typed there rather than making the reader
+  // type it twice. Not sent on arrival — the question is theirs to edit.
+  const [input, setInput] = useState(() => searchParams.get('q') ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);

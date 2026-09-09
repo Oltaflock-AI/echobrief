@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Loader2, Menu, Mic, Search, Upload } from "lucide-react";
-import { GlobalSearch } from "@/components/dashboard/GlobalSearch";
+import { GlobalSearchV2 } from "@/components/dashboard/GlobalSearchV2";
 import { RecordDialogV2 } from "@/components/dashboard/RecordDialogV2";
 import { UploadButton } from "@/components/dashboard/UploadButton";
 import { Button, SplitButton } from "@/ui";
@@ -124,7 +124,7 @@ export function HeaderV2({ onMenuClick }: { onMenuClick?: () => void }) {
         prefillCalendarEventId={prefill?.calendarEventId}
       />
 
-      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
+      <GlobalSearchV2 open={searchOpen} onOpenChange={setSearchOpen} />
     </>
   );
 }
