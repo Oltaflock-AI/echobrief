@@ -196,6 +196,7 @@ export default function Contacts() {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  aria-label="Search contacts by name, email or company"
                   placeholder="Search name, email or company"
                   className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[13px] text-eb-text outline-none placeholder:text-eb-secondary"
                 />

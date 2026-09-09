@@ -54,7 +54,8 @@ const queryClient = new QueryClient({
 
 function RouteFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <div role="status" className="min-h-screen flex items-center justify-center bg-background">
+      <span className="sr-only">Loading EchoBrief…</span>
       <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
     </div>
   );

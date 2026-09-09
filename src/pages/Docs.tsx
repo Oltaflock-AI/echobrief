@@ -944,11 +944,17 @@ export default function Docs() {
               <section className="space-y-4">
                 <SectionHeading id="history">Search &amp; history</SectionHeading>
                 <p>
-                  The <strong className="text-foreground">Recordings</strong> page lists every
-                  meeting with global search and filtering. Cancelled and failed meetings are
-                  removed from the dashboard automatically — only meetings that produced (or are
-                  about to produce) a transcript are listed. You can still delete a single meeting
-                  from its own page.
+                  The <strong className="text-foreground">Meetings</strong> dashboard lists your
+                  recordings and meetings shared with you. Filter by the last seven days,
+                  external attendees, or action items. Recent failed and cancelled meetings
+                  appear separately under Needs attention. Old Recordings links open the dashboard.
+                </p>
+                <p>
+                  Use the search button or Cmd/Ctrl+K to find meeting titles, transcript passages,
+                  action items, and contacts. Arrow keys select a result; Enter opens it.
+                  Transcript matches open at the matching timestamp, and contact matches open
+                  that contact. Action item matches cover your 100 most recent accessible summaries.
+                  If a search cannot finish, use Retry; available matches remain visible.
                 </p>
                 <Callout title="Audio is not kept forever">
                   Recorded audio is deleted after about 30 days. Transcripts, summaries, and

@@ -1,4 +1,6 @@
-import { Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { rememberPostLoginRedirect } from '@/lib/postLoginRedirect';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
 import { MfaChallenge } from '@/components/MfaChallenge';
@@ -19,7 +21,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!user) {
-    return <Navigate to="/auth" replace />;
+    return <SignInRedirect />;
   }
 
   // Signed in, but the second factor has not been given yet. Every protected
@@ -29,4 +31,15 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   return <>{children}</>;
+}
+
+/** Store the whole destination before leaving, including transcript timestamps. */
+function SignInRedirect() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    rememberPostLoginRedirect(`${location.pathname}${location.search}${location.hash}`);
+    navigate('/auth', { replace: true });
+  }, [location.pathname, location.search, location.hash, navigate]);
+  return <div role="status" className="sr-only">Opening sign in…</div>;
 }

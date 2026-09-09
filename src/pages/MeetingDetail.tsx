@@ -414,7 +414,7 @@ export default function MeetingDetail() {
 
   // All meeting-detail reads in one cached query, so revisiting a meeting
   // renders instantly from cache instead of refetching every mount.
-  const { data, isLoading: loading } = useQuery({
+  const { data, isLoading: loading, error: loadError, refetch, isFetching } = useQuery({
     queryKey: ['meeting-detail', id, user?.id],
     enabled: !!user && !!id,
     queryFn: async (): Promise<MeetingDetailData | null> => {
@@ -424,7 +424,7 @@ export default function MeetingDetail() {
         .from('meetings')
         .select('*')
         .eq('id', id!)
-        .maybeSingle();
+        .maybeSingle().throwOnError();
 
       if (!meetingData) return null;
 
@@ -641,6 +641,18 @@ export default function MeetingDetail() {
         <Skeleton className="mb-3 h-9 w-[60%]" />
         <Skeleton className="mb-6 h-4 w-72" />
         <Skeleton className="h-64 rounded-card" />
+      </AppShell>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <AppShell>
+        <div role="alert" className="rounded-card border border-eb-red-border bg-eb-red-bg p-5">
+          <h1 className="text-xl font-semibold text-eb-text">Couldn’t load this meeting</h1>
+          <p className="mt-2 text-sm text-eb-secondary">Check your connection and try again.</p>
+          <EbButton className="mt-4" onClick={() => void refetch()} disabled={isFetching}>{isFetching ? 'Retrying…' : 'Try again'}</EbButton>
+        </div>
       </AppShell>
     );
   }

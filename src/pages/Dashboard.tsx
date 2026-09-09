@@ -19,7 +19,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2, ChevronRight, Clock, Mic, Sparkles, X,
@@ -33,7 +33,7 @@ import { GoogleReconnectBanner } from "@/components/dashboard/GoogleReconnectBan
 import { ListSkeleton } from "@/components/dashboard/ListSkeleton";
 import { Meeting, asMeetings } from "@/types/meeting";
 import {
-  Avatar, Badge, Card, CardHeader, Chip, DarkPanel, Divider, PageHeader, StatTile, TwoColumn,
+  Avatar, Badge, Button, Card, CardHeader, Chip, DarkPanel, Divider, PageHeader, StatTile, TwoColumn,
 } from "@/ui";
 import { cn } from "@/lib/utils";
 import {
@@ -55,7 +55,7 @@ type FilterKey = "all" | "week" | "external" | "actions";
 
 const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: "all", label: "All" },
-  { key: "week", label: "This week" },
+  { key: "week", label: "Last 7 days" },
   { key: "external", label: "External" },
   { key: "actions", label: "With action items" },
 ];
@@ -107,7 +107,6 @@ function hasExternal(attendees: Attendee[], fallbackEmail?: string): boolean {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -133,7 +132,7 @@ export default function Dashboard() {
     if (profile && !profile.onboarding_completed) navigate("/onboarding");
   }, [profile, navigate]);
 
-  const { data: meetings = [], isLoading: loading, error } = useQuery({
+  const { data: meetings = [], isLoading: loading, error, refetch, isFetching } = useQuery({
     queryKey: ["meetings", user?.id],
     enabled: !!user,
     queryFn: async () => {
@@ -229,15 +228,19 @@ export default function Dashboard() {
         (payload) => {
           queryClient.setQueryData<Meeting[]>(["meetings", user.id], (prev = []) => {
             const next = (() => {
-              if (payload.eventType === "INSERT") return [payload.new as Meeting, ...prev];
-              if (payload.eventType === "UPDATE")
-                return prev.map((m) => (m.id === (payload.new as Meeting).id ? (payload.new as Meeting) : m));
+              if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+                const changed = payload.new as Meeting;
+                return [changed, ...prev.filter((m) => m.id !== changed.id)]
+                  .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+              }
               if (payload.eventType === "DELETE") return prev.filter((m) => m.id !== (payload.old as Meeting).id);
               return prev;
             })();
             return next.filter((m) => !HIDDEN_STATUSES.has(m.status));
           });
           queryClient.invalidateQueries({ queryKey: ["meetings-attention", user.id] });
+          queryClient.invalidateQueries({ queryKey: ["meeting-insight-flags-v2", user.id] });
+          queryClient.invalidateQueries({ queryKey: ["due-this-week", user.id] });
         },
       )
       .subscribe();
@@ -253,8 +256,7 @@ export default function Dashboard() {
     enabled: !!user,
     queryFn: async () => {
       const now = new Date();
-      const endOfDay = new Date(now);
-      endOfDay.setHours(23, 59, 59, 999);
+      const endOfDay = new Date(`${formatIST(now, "yyyy-MM-dd")}T23:59:59.999+05:30`);
       const { data } = await supabase
         .from("calendar_events")
         .select("event_id, title, start_time, end_time, meeting_link, attendees")
@@ -351,7 +353,7 @@ export default function Dashboard() {
     return {
       totalMeetings: ownMeetings.length,
       totalDuration,
-      summarized: Object.keys(insights).length,
+      summarized: ownMeetings.filter((m) => insights[m.id]?.summarized).length,
       timeSavedMin: Math.round((totalDuration / 60) * 0.25),
     };
   }, [ownMeetings, insights]);
@@ -378,22 +380,28 @@ export default function Dashboard() {
 
       {fetchError && (
         <Card className="mb-5 border-eb-red-border bg-eb-red-bg">
-          <p className="font-dmsans text-[13px] text-eb-red">{fetchError}</p>
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-dmsans text-sm font-semibold text-eb-red">Couldn’t load your meetings</p>
+              <p className="mt-1 text-[13px] text-eb-secondary">Check your connection and try again.</p>
+            </div>
+            <Button onClick={() => void refetch()} disabled={isFetching}>{isFetching ? "Retrying…" : "Try again"}</Button>
+          </div>
         </Card>
       )}
 
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile label="Meetings" value={String(stats.totalMeetings)} icon={<Mic size={15} strokeWidth={1.75} />} />
-        <StatTile label="Recorded" value={formatTotalHours(stats.totalDuration)} icon={<Clock size={15} strokeWidth={1.75} />} />
+        <StatTile label="Meetings" value={loading || fetchError ? "—" : String(stats.totalMeetings)} icon={<Mic size={15} strokeWidth={1.75} />} />
+        <StatTile label="Recorded" value={loading || fetchError ? "—" : formatTotalHours(stats.totalDuration)} icon={<Clock size={15} strokeWidth={1.75} />} />
         <StatTile
           label="Summarized"
-          value={String(stats.summarized)}
-          delta={stats.summarized === stats.totalMeetings ? "all caught up" : undefined}
+          value={loading || fetchError ? "—" : String(stats.summarized)}
+          delta={stats.totalMeetings > 0 && stats.summarized === stats.totalMeetings ? "all caught up" : undefined}
           icon={<CheckCircle2 size={15} strokeWidth={1.75} />}
         />
         <StatTile
           label="Time saved"
-          value={`~${formatTotalHours(stats.timeSavedMin * 60)}`}
+          value={loading || fetchError ? "—" : `~${formatTotalHours(stats.timeSavedMin * 60)}`}
           delta="vs. manual notes"
           icon={<Sparkles size={15} strokeWidth={1.75} />}
           accent
@@ -459,7 +467,7 @@ export default function Dashboard() {
             )}
 
             <Card padded={false}>
-              <CardHeader title="Due this week" count={dueThisWeek.length || undefined} />
+              <CardHeader title="Due soon & overdue" count={dueThisWeek.length || undefined} />
               {dueThisWeek.length === 0 ? (
                 <p className="px-[18px] py-4 font-dmsans text-[12.5px] text-eb-secondary">
                   Nothing due in the next seven days.
@@ -474,7 +482,7 @@ export default function Dashboard() {
                     >
                       <span className="flex-1 font-dmsans text-[13px] text-eb-text">{item.task}</span>
                       <span className="flex-none font-mono text-[11.5px] text-eb-secondary">
-                        {formatIST(new Date(item.due), "EEE")}
+                        {item.due < formatIST(new Date(), "yyyy-MM-dd") ? "Overdue" : formatIST(new Date(item.due), "MMM d")}
                       </span>
                     </Link>
                   ))}
@@ -571,12 +579,19 @@ export default function Dashboard() {
               <div className="p-4">
                 <ListSkeleton />
               </div>
+            ) : fetchError && meetings.length === 0 ? (
+              <p className="px-[18px] py-8 text-center text-[13px] text-eb-secondary">Your meetings will appear here when the connection is restored.</p>
             ) : visible.length === 0 ? (
-              <p className="px-[18px] py-8 text-center font-dmsans text-[13px] text-eb-secondary">
-                {meetings.length === 0
-                  ? "No meetings yet. Hit Record and paste a meeting link to get started."
-                  : "No meetings match that filter."}
-              </p>
+              <div className="flex flex-col items-center px-6 py-10 text-center">
+                <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-pill bg-eb-accent-soft text-eb-accent"><Mic size={22} strokeWidth={1.75} /></span>
+                <h2 className="text-base font-semibold text-eb-text">{meetings.length === 0 ? "Your next meeting, already briefed" : "No meetings match this filter"}</h2>
+                <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-eb-secondary">
+                  {meetings.length === 0 ? "Use Record above to add a Google Meet, Zoom or Teams link, or upload an existing recording. Your summary and action items will appear here." : "Try another filter to find the meeting you’re looking for."}
+                </p>
+                <div className="mt-5">
+                  {meetings.length === 0 ? <Link to="/calendar" className="text-sm font-medium text-eb-accent-text hover:underline">View your calendar →</Link> : <Button onClick={() => setFilter("all")}>Show all meetings</Button>}
+                </div>
+              </div>
             ) : (
               visible.map((meeting) => {
                 const status = statusTone(meeting.status || "scheduled");
@@ -599,6 +614,7 @@ export default function Dashboard() {
                       <div className="truncate font-dmsans text-[12.5px] text-eb-secondary">
                         {attendees.length > 0 ? attendees.slice(0, 3).join(", ") : sourceLabel(meeting.source)}
                       </div>
+                      <div className="mt-1 truncate text-[11.5px] text-eb-secondary sm:hidden">{shared && "Shared · "}{formatIST(meeting.start_time, "MMM d, h:mm a")}</div>
                     </div>
                     <span className="hidden flex-none font-dmsans text-[12.5px] text-eb-secondary sm:block">
                       {formatIST(new Date(meeting.start_time), "MMM d, h:mm a")}
@@ -606,7 +622,7 @@ export default function Dashboard() {
                     <span className="hidden w-14 flex-none text-right font-dmsans text-[12.5px] text-eb-secondary md:block">
                       {meeting.duration_seconds ? `${Math.floor(meeting.duration_seconds / 60)} min` : ""}
                     </span>
-                    {shared && <Badge tone="neutral">Shared</Badge>}
+                    {shared && <span className="hidden sm:inline-flex"><Badge tone="neutral">Shared</Badge></span>}
                     <Badge tone={status.tone} dot={status.tone !== "neutral"}>
                       {summarized ? "Summarized" : status.label}
                     </Badge>

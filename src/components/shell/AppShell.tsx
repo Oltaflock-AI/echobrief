@@ -44,6 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             A flat pb-24 was 6px short on a device with a safe-area inset. */}
         <main
           id="main-content"
+          tabIndex={-1}
           key={location.pathname}
           className="px-5 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 md:px-8 lg:pb-8"
         >

@@ -18,8 +18,9 @@ export function Chip({ active, selected, children, onClick, size = "md", icon, c
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={!!(active || selected)}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-pill border font-dmsans font-medium whitespace-nowrap",
+        "tap-44 inline-flex items-center gap-1.5 rounded-pill border font-dmsans font-medium whitespace-nowrap",
         size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-[13px] text-[13px]",
         active
           ? "border-eb-sidebar bg-eb-sidebar text-white"
@@ -56,7 +57,7 @@ export function ChipGroup<T extends string>({
   className?: string;
 }) {
   return (
-    <div role="tablist" aria-label={ariaLabel} className={cn("flex flex-wrap gap-1.5", className)}>
+    <div role="group" aria-label={ariaLabel} className={cn("flex flex-wrap gap-1.5", className)}>
       {options.map((o) => {
         const opt = typeof o === "string" ? { value: o, label: o as React.ReactNode, icon: undefined } : o;
         const isActive = opt.value === value;
@@ -68,9 +69,7 @@ export function ChipGroup<T extends string>({
             icon={opt.icon}
             onClick={() => onChange(opt.value)}
           >
-            <span role="tab" aria-selected={isActive}>
-              {opt.label}
-            </span>
+            {opt.label}
           </Chip>
         );
       })}

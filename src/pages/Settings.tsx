@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Bot, CreditCard, Code2, Loader2, Lock, Plug, User, type LucideIcon,
 } from "lucide-react";
@@ -45,12 +46,16 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: LucideIcon }> = [
 export default function Settings() {
   const { user } = useAuth();
 
-  const getInitialTab = (): SettingsTab => {
-    const tabParam = new URLSearchParams(window.location.search).get("tab");
-    return TABS.some((t) => t.id === tabParam) ? (tabParam as SettingsTab) : "account";
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const activeTab: SettingsTab = TABS.some((t) => t.id === tabParam) ? tabParam as SettingsTab : "account";
+  const setActiveTab = (tab: SettingsTab) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("tab", tab);
+      return next;
+    });
   };
-
-  const [activeTab, setActiveTab] = useState<SettingsTab>(getInitialTab());
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -132,8 +137,7 @@ export default function Settings() {
                 <button
                   key={tab.id}
                   type="button"
-                  role="tab"
-                  aria-selected={active}
+                  aria-pressed={active}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
                     "tap-44 inline-flex h-9 flex-none items-center gap-2.5 rounded-pill border px-3.5",

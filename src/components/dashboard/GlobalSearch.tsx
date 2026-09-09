@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckSquare, Mic, Quote, Search, Sparkles, User } from 'lucide-react';
+import { CheckSquare, Mic, Quote, Search, Sparkles, User, X } from 'lucide-react';
 import { Dialog as ShadDialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -84,6 +84,8 @@ export function GlobalSearch({
   const [scope, setScope] = useState<Scope>('all');
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [cursor, setCursor] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -97,12 +99,18 @@ export function GlobalSearch({
 
   useEffect(() => {
     const term = query.trim();
-    if (!term || !user) {
+    if (!open || !term || !user) {
+      setLoading(false);
+      setSearchError(false);
       setRows([]);
       return;
     }
     let cancelled = false;
-    const like = `%${term}%`;
+    setRows([]);
+    setCursor(0);
+    setLoading(true);
+    setSearchError(false);
+    const like = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
     const lower = term.toLowerCase();
 
     const run = async () => {
@@ -118,7 +126,7 @@ export function GlobalSearch({
             .select('id, title, start_time, status')
             .ilike('title', like)
             .order('start_time', { ascending: false })
-            .limit(5);
+            .limit(5).throwOnError();
           (data ?? []).forEach((m) => {
             found.push({
               id: `meeting-${m.id}`,
@@ -136,7 +144,7 @@ export function GlobalSearch({
             .from('transcripts')
             .select('id, content, speakers, meeting_id, meetings!inner(title, user_id)')
             .ilike('content', like)
-            .limit(4);
+            .limit(4).throwOnError();
           (data ?? []).forEach((t: Record<string, unknown>) => {
             const meeting = t.meetings as { title?: string };
             // Prefer the segment carrying the term: it names who said it and
@@ -168,7 +176,8 @@ export function GlobalSearch({
           const { data } = await supabase
             .from('meeting_insights')
             .select('id, action_items, meeting_id, meetings!inner(title, user_id)')
-            .limit(20);
+            .order('created_at', { ascending: false })
+            .limit(100).throwOnError();
           (data ?? []).forEach((row: Record<string, unknown>) => {
             const meeting = row.meetings as { title?: string };
             const items = Array.isArray(row.action_items) ? row.action_items : [];
@@ -190,12 +199,17 @@ export function GlobalSearch({
         })());
 
         if (scope === 'all' || scope === 'contacts') jobs.push((async () => {
-          const { data } = await supabase
-            .from('contacts')
-            .select('id, name, email, company, meeting_count')
-            .eq('user_id', user.id)
-            .or(`name.ilike.${like},email.ilike.${like}`)
-            .limit(4);
+          // Separate filters keep punctuation in a name out of PostgREST's
+          // raw `or` grammar. Deduplicate contacts that match both fields.
+          const matches = await Promise.all(['name', 'email'].map((field) =>
+            supabase.from('contacts')
+              .select('id, name, email, company, meeting_count')
+              .eq('user_id', user.id)
+              .ilike(field, like)
+              .order('name')
+              .limit(4).throwOnError(),
+          ));
+          const data = [...new Map(matches.flatMap((m) => m.data ?? []).map((c) => [c.id, c])).values()].slice(0, 4);
           (data ?? []).forEach((c) => {
             found.push({
               id: `contact-${c.id}`,
@@ -204,15 +218,17 @@ export function GlobalSearch({
               subtitle: [c.company, c.meeting_count ? `${c.meeting_count} meetings` : null]
                 .filter(Boolean)
                 .join(' · '),
-              to: '/contacts',
+              to: `/contacts?c=${encodeURIComponent(c.id)}`,
             });
           });
         })());
 
-        await Promise.all(jobs);
+        const results = await Promise.allSettled(jobs);
+        if (!cancelled) setSearchError(results.some((result) => result.status === 'rejected'));
       } finally {
         if (!cancelled) {
-          setRows(found);
+          const order: Group[] = ['meetings', 'transcripts', 'actions', 'contacts'];
+          setRows(found.sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group)));
           setCursor(0);
           setLoading(false);
         }
@@ -224,7 +240,7 @@ export function GlobalSearch({
       cancelled = true;
       clearTimeout(debounce);
     };
-  }, [query, user, scope]);
+  }, [open, query, user, scope, attempt]);
 
   const askTo = `/chat?q=${encodeURIComponent(query.trim())}`;
 
@@ -242,7 +258,7 @@ export function GlobalSearch({
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setCursor((c) => Math.min(c + 1, navigable.length - 1));
+      setCursor((c) => Math.max(0, Math.min(c + 1, navigable.length - 1)));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setCursor((c) => Math.max(c - 1, 0));
@@ -271,7 +287,7 @@ export function GlobalSearch({
     <ShadDialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         style={{ maxWidth: 640 }}
-        className="top-[120px] translate-y-0 gap-0 overflow-hidden rounded-[18px] border-eb-border bg-eb-card p-0 shadow-eb-card [&>button:last-child]:hidden"
+        className="flex flex-col top-[max(1rem,env(safe-area-inset-top))] max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] translate-y-0 sm:top-[100px] gap-0 overflow-hidden rounded-[18px] border-eb-border bg-eb-card p-0 shadow-eb-card [&>button:last-child]:hidden"
       >
         <DialogTitle className="sr-only">Search</DialogTitle>
         <DialogDescription className="sr-only">
@@ -282,16 +298,24 @@ export function GlobalSearch({
           <Search size={17} strokeWidth={1.75} className="shrink-0 text-eb-accent" />
           <input
             autoFocus
+            aria-label="Search meetings, transcripts, action items and contacts"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={!!query.trim()}
+            aria-controls="global-search-results"
+            aria-activedescendant={navigable[cursor] ? `search-${navigable[cursor].id}` : undefined}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Search meetings, transcripts, action items…"
             className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[15px] text-eb-text outline-none placeholder:text-eb-secondary"
           />
-          <Kbd>Esc</Kbd>
+          <button type="button" onClick={() => onOpenChange(false)} aria-label="Close search" className="tap-44 flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-eb-secondary hover:bg-eb-row-hover">
+            <X size={18} />
+          </button>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-b border-eb-divider px-4 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-eb-divider px-4 py-2.5">
           <ChipGroup<Scope>
             ariaLabel="Search scope"
             size="sm"
@@ -300,13 +324,22 @@ export function GlobalSearch({
             onChange={setScope}
           />
           {query.trim() && (
-            <span className="shrink-0 font-dmsans text-[12.5px] text-eb-secondary">
+            <span role="status" className="shrink-0 font-dmsans text-[12.5px] text-eb-secondary">
               {loading ? 'Searching…' : `${rows.length} result${rows.length === 1 ? '' : 's'}`}
             </span>
           )}
         </div>
 
-        <div ref={listRef} className="max-h-[46vh] overflow-y-auto px-2 py-2">
+        {searchError && (
+          <div role="alert" className="flex items-center justify-between gap-3 border-b border-eb-divider px-4 py-3 text-[13px] text-eb-red">
+            <span>Some results couldn’t load. Try searching again.</span>
+            <button type="button" className="tap-44 shrink-0 font-semibold underline" onClick={() => setAttempt((n) => n + 1)}>Retry</button>
+          </div>
+        )}
+        {query.trim() && (scope === 'all' || scope === 'actions') && (
+          <p className="border-b border-eb-divider px-4 py-2 text-[11.5px] text-eb-secondary">Action item matches cover your 100 most recent accessible summaries.</p>
+        )}
+        <div id="global-search-results" role="listbox" aria-label="Search results" aria-busy={loading} ref={listRef} className="min-h-0 max-h-[46vh] overflow-y-auto px-2 py-2">
           {!query.trim() ? (
             <p className="px-2 py-8 text-center font-dmsans text-[13px] text-eb-secondary">
               Search across every meeting — titles, what was said, and what was promised.
@@ -325,6 +358,10 @@ export function GlobalSearch({
                     return (
                       <button
                         key={row.id}
+                        id={`search-${row.id}`}
+                        role="option"
+                        aria-selected={index === cursor}
+                        tabIndex={-1}
                         type="button"
                         data-active={index === cursor}
                         onMouseEnter={() => setCursor(index)}
@@ -348,7 +385,7 @@ export function GlobalSearch({
                           )}
                         </span>
                         {row.meta && (
-                          <span className="shrink-0 font-mono text-[11.5px] text-eb-secondary">{row.meta}</span>
+                          <span className="hidden shrink-0 font-mono text-[11.5px] text-eb-secondary sm:inline">{row.meta}</span>
                         )}
                         {index === cursor && <Kbd>↵</Kbd>}
                       </button>
@@ -357,7 +394,7 @@ export function GlobalSearch({
                 </div>
               ))}
 
-              {!loading && rows.length === 0 && (
+              {!loading && !searchError && rows.length === 0 && (
                 <p className="px-3 pb-1 pt-3 font-dmsans text-[13px] text-eb-secondary">
                   Nothing matched “{query.trim()}”.
                 </p>
@@ -369,6 +406,10 @@ export function GlobalSearch({
                 </div>
                 <button
                   type="button"
+                  id="search-ask"
+                  role="option"
+                  aria-selected={rows.length === cursor}
+                  tabIndex={-1}
                   data-active={rows.length === cursor}
                   onMouseEnter={() => setCursor(rows.length)}
                   onClick={() => go(askTo)}

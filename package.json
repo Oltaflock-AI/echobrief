@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run brand:check && vite build",
+    "build": "npm run brand:check && npm run typecheck && vite build",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "brand:check": "node scripts/brand-check.mjs",

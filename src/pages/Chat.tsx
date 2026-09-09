@@ -393,6 +393,7 @@ export default function Chat() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              aria-label="Ask a question about your meetings"
               placeholder={turns.length ? 'Ask a follow-up…' : 'Ask anything about your meetings…'}
               className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[13.5px] text-eb-text outline-none placeholder:text-eb-secondary"
             />

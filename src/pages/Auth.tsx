@@ -238,9 +238,9 @@ export default function Auth() {
           <div className="font-dmsans text-[11.5px] font-semibold uppercase tracking-[.12em] text-eb-accent">
             Built for India
           </div>
-          <h1 className="mt-3 font-outfit text-[40px] font-semibold leading-[1.1] tracking-[-.025em] text-eb-text">
+          <h2 className="mt-3 font-outfit text-[40px] font-semibold leading-[1.1] tracking-[-.025em] text-eb-text">
             Meeting summaries that actually make sense.
-          </h1>
+          </h2>
           <p className="mt-4 max-w-[42ch] font-dmsans text-[14.5px] leading-[1.65] text-eb-secondary">
             Auto-join your calls, transcribe accurately in 22 Indian languages, and get a
             summary you can act on — in your inbox before you're back at your desk.
@@ -298,9 +298,9 @@ export default function Auth() {
 
           {emailSent ? (
             <div>
-              <h2 className="m-0 font-outfit text-[26px] font-semibold leading-[1.15] tracking-[-.02em] text-eb-text">
+              <h1 className="m-0 font-outfit text-[26px] font-semibold leading-[1.15] tracking-[-.02em] text-eb-text">
                 Check your email
-              </h2>
+              </h1>
               <p className="mt-3 font-dmsans text-[14px] leading-[1.6] text-eb-secondary">
                 We sent a verification link to{' '}
                 <span className="font-medium text-eb-text">{email}</span>. Click it to
@@ -320,9 +320,9 @@ export default function Auth() {
             </div>
           ) : (
             <>
-              <h2 className="m-0 font-outfit text-[27px] font-semibold leading-[1.15] tracking-[-.02em] text-eb-text">
+              <h1 className="m-0 font-outfit text-[27px] font-semibold leading-[1.15] tracking-[-.02em] text-eb-text">
                 {title}
-              </h2>
+              </h1>
               <p className="mt-2 font-dmsans text-[14px] text-eb-secondary">{subtitle}</p>
 
               {isResetPassword ? (

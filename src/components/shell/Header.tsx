@@ -6,7 +6,7 @@ import { Loader2, Menu, Mic, Search, Upload } from "lucide-react";
 import { GlobalSearch } from "@/components/dashboard/GlobalSearch";
 import { RecordDialog } from "@/components/dashboard/RecordDialog";
 import { UploadButton } from "@/components/dashboard/UploadButton";
-import { Button, SplitButton } from "@/ui";
+import { Button } from "@/ui";
 
 /**
  * Routes whose primary action is Record. Settings has no primary action, and
@@ -105,13 +105,13 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
                 />
               )}
             />
-            <SplitButton
+            <Button
+              variant="primary"
               icon={<Mic size={15} strokeWidth={2} />}
-              onMain={() => setRecordOpen(true)}
-              onMenu={() => setRecordOpen(true)}
+              onClick={() => setRecordOpen(true)}
             >
               Record
-            </SplitButton>
+            </Button>
           </div>
         )}
       </header>

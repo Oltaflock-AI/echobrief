@@ -21,6 +21,7 @@ Start with [Architecture](architecture.md) if you are new to the codebase.
 | Doc | Read it when you need to… |
 |---|---|
 | [Contributing](contributing.md) | Set up locally, and learn the rules that are actually enforced |
+| [Experience audit](audits/2026-09-09/README.md) | Review verified UI fixes, screenshots, test coverage and the remaining priorities |
 | [Testing](testing.md) | Understand the four test tiers and the eval suite, and which one catches what |
 | [Security](security.md) | Add a function, touch auth, or reason about tenant isolation |
 | [Operations](operations.md) | Deploy, change a cron, respond to an alert, or debug a stuck meeting |

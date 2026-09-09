@@ -25,6 +25,7 @@ import { ListSkeleton } from '@/components/dashboard/ListSkeleton';
 import {
   Avatar,
   Badge,
+  Button,
   Card,
   Chip,
   PageHeader,
@@ -119,6 +120,7 @@ export default function ActionItems() {
   const { user } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -131,6 +133,8 @@ export default function ActionItems() {
 
   const fetchItems = useCallback(async () => {
     if (!user) return;
+    setLoading(true);
+    setLoadError(false);
     try {
       const [{ data: meetings }, { data: completions }] = await Promise.all([
         supabase
@@ -139,11 +143,11 @@ export default function ActionItems() {
           // user observes (allowlisted reviewer, on the invite), whose action
           // items are as much theirs to track as their own.
           .select('id, title, start_time, user_id, meeting_insights (id, action_items)')
-          .order('start_time', { ascending: false }),
+          .order('start_time', { ascending: false }).throwOnError(),
         supabase
           .from('action_item_completions')
           .select('meeting_id, action_item_index, completed')
-          .eq('user_id', user.id),
+          .eq('user_id', user.id).throwOnError(),
       ]);
 
       setCompleted(
@@ -187,6 +191,7 @@ export default function ActionItems() {
       setGroups(next);
     } catch (error) {
       console.error('Error fetching action items:', error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -376,7 +381,7 @@ export default function ActionItems() {
 
         <div className="flex flex-wrap gap-2">
           <Select value={meetingFilter} onValueChange={setMeetingFilter}>
-            <SelectTrigger className="h-8 w-[180px] rounded-pill border-eb-border bg-eb-card font-dmsans text-[12.5px]">
+            <SelectTrigger aria-label="Filter by meeting" className="h-8 w-[180px] rounded-pill border-eb-border bg-eb-card font-dmsans text-[12.5px]">
               <SelectValue placeholder="All meetings" />
             </SelectTrigger>
             <SelectContent>
@@ -390,7 +395,7 @@ export default function ActionItems() {
           </Select>
 
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-            <SelectTrigger className="h-8 w-[150px] rounded-pill border-eb-border bg-eb-card font-dmsans text-[12.5px]">
+            <SelectTrigger aria-label="Filter by owner" className="h-8 w-[150px] rounded-pill border-eb-border bg-eb-card font-dmsans text-[12.5px]">
               <SelectValue placeholder="Anyone" />
             </SelectTrigger>
             <SelectContent>
@@ -404,7 +409,7 @@ export default function ActionItems() {
           </Select>
 
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-            <SelectTrigger className="h-8 w-[160px] rounded-pill border-eb-border bg-eb-card font-dmsans text-[12.5px]">
+            <SelectTrigger aria-label="Sort action items" className="h-8 w-[160px] rounded-pill border-eb-border bg-eb-card font-dmsans text-[12.5px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -418,6 +423,16 @@ export default function ActionItems() {
 
       {loading ? (
         <ListSkeleton />
+      ) : loadError ? (
+        <Card className="border-eb-red-border bg-eb-red-bg">
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-eb-red">Couldn’t load your action items</p>
+              <p className="mt-1 text-[13px] text-eb-secondary">Check your connection and try again. Your saved tasks haven’t changed.</p>
+            </div>
+            <Button onClick={() => void fetchItems()}>Try again</Button>
+          </div>
+        </Card>
       ) : totalShown === 0 ? (
         <Card className="text-center">
           <p className="font-dmsans text-sm font-medium text-eb-text">
@@ -428,6 +443,7 @@ export default function ActionItems() {
               ? 'Items appear here once a recorded meeting has been summarised.'
               : 'Try All, or clear the meeting and owner filters.'}
           </p>
+          {groups.length > 0 && <Button className="mt-4" onClick={() => { setStatus('all'); setMeetingFilter('all'); setOwnerFilter('all'); }}>Clear filters</Button>}
         </Card>
       ) : (
         <div className="flex flex-col gap-3">
@@ -447,6 +463,7 @@ export default function ActionItems() {
                         return s;
                       })
                     }
+                    aria-expanded={!isCollapsed}
                     aria-label={isCollapsed ? `Expand ${group.title}` : `Collapse ${group.title}`}
                     className="flex-none text-eb-muted"
                   >
