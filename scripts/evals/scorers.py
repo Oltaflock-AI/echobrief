@@ -290,6 +290,137 @@ def numbers_recall(case: dict[str, Any], api_key: str) -> dict[str, Any]:
                    f"{sum(bool(c) for c in covered)}/{len(gold)} gold numbers present")
 
 
-DETERMINISTIC = [schema_validity, english_output, stitch_integrity, speaker_attribution, entity_spelling, boundary_exclusion]
+
+# Mirrors supabase/functions/_shared/anchor.ts. Kept as an independent
+# implementation on purpose: an eval that imported the code under test would
+# agree with it by construction and prove nothing.
+_STOP = set(
+    "a an and are as at be but by can did do does for from had has have i if in is it its "
+    "just like me my not of on or our so than that the their them then there they this to "
+    "too us was we were what when which who will with you your yeah okay right".split()
+)
+
+
+def _norm(value: Any) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", str(value or "").lower())).strip()
+
+
+def _stem(token: str) -> str:
+    return re.sub(r"(ings|ing|ies|ied|ed|es|s)$", "", token) if len(token) > 4 else token
+
+
+def _content_tokens(text: str) -> list[str]:
+    return [t for t in (_stem(w) for w in text.split() if len(w) > 2 and w not in _STOP) if len(t) > 2]
+
+
+def _locate_quote(quote: str, segments: list[dict[str, Any]]) -> float | None:
+    """Where this verbatim quote was actually said, or None if not locatable."""
+    needle = _norm(quote)
+    if len(needle) < 16 or len(needle.split()) < 4:
+        return None
+    head = " ".join(needle.split()[:12])
+
+    rows = [(s.get("start"), _norm(s.get("text"))) for s in segments]
+    rows = [(float(st), tx) for st, tx in rows if isinstance(st, (int, float)) and tx]
+    if not rows:
+        return None
+
+    for start, text in rows:
+        if head in text:
+            return start
+
+    # The quote may span consecutive rows: search the joined transcript and map
+    # the hit back to the row it starts in.
+    joined, spans, cursor = "", [], 0
+    for start, text in rows:
+        begin = cursor + (1 if cursor else 0)
+        joined += (" " if cursor else "") + text
+        cursor = len(joined)
+        spans.append((begin, cursor, start))
+    at = joined.find(head)
+    if at >= 0:
+        for begin, end, start in spans:
+            if begin <= at < end:
+                return start
+
+    wanted = _content_tokens(needle)
+    if len(wanted) < 3:
+        return None
+    best_start, best_score = None, 0.0
+    for start, text in rows:
+        tokens = set(_content_tokens(text))
+        score = sum(1 for t in wanted if t in tokens) / len(wanted)
+        if score > best_score:
+            best_score, best_start = score, start
+    return best_start if best_score >= 0.7 else None
+
+
+_QUOTED_FACT_KEYS = (
+    "numbers",
+    "objections",
+    "explicit_asks",
+    "commitments",
+    "decisions",
+    "pain_points",
+    "buying_signals",
+    "notable_quotes",
+)
+
+# One segment either side of the true position is a boundary artefact, not a
+# fabricated timestamp.
+TIMESTAMP_TOLERANCE_SECONDS = 45
+
+
+def timestamp_accuracy(case: dict[str, Any]) -> dict[str, Any]:
+    """Every quoted fact must be stamped where it was actually said.
+
+    The failure this exists to catch, seen in prod on 2026-09-09: extraction
+    asked the model for a `ts` per quote and on long meetings it invented one —
+    content from minute 88 of a 90-minute call came back as `ts: 13`. Every
+    other eval passed while that shipped, because none of them looked at time.
+    The quote is verbatim, so the true timestamp is recoverable from the
+    transcript, and any scorer that cannot recover it says nothing (skip).
+    """
+    facts = ((case.get("insights") or {}).get("facts") or {})
+    segments = case.get("speakers") or []
+    if not facts or not segments:
+        return _result("timestamp_accuracy", True, 1.0, "no facts/segments to check (skipped)")
+
+    checked, wrong, worst = 0, [], 0.0
+    for key in _QUOTED_FACT_KEYS:
+        for row in facts.get(key) or []:
+            if not isinstance(row, dict):
+                continue
+            actual = _locate_quote(row.get("quote") or "", segments)
+            if actual is None:
+                continue
+            checked += 1
+            drift = abs(float(row.get("ts") or 0) - actual)
+            if drift > TIMESTAMP_TOLERANCE_SECONDS:
+                wrong.append(f"{key} ts={row.get('ts')} said at {actual:.0f}s")
+                worst = max(worst, drift)
+
+    if checked < 3:
+        return _result("timestamp_accuracy", True, 1.0, f"only {checked} locatable quote(s) (skipped)")
+
+    accuracy = 1 - len(wrong) / checked
+    ok = accuracy >= 0.8
+    detail = (
+        f"{len(wrong)}/{checked} misplaced (worst {worst:.0f}s off): " + "; ".join(wrong[:3])
+        if wrong
+        else f"{checked}/{checked} quoted facts stamped where they were said"
+    )
+    return _result("timestamp_accuracy", ok, accuracy, detail)
+
+
+DETERMINISTIC = [
+    schema_validity,
+    english_output,
+    stitch_integrity,
+    speaker_attribution,
+    entity_spelling,
+    boundary_exclusion,
+    timestamp_accuracy,
+]
 LLM_JUDGED = [action_item_recall, action_item_precision, summary_faithfulness, decision_accuracy, numbers_recall]
 

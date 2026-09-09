@@ -7,7 +7,7 @@ import {
   formatClock,
   formatLabeledTranscript,
   normalizeInsights,
-  snapTimestamp,
+  coerceTimestamp,
   type SpeakerSegment,
 } from "../_shared/insights.ts";
 
@@ -30,11 +30,14 @@ Deno.test("labeled transcript carries the real segment clock", () => {
   assertEquals(formatLabeledTranscript([], "plain"), "plain");
 });
 
-Deno.test("snapTimestamp lands on the nearest real segment start", () => {
-  assertEquals(snapTimestamp(10, segs), 8);
-  assertEquals(snapTimestamp(50, segs), 53);
-  assertEquals(snapTimestamp(-1, segs), 8);
-  assertEquals(snapTimestamp("nope", segs), 8);
+Deno.test("coerceTimestamp passes an anchored timestamp through and floors junk", () => {
+  // It must NOT move the value: facts.ts already anchored it onto the segment
+  // its quote came from, and rounding it onto a "nearby" segment is what made
+  // an invented timestamp look measured.
+  assertEquals(coerceTimestamp(3386), 3386);
+  assertEquals(coerceTimestamp(10.6), 11);
+  assertEquals(coerceTimestamp(-1), 0);
+  assertEquals(coerceTimestamp("nope"), 0);
 });
 
 Deno.test("normalizeInsights drops empty rows and guessed talk-time", () => {
@@ -73,12 +76,14 @@ Deno.test("normalizeInsights drops empty rows and guessed talk-time", () => {
   assertEquals(out.summary_short, "Ship Friday.");
   assertEquals(out.key_points, ["Ship Friday"]);
   assertEquals((out.action_items as unknown[]).length, 2);
-  assertEquals((out.action_items as { source_timestamp: number }[])[0].source_timestamp, 8);
+  // Carried through, not snapped onto the nearest segment: the value the
+  // pipeline hands over is already anchored to a real utterance.
+  assertEquals((out.action_items as { source_timestamp: number }[])[0].source_timestamp, 10);
   assertEquals((out.action_items as { due_date: string }[])[0].due_date, "Friday");
   assertEquals(out.decisions, ["Ship Friday (Asha) — demo is locked"]);
   assertEquals(out.open_questions, []);
   assertEquals(out.strategic_insights, []);
-  assertEquals((out.timeline_entries as { timestamp: number }[])[0].timestamp, 53);
+  assertEquals((out.timeline_entries as { timestamp: number }[])[0].timestamp, 50);
   assertEquals(out.meeting_metrics, { sentiment_score: 0.4 });
 });
 

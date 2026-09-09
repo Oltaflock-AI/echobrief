@@ -9,9 +9,11 @@ Modes:
     python3 scripts/evals/run_evals.py --meeting-id <id>  # evaluate a live prod meeting from the DB
     python3 scripts/evals/run_evals.py --snapshot <id>    # save a prod meeting into dataset/ as a new case
 
-Evals (8):
-    deterministic: schema_validity, english_output, stitch_integrity, speaker_attribution
-    LLM-judge:     action_item_recall, action_item_precision, summary_faithfulness, decision_accuracy
+Evals (12):
+    deterministic: schema_validity, english_output, stitch_integrity, speaker_attribution,
+                   entity_spelling, boundary_exclusion, timestamp_accuracy
+    LLM-judge:     action_item_recall, action_item_precision, summary_faithfulness,
+                   decision_accuracy, numbers_recall
 
 Each dataset case may declare expected failures (judge calibration):
     "expect": {"action_item_precision": "fail"} → suite passes only when that eval FAILS.
@@ -141,7 +143,7 @@ def main() -> int:
             print("No dataset cases found.")
             return 1
 
-    print(f"Running {len(cases)} case(s) x up to 11 evals")
+    print(f"Running {len(cases)} case(s) x up to 12 evals")
     print("=" * 88)
     all_mismatches: list[str] = []
     for case in cases:

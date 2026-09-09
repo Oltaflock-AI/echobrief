@@ -20,7 +20,7 @@ python3 scripts/evals/run_evals.py --snapshot <id>    # pull a prod meeting into
 Exit code 0 = pass, 1 = regression. Needs `.env` (OPENAI_API_KEY, and Supabase
 keys for the live modes).
 
-## The 11 evals
+## The 12 evals
 
 Deterministic (free):
 1. **schema_validity** — insights have non-empty summary + list-typed action_items/decisions
@@ -29,13 +29,14 @@ Deterministic (free):
 4. **speaker_attribution** — no phantom `SPEAKER_XX` labels when real participant names are known
 5. **entity_spelling** — no known-bad ASR spelling (`gold.entity_misspellings`, e.g. "AltaFlock") survives anywhere — transcript, summary, action items, key points or facts. Proves the vocab-correction pass keeps working; skips when a case lists none.
 6. **boundary_exclusion** — no internal pre/post-meeting excerpt (`gold.internal_excerpts`) leaks into summary, action items, key points or facts. Proves the privacy trim; skips when a case declares none.
+7. **timestamp_accuracy** — every quoted fact is stamped where it was actually said. The quote is verbatim, so the scorer locates it in the speaker segments itself (its own matcher, deliberately not an import of `_shared/anchor.ts` — an eval that imported the code under test would agree with it by construction) and fails when more than 20% of locatable quotes are over 45 s from their real position. Added after 2026-09-09, when extraction stamped minute-88 content as `ts: 13` and every other eval passed while it shipped.
 
 LLM-judge (gpt-4o-mini, temperature 0, strict JSON):
-7. **action_item_recall** — gold action items covered by generated ones (gate ≥ 0.7)
-8. **action_item_precision** — every generated action item grounded in the transcript; ANY hallucinated item fails (gate = 1.0)
-9. **summary_faithfulness** — every summary claim supported by the transcript (gate ≥ 0.9)
-10. **decision_accuracy** — gold decisions covered (gate ≥ 0.7)
-11. **numbers_recall** — every gold hard number (`gold.numbers`) must survive into key points, summary or extracted facts, formatting differences allowed (gate ≥ 0.95). Dropped numbers ($5M TTV, $20K average booking) are exactly what the follow-up proposal needs, so this is the headline metric.
+8. **action_item_recall** — gold action items covered by generated ones (gate ≥ 0.7)
+9. **action_item_precision** — every generated action item grounded in the transcript; ANY hallucinated item fails (gate = 1.0)
+10. **summary_faithfulness** — every summary claim supported by the transcript (gate ≥ 0.9)
+11. **decision_accuracy** — gold decisions covered (gate ≥ 0.7)
+12. **numbers_recall** — every gold hard number (`gold.numbers`) must survive into key points, summary or extracted facts, formatting differences allowed (gate ≥ 0.95). Dropped numbers ($5M TTV, $20K average booking) are exactly what the follow-up proposal needs, so this is the headline metric.
 
 ## Calibration: proving each scorer actually fires
 

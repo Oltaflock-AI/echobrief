@@ -78,27 +78,21 @@ function emptyInsights() {
 // Re-exported because every call site has always imported it from here.
 export { formatClock, formatLabeledTranscript };
 
-/** Snap a model timestamp onto the nearest real segment start. */
-export function snapTimestamp(raw: unknown, segments: SpeakerSegment[]): number {
+/**
+ * A timeline or action-item timestamp, in seconds.
+ *
+ * This used to snap the number onto the nearest real segment start, which
+ * looked like precision and was the opposite: the facts pipeline now anchors
+ * every timestamp onto the segment its quote came from, so a value arriving
+ * here is already exact and snapping is a no-op — while on the legacy
+ * single-shot path it took a number the model invented and rounded it onto a
+ * real utterance, making a fabrication indistinguishable from a measurement.
+ * A number we cannot verify is passed through as the estimate it is.
+ * See _shared/anchor.ts.
+ */
+export function coerceTimestamp(raw: unknown): number {
   const t = Number(raw);
-  const fallback = Number(segments[0]?.start ?? 0);
-  if (!Number.isFinite(t) || t < 0) {
-    return Math.round(Number.isFinite(fallback) ? fallback : 0);
-  }
-  if (!Array.isArray(segments) || segments.length === 0) return Math.round(t);
-
-  let bestStart = Number(segments[0].start ?? t);
-  let bestDist = Math.abs(bestStart - t);
-  for (const s of segments) {
-    const start = Number(s.start ?? 0);
-    if (!Number.isFinite(start)) continue;
-    const dist = Math.abs(start - t);
-    if (dist < bestDist) {
-      bestStart = start;
-      bestDist = dist;
-    }
-  }
-  return Math.round(bestStart);
+  return Number.isFinite(t) && t >= 0 ? Math.round(t) : 0;
 }
 
 function asStringArray(value: unknown): string[] {
@@ -182,8 +176,9 @@ function normalizeActionItem(item: unknown): Record<string, unknown> | null {
 
 /**
  * Coerce the model's JSON into the shape the rest of the pipeline stores.
- * Drops empty rows, snaps chapter times onto real segments, and never lets
- * a guessed talk-time object through — metrics are merged later.
+ * Drops empty rows and never lets a guessed talk-time object through —
+ * metrics are merged later. Timestamps arrive anchored (see facts.ts) and are
+ * carried through unchanged.
  */
 export function normalizeInsights(
   raw: Record<string, unknown>,
@@ -193,7 +188,7 @@ export function normalizeInsights(
     ? (raw.action_items.map(normalizeActionItem).filter(Boolean) as Record<string, unknown>[])
       .map((item) =>
         typeof item.source_timestamp === "number"
-          ? { ...item, source_timestamp: snapTimestamp(item.source_timestamp, segments) }
+          ? { ...item, source_timestamp: coerceTimestamp(item.source_timestamp) }
           : item
       )
     : [];
@@ -210,7 +205,7 @@ export function normalizeInsights(
           ? null
           : String(e.speaker).trim() || null;
         return {
-          timestamp: snapTimestamp(e.timestamp, segments),
+          timestamp: coerceTimestamp(e.timestamp),
           type: ["topic", "question", "decision", "action", "risk"].includes(type)
             ? type
             : "topic",

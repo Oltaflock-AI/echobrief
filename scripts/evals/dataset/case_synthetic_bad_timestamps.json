@@ -1,0 +1,40 @@
+{
+  "id": "synthetic_bad_timestamps",
+  "description": "Scorer calibration: the facts are real but their timestamps were invented by the model — the 2026-09-09 prod bug, where minute-40 content came back stamped at 12 seconds.",
+  "duration_seconds": 2700,
+  "participants": ["Asha", "Vikram"],
+  "transcript": "[0:00] Asha: Morning, let us get started.\n[10:00] Vikram: We closed four hundred bookings last quarter.\n[40:00] Asha: I will send the signed contract over on Monday.",
+  "speakers": [
+    { "speaker": "Asha", "text": "Morning, let us get started on the quarterly review.", "start": 0, "end": 5, "zone": "meeting" },
+    { "speaker": "Vikram", "text": "We closed four hundred bookings last quarter across both regions.", "start": 600, "end": 607, "zone": "meeting" },
+    { "speaker": "Asha", "text": "I will send the signed contract over on Monday morning.", "start": 2400, "end": 2406, "zone": "meeting" }
+  ],
+  "insights": {
+    "summary": "Asha and Vikram reviewed the quarter: four hundred bookings closed, and the signed contract goes out on Monday.",
+    "action_items": [],
+    "decisions": [],
+    "key_points": ["Four hundred bookings closed last quarter"],
+    "facts": {
+      "numbers": [
+        { "metric": "bookings", "value": "400", "speaker": "Vikram", "quote": "We closed four hundred bookings last quarter across both regions", "ts": 14 }
+      ],
+      "commitments": [
+        { "who": "Asha", "what": "send the signed contract", "due": "Monday", "quote": "I will send the signed contract over on Monday morning", "ts": 22 }
+      ],
+      "decisions": [
+        { "decision": "Contract goes out Monday", "owner": "Asha", "quote": "I will send the signed contract over on Monday morning", "ts": 22 }
+      ],
+      "topics": [],
+      "objections": [],
+      "explicit_asks": [],
+      "pain_points": [],
+      "buying_signals": [],
+      "notable_quotes": [],
+      "entities": [],
+      "risks": [],
+      "open_questions": []
+    }
+  },
+  "gold": {},
+  "expect": { "timestamp_accuracy": "fail" }
+}
