@@ -102,8 +102,8 @@
       "role": "Long-form prose"
     },
     "secondary": {
-      "hex": "#78716C",
-      "role": "Secondary text and meta"
+      "hex": "#6E665F",
+      "role": "Secondary text and meta. Darkened from #78716C on 2026-09-09: the old value was 4.27:1 on the paper background, under WCAG AA for text below 18.66px, and it carries every page subtitle. This is the value group-label already used."
     },
     "muted": {
       "hex": "#A8A29E",

@@ -67,7 +67,7 @@ export function HeaderV2({ onMenuClick }: { onMenuClick?: () => void }) {
             type="button"
             onClick={onMenuClick}
             aria-label="Open navigation menu"
-            className="-ml-1 inline-flex h-9 w-9 flex-none items-center justify-center rounded-pill text-eb-secondary hover:bg-eb-row-hover lg:hidden"
+            className="tap-44 -ml-1 inline-flex h-9 w-9 flex-none items-center justify-center rounded-pill text-eb-secondary hover:bg-eb-row-hover lg:hidden"
           >
             <Menu size={18} strokeWidth={1.75} />
           </button>
@@ -75,10 +75,16 @@ export function HeaderV2({ onMenuClick }: { onMenuClick?: () => void }) {
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="inline-flex h-9 w-full max-w-[360px] items-center gap-2.5 rounded-pill border border-eb-border bg-eb-card px-3.5 text-left shadow-eb-btn hover:bg-eb-row-hover"
+            aria-label="Search meetings"
+            className="tap-44 inline-flex h-9 w-9 flex-none items-center justify-center rounded-pill border border-eb-border bg-eb-card text-left shadow-eb-btn hover:bg-eb-row-hover sm:w-full sm:max-w-[360px] sm:flex-auto sm:justify-start sm:gap-2.5 sm:px-3.5"
           >
             <Search size={15} strokeWidth={1.75} className="flex-none text-eb-muted" />
-            <span className="flex-1 truncate font-dmsans text-[13px] text-eb-muted">Search meetings…</span>
+            {/* At 390px the label had ~160px to live in and truncated mid-word
+                next to a Record button that matters more; the pill collapses to
+                its icon instead and opens the same search dialog. */}
+            <span className="hidden flex-1 truncate font-dmsans text-[13px] text-eb-secondary sm:inline">
+              Search meetings…
+            </span>
             <span className="hidden flex-none rounded-md bg-eb-chip px-1.5 py-0.5 font-mono text-[11px] text-eb-secondary sm:inline">
               ⌘K
             </span>

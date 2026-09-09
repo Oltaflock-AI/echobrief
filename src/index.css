@@ -1066,7 +1066,7 @@
   /* text */
   --eb-text: #1C1917;
   --eb-text-prose: #3F3A36;
-  --eb-text-secondary: #78716C;
+  --eb-text-secondary: #6E665F;  /* was #78716C — 4.27:1 on paper, under AA */
   --eb-text-muted: #A8A29E;
   --eb-text-on-dark: #B8B0A8;
   --eb-group-label: #6E665F;
@@ -1134,6 +1134,31 @@
   --eb-mobile-tabbar-h: 84px;
 }
 
+@layer components {
+  /* Touch hit area without changing what the eye sees.
+     The Console control height is 36px by design (--eb-control-h), which is
+     right on a desktop and under the 44px a thumb needs. Rather than making
+     mobile controls visually bigger, project a centred 44x44 target from a
+     pseudo-element — the same trick the action-item checkbox uses to be 20px
+     wide and still tappable. Measured on a phone, the header's menu, upload
+     and split-button chevron were all 36px or less before this. */
+  .tap-44 { position: relative; }
+  .tap-44::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+  /* A pointer that can hover is a mouse: it does not need the padding, and an
+     invisible box that overhangs its neighbour would steal their hover. */
+  @media (hover: hover) and (pointer: fine) {
+    .tap-44::after { display: none; }
+  }
+}
+
 /* ─── Console light-lock (UI v2) ───────────────────────────────────────────
    The Console palette above is light-only: every --eb-* token is declared once
    on :root and there is no dark set yet. ThemeProvider still puts `.dark` on
@@ -1168,7 +1193,7 @@
   --secondary-foreground: 24 9% 10%;
 
   --muted: 33 22% 90%;
-  --muted-foreground: 24 6% 46%;     /* --eb-text-secondary #78716C */
+  --muted-foreground: 27 7% 40%;     /* --eb-text-secondary #6E665F */
 
   --accent: 21 90% 40%;              /* --eb-accent #C2410C */
   --accent-foreground: 0 0% 100%;

@@ -136,7 +136,7 @@ export default function SettingsV2() {
                   aria-selected={active}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    "inline-flex h-9 flex-none items-center gap-2.5 rounded-pill border px-3.5",
+                    "tap-44 inline-flex h-9 flex-none items-center gap-2.5 rounded-pill border px-3.5",
                     "font-dmsans text-[13.5px] font-medium whitespace-nowrap md:w-full",
                     active
                       ? "border-eb-sidebar bg-eb-sidebar text-white"

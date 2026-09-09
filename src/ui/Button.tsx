@@ -51,6 +51,11 @@ export const Button = React.forwardRef<HTMLButtonElement, Props>(function Button
         size === "sm" ? "h-8 text-[12.5px]" : "h-9 text-[13.5px]",
         iconOnly ? "p-0" : icon ? "pl-[14px] pr-4" : "px-[18px]",
         iconOnly && (size === "sm" ? "w-8" : "w-9"),
+        // Console controls are 36px of visual (32px at sm), which is right on a
+        // desktop and under the 44px a thumb needs. The hit area is projected
+        // out to 44px on touch devices only, so nothing moves on desktop and
+        // the overhang (4px a side) stays inside the 8px gaps the layouts use.
+        "tap-44",
         block && "w-full",
         className,
       )}
@@ -86,7 +91,10 @@ export function SplitButton({
   return (
     <div
       className={cn(
-        "inline-flex h-9 items-stretch overflow-hidden rounded-pill",
+        // Taller on a phone: the two halves are 36px on the desktop mockup,
+        // and the chevron half is only 32px wide — the wrapper clips a
+        // projected hit area, so the control itself has to grow.
+        "inline-flex h-11 items-stretch overflow-hidden rounded-pill sm:h-9",
         "bg-gradient-to-b from-eb-accent-top to-eb-accent text-white shadow-eb-primary",
         className,
       )}
@@ -101,7 +109,7 @@ export function SplitButton({
       <button
         onClick={onMenu}
         aria-label="Recording options"
-        className="inline-flex w-8 items-center justify-center border-l border-white/[.22]"
+        className="inline-flex w-11 items-center justify-center border-l border-white/[.22] sm:w-8"
       >
         <ChevronDown size={15} strokeWidth={2} />
       </button>

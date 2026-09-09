@@ -633,7 +633,7 @@ export default function MeetingDetailV2() {
   if (!meeting) {
     return (
       <DashboardLayout>
-        <h1 className="font-outfit text-[26px] font-semibold tracking-[-.02em]">Meeting not found</h1>
+        <h1 className="font-outfit text-[26px] font-semibold tracking-[-.02em] text-eb-text">Meeting not found</h1>
         <p className="mt-2 font-dmsans text-sm text-eb-secondary">
           The meeting may have been deleted, or the link is wrong.
         </p>
@@ -750,7 +750,7 @@ export default function MeetingDetailV2() {
   const summaryTab = insights && (
     <div className="flex flex-col gap-4">
       <EbCard>
-        <h2 className="font-outfit text-[15px] font-semibold">Summary</h2>
+        <h2 className="font-outfit text-[15px] font-semibold text-eb-text">Summary</h2>
         <p className="mt-2 font-dmsans text-sm leading-[1.6] text-eb-prose">{insights.summary_short}</p>
         {insights.summary_detailed && (
           <p className="mt-3 whitespace-pre-wrap font-dmsans text-sm leading-[1.6] text-eb-prose">
@@ -838,14 +838,14 @@ export default function MeetingDetailV2() {
     <DashboardLayout>
       <Link
         to="/dashboard"
-        className="mb-3 inline-flex items-center gap-1.5 font-dmsans text-[13px] text-eb-secondary no-underline hover:text-eb-text"
+        className="tap-44 mb-3 inline-flex items-center gap-1.5 font-dmsans text-[13px] text-eb-secondary no-underline hover:text-eb-text"
       >
         <ArrowLeft size={14} strokeWidth={1.75} /> Back to meetings
       </Link>
 
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="font-outfit text-[26px] font-semibold leading-[1.15] tracking-[-.02em]">
+          <h1 className="font-outfit text-[26px] font-semibold leading-[1.15] tracking-[-.02em] text-eb-text">
             {meeting.title}
           </h1>
           <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 font-dmsans text-[13px] text-eb-secondary">
@@ -1277,7 +1277,7 @@ export default function MeetingDetailV2() {
 
               {(coaching.sentiment_timeline?.length ?? 0) >= 2 && (
                 <EbCard>
-                  <h3 className="font-outfit text-[15px] font-semibold">
+                  <h3 className="font-outfit text-[15px] font-semibold text-eb-text">
                     {coaching.external_participant ? `${coaching.external_participant}'s engagement` : 'Engagement over time'}
                   </h3>
                   <p className="mb-3 mt-0.5 font-dmsans text-[12.5px] text-eb-secondary">

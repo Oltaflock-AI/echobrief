@@ -37,7 +37,7 @@ export function PageHeader({
             {label}
           </div>
         )}
-        <h1 className="m-0 font-outfit text-[26px] font-semibold leading-[1.15] tracking-[-.02em]">
+        <h1 className="m-0 font-outfit text-[26px] font-semibold leading-[1.15] tracking-[-.02em] text-eb-text">
           {title}
         </h1>
         {subtitle && (
