@@ -239,7 +239,7 @@ export default function WorkspaceV2() {
                 </div>
               )}
 
-              <p className="mt-3 font-dmsans text-[12px] leading-snug text-eb-muted">
+              <p className="mt-3 font-dmsans text-[12px] leading-snug text-eb-secondary">
                 Hours are pooled across the workspace and billed on the owner's plan. This card shows
                 your own usage — the pooled total is enforced server-side.
               </p>
@@ -251,7 +251,7 @@ export default function WorkspaceV2() {
           <Card padded={false}>
             <div className="flex items-center justify-between border-b border-eb-divider px-[18px] py-3">
               <h3 className="m-0 font-outfit text-[15px] font-semibold leading-tight text-eb-text">Members</h3>
-              <span className="font-dmsans text-[12.5px] text-eb-muted">
+              <span className="font-dmsans text-[12.5px] text-eb-secondary">
                 {members.length}
                 {seats ? ` of ${seats} seats` : ''}
               </span>
@@ -303,7 +303,7 @@ export default function WorkspaceV2() {
                     <span className="min-w-0 flex-1 truncate font-dmsans text-[13.5px] text-eb-text">
                       {i.email}
                     </span>
-                    <span className="flex-none font-dmsans text-[12.5px] text-eb-muted">
+                    <span className="flex-none font-dmsans text-[12.5px] text-eb-secondary">
                       expires {formatIST(new Date(i.expires_at), 'MMM d')}
                     </span>
                     <button

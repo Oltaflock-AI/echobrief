@@ -161,7 +161,7 @@ export function RecordingPanelV2({
               />
             </div>
 
-            <div className="mt-1.5 flex justify-between font-mono text-[11px] text-eb-muted">
+            <div className="mt-1.5 flex justify-between font-mono text-[11px] text-eb-secondary">
               {axis.map((t, i) => (
                 <span key={i}>{clock(t)}</span>
               ))}
@@ -215,7 +215,7 @@ export function RecordingPanelV2({
                     active ? 'bg-eb-accent-soft' : 'hover:bg-eb-row-hover',
                   )}
                 >
-                  <span className="mt-[2px] shrink-0 font-mono text-[11px] text-eb-muted">
+                  <span className="mt-[2px] shrink-0 font-mono text-[11px] text-eb-secondary">
                     {clock(s.start ?? 0)}
                   </span>
                   <span className="font-dmsans text-[13px] leading-relaxed text-eb-prose">

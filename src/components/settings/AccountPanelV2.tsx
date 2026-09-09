@@ -358,7 +358,7 @@ export function AccountPanelV2({ profile, setProfile }: PanelProps) {
             ))}
           </div>
         ) : (
-          <p className="mt-4 font-dmsans text-[12.5px] text-eb-muted">
+          <p className="mt-4 font-dmsans text-[12.5px] text-eb-secondary">
             No terms yet. Add names the transcriber tends to misspell.
           </p>
         )}

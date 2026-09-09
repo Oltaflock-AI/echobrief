@@ -401,7 +401,7 @@ export default function DashboardV2() {
                 }
               />
               {todayEvents.length === 0 ? (
-                <p className="px-[18px] py-4 font-dmsans text-[12.5px] text-eb-muted">
+                <p className="px-[18px] py-4 font-dmsans text-[12.5px] text-eb-secondary">
                   Nothing else on the calendar today.
                 </p>
               ) : (
@@ -449,7 +449,7 @@ export default function DashboardV2() {
             <Card padded={false}>
               <CardHeader title="Due this week" count={dueThisWeek.length || undefined} />
               {dueThisWeek.length === 0 ? (
-                <p className="px-[18px] py-4 font-dmsans text-[12.5px] text-eb-muted">
+                <p className="px-[18px] py-4 font-dmsans text-[12.5px] text-eb-secondary">
                   Nothing due in the next seven days.
                 </p>
               ) : (
@@ -560,7 +560,7 @@ export default function DashboardV2() {
                 <ListSkeleton />
               </div>
             ) : visible.length === 0 ? (
-              <p className="px-[18px] py-8 text-center font-dmsans text-[13px] text-eb-muted">
+              <p className="px-[18px] py-8 text-center font-dmsans text-[13px] text-eb-secondary">
                 {meetings.length === 0
                   ? "No meetings yet. Hit Record and paste a meeting link to get started."
                   : "No meetings match that filter."}

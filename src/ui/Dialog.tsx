@@ -138,7 +138,7 @@ const descClass = "mt-1 font-dmsans text-[13px] leading-[1.5] text-eb-secondary"
 
 /** The footer's left-hand note — hours used, "Takes about a minute", and so on. */
 export function DialogNote({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <span className={cn("font-dmsans text-[12.5px] text-eb-muted", className)}>{children}</span>;
+  return <span className={cn("font-dmsans text-[12.5px] text-eb-secondary", className)}>{children}</span>;
 }
 
 function useIsMobileSheet(enabled?: boolean) {

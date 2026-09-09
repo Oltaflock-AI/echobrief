@@ -143,7 +143,7 @@ export function SecurityCardV2() {
           <div className="inline-block w-fit rounded-input border border-eb-border bg-white p-3">
             <img src={pending.qr} alt="Two-factor setup QR code" width={180} height={180} />
           </div>
-          <p className="font-dmsans text-[12px] text-eb-muted">
+          <p className="font-dmsans text-[12px] text-eb-secondary">
             Cannot scan? Enter this key manually:{" "}
             <code className="rounded bg-eb-chip px-1.5 py-0.5 font-mono text-[11.5px] text-eb-text">
               {pending.secret}

@@ -287,7 +287,7 @@ export function GlobalSearchV2({
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Search meetings, transcripts, action items…"
-            className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[15px] text-eb-text outline-none placeholder:text-eb-muted"
+            className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[15px] text-eb-text outline-none placeholder:text-eb-secondary"
           />
           <Kbd>Esc</Kbd>
         </div>
@@ -301,7 +301,7 @@ export function GlobalSearchV2({
             onChange={setScope}
           />
           {query.trim() && (
-            <span className="shrink-0 font-dmsans text-[12.5px] text-eb-muted">
+            <span className="shrink-0 font-dmsans text-[12.5px] text-eb-secondary">
               {loading ? 'Searching…' : `${rows.length} result${rows.length === 1 ? '' : 's'}`}
             </span>
           )}
@@ -316,7 +316,7 @@ export function GlobalSearchV2({
             <>
               {grouped.map(({ group, items }) => (
                 <div key={group} className="mb-1">
-                  <div className="px-3 pb-1 pt-2 font-dmsans text-[11px] font-semibold uppercase tracking-[.09em] text-eb-muted">
+                  <div className="px-3 pb-1 pt-2 font-dmsans text-[11px] font-semibold uppercase tracking-[.09em] text-eb-secondary">
                     {GROUP_LABEL[group]}
                   </div>
                   {items.map((row) => {
@@ -349,7 +349,7 @@ export function GlobalSearchV2({
                           )}
                         </span>
                         {row.meta && (
-                          <span className="shrink-0 font-mono text-[11.5px] text-eb-muted">{row.meta}</span>
+                          <span className="shrink-0 font-mono text-[11.5px] text-eb-secondary">{row.meta}</span>
                         )}
                         {index === cursor && <Kbd>↵</Kbd>}
                       </button>
@@ -365,7 +365,7 @@ export function GlobalSearchV2({
               )}
 
               <div className="mb-1">
-                <div className="px-3 pb-1 pt-2 font-dmsans text-[11px] font-semibold uppercase tracking-[.09em] text-eb-muted">
+                <div className="px-3 pb-1 pt-2 font-dmsans text-[11px] font-semibold uppercase tracking-[.09em] text-eb-secondary">
                   Ask
                 </div>
                 <button
@@ -435,7 +435,7 @@ function Kbd({ children }: { children: React.ReactNode }) {
 
 function Hint({ keys, children }: { keys: string; children: React.ReactNode }) {
   return (
-    <span className="flex items-center gap-1.5 font-dmsans text-[12px] text-eb-muted">
+    <span className="flex items-center gap-1.5 font-dmsans text-[12px] text-eb-secondary">
       <Kbd>{keys}</Kbd>
       {children}
     </span>

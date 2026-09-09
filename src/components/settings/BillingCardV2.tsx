@@ -352,7 +352,7 @@ export function BillingCardV2() {
                         : period === 'annual' ? '/year' : '/month'}
                     </span>
                   </p>
-                  <p className="mt-1 font-dmsans text-[12px] text-eb-muted">
+                  <p className="mt-1 font-dmsans text-[12px] text-eb-secondary">
                     {perSeat
                       ? `${seats} seats — ₹${formatINR(price * seats)} ${period === 'annual' ? 'a year' : 'a month'} in total`
                       : period === 'annual'

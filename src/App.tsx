@@ -7,7 +7,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { CalendarProvider } from "@/contexts/CalendarContext";
-import { UiVersionProvider, useUiVersion } from "@/contexts/UiVersionContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PreMeetingNotification } from "@/components/dashboard/PreMeetingNotification";
@@ -18,27 +17,18 @@ import { PreMeetingNotification } from "@/components/dashboard/PreMeetingNotific
 // the meeting detail page and the charting library) before anything rendered.
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
-import AuthV2 from "./pages/AuthV2";
 import NotFound from "./pages/NotFound";
 
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
-const DashboardV2 = lazy(() => import("./pages/DashboardV2"));
 const Recordings = lazy(() => import("./pages/Recordings"));
 const MeetingDetail = lazy(() => import("./pages/MeetingDetail"));
-const MeetingDetailV2 = lazy(() => import("./pages/MeetingDetailV2"));
 const Settings = lazy(() => import("./pages/Settings"));
-const SettingsV2 = lazy(() => import("./pages/SettingsV2"));
 const Calendar = lazy(() => import("./pages/Calendar"));
-const CalendarV2 = lazy(() => import("./pages/CalendarV2"));
 const ActionItems = lazy(() => import("./pages/ActionItems"));
-const ActionItemsV2 = lazy(() => import("./pages/ActionItemsV2"));
 const Contacts = lazy(() => import("./pages/Contacts"));
-const ContactsV2 = lazy(() => import("./pages/ContactsV2"));
 const Coaching = lazy(() => import("./pages/Coaching"));
-const CoachingV2 = lazy(() => import("./pages/CoachingV2"));
 const Chat = lazy(() => import("./pages/Chat"));
-const ChatV2 = lazy(() => import("./pages/ChatV2"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Docs = lazy(() => import("./pages/Docs"));
@@ -46,7 +36,6 @@ const OAuthConsent = lazy(() => import("./pages/OAuthConsent"));
 const SharedMeeting = lazy(() => import("./pages/SharedMeeting"));
 const Workspace = lazy(() => import("./pages/Workspace"));
 const MoreV2 = lazy(() => import("./pages/MoreV2"));
-const WorkspaceV2 = lazy(() => import("./pages/WorkspaceV2"));
 const AcceptInvite = lazy(() => import("./pages/AcceptInvite"));
 
 // Cache server reads so revisiting a page renders instantly from cache and
@@ -75,11 +64,6 @@ function RouteFallback() {
  * Picks the V1 or V2 render of one page. Phase 2 adds a pair here per page; when
  * V1 is deleted the wrapper goes with it and the V2 file takes the plain name.
  */
-function V2Route({ v1, v2 }: { v1: React.ReactNode; v2: React.ReactNode }) {
-  const { ui } = useUiVersion();
-  return <>{ui === "v2" ? v2 : v1}</>;
-}
-
 function AppRoutes() {
   const { user, loading, isPasswordRecovery } = useAuth();
 
@@ -90,7 +74,7 @@ function AppRoutes() {
     return (
       <Suspense fallback={<RouteFallback />}>
         <Routes>
-          <Route path="*" element={<V2Route v1={<Auth />} v2={<AuthV2 />} />} />
+          <Route path="*" element={<Auth />} />
         </Routes>
       </Suspense>
     );
@@ -101,7 +85,7 @@ function AppRoutes() {
       <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
-        <Route path="/auth" element={<V2Route v1={<Auth />} v2={<AuthV2 />} />} />
+        <Route path="/auth" element={<Auth />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<Terms />} />
@@ -125,7 +109,7 @@ function AppRoutes() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <V2Route v1={<Dashboard />} v2={<DashboardV2 />} />
+              <Dashboard />
             </ProtectedRoute>
           }
         />
@@ -141,7 +125,7 @@ function AppRoutes() {
           path="/meeting/:id"
           element={
             <ProtectedRoute>
-              <V2Route v1={<MeetingDetail />} v2={<MeetingDetailV2 />} />
+              <MeetingDetail />
             </ProtectedRoute>
           }
         />
@@ -149,7 +133,7 @@ function AppRoutes() {
           path="/more"
           element={
             <ProtectedRoute>
-              <V2Route v1={<Settings />} v2={<MoreV2 />} />
+              <Settings />
             </ProtectedRoute>
           }
         />
@@ -157,7 +141,7 @@ function AppRoutes() {
           path="/settings"
           element={
             <ProtectedRoute>
-              <V2Route v1={<Settings />} v2={<SettingsV2 />} />
+              <Settings />
             </ProtectedRoute>
           }
         />
@@ -165,7 +149,7 @@ function AppRoutes() {
           path="/calendar"
           element={
             <ProtectedRoute>
-              <V2Route v1={<Calendar />} v2={<CalendarV2 />} />
+              <Calendar />
             </ProtectedRoute>
           }
         />
@@ -173,7 +157,7 @@ function AppRoutes() {
           path="/action-items"
           element={
             <ProtectedRoute>
-              <V2Route v1={<ActionItems />} v2={<ActionItemsV2 />} />
+              <ActionItems />
             </ProtectedRoute>
           }
         />
@@ -181,7 +165,7 @@ function AppRoutes() {
           path="/contacts"
           element={
             <ProtectedRoute>
-              <V2Route v1={<Contacts />} v2={<ContactsV2 />} />
+              <Contacts />
             </ProtectedRoute>
           }
         />
@@ -189,7 +173,7 @@ function AppRoutes() {
           path="/coaching"
           element={
             <ProtectedRoute>
-              <V2Route v1={<Coaching />} v2={<CoachingV2 />} />
+              <Coaching />
             </ProtectedRoute>
           }
         />
@@ -197,7 +181,7 @@ function AppRoutes() {
           path="/chat"
           element={
             <ProtectedRoute>
-              <V2Route v1={<Chat />} v2={<ChatV2 />} />
+              <Chat />
             </ProtectedRoute>
           }
         />
@@ -205,7 +189,7 @@ function AppRoutes() {
           path="/workspace"
           element={
             <ProtectedRoute>
-              <V2Route v1={<Workspace />} v2={<WorkspaceV2 />} />
+              <Workspace />
             </ProtectedRoute>
           }
         />
@@ -227,12 +211,10 @@ const App = () => (
         <ErrorBoundary>
           <BrowserRouter>
             <AuthProvider>
-              <UiVersionProvider>
-                <CalendarProvider>
+                      <CalendarProvider>
                   <AppRoutes />
                 </CalendarProvider>
-              </UiVersionProvider>
-            </AuthProvider>
+                  </AuthProvider>
           </BrowserRouter>
         </ErrorBoundary>
       </TooltipProvider>

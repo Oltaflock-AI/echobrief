@@ -197,7 +197,7 @@ export default function ContactsV2() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search name, email or company"
-                  className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[13px] text-eb-text outline-none placeholder:text-eb-muted"
+                  className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[13px] text-eb-text outline-none placeholder:text-eb-secondary"
                 />
               </div>
             </div>
@@ -243,7 +243,7 @@ export default function ContactsV2() {
                           {meetingsLabel(c.meeting_count)}
                         </span>
                         {c.last_seen_at && (
-                          <span className="block font-dmsans text-[12px] text-eb-muted">
+                          <span className="block font-dmsans text-[12px] text-eb-secondary">
                             {formatIST(new Date(c.last_seen_at), 'MMM d')}
                           </span>
                         )}
@@ -309,7 +309,7 @@ export default function ContactsV2() {
                     Account brief
                   </h3>
                   {brief?.generated_at && (
-                    <span className="font-dmsans text-[12px] text-eb-muted">
+                    <span className="font-dmsans text-[12px] text-eb-secondary">
                       Generated {formatIST(new Date(brief.generated_at), 'MMM d')} from{' '}
                       {meetingsLabel(brief.meetings_considered ?? selected.meeting_count)}
                     </span>
@@ -403,7 +403,7 @@ export default function ContactsV2() {
                   <h3 className="m-0 font-outfit text-[15px] font-semibold leading-tight text-eb-text">
                     Meetings
                   </h3>
-                  <span className="font-dmsans text-[12.5px] text-eb-muted">{meetings.length}</span>
+                  <span className="font-dmsans text-[12.5px] text-eb-secondary">{meetings.length}</span>
                 </div>
                 {meetingsLoading ? (
                   <div className="p-4">
@@ -427,7 +427,7 @@ export default function ContactsV2() {
                         {m.title || 'Untitled meeting'}
                       </span>
                       {minutes(m.duration_seconds) && (
-                        <span className="flex-none font-dmsans text-[12.5px] text-eb-muted">
+                        <span className="flex-none font-dmsans text-[12.5px] text-eb-secondary">
                           {minutes(m.duration_seconds)}
                         </span>
                       )}

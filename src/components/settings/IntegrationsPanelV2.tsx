@@ -393,7 +393,7 @@ export function IntegrationsPanelV2({ profile, setProfile }: PanelProps) {
         description="EchoBrief watches these calendars and sends the bot to meetings with a video link."
       >
         {calendars.length === 0 && !microsoft?.connected ? (
-          <p className="font-dmsans text-[12.5px] text-eb-muted">
+          <p className="font-dmsans text-[12.5px] text-eb-secondary">
             No calendars connected yet. Add one below and the bot will start joining scheduled calls.
           </p>
         ) : (

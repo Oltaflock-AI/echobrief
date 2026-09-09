@@ -96,7 +96,7 @@ export function StatTile({
       >
         {value}
       </div>
-      {delta && <div className="mt-1 font-dmsans text-xs text-eb-muted">{delta}</div>}
+      {delta && <div className="mt-1 font-dmsans text-xs text-eb-secondary">{delta}</div>}
     </div>
   );
 }

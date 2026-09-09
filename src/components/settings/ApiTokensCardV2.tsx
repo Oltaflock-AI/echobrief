@@ -155,7 +155,7 @@ export function ApiTokensCardV2() {
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </div>
         ) : active.length === 0 ? (
-          <p className="font-dmsans text-[12.5px] text-eb-muted">
+          <p className="font-dmsans text-[12.5px] text-eb-secondary">
             No active tokens. Create one to connect an MCP client.
           </p>
         ) : (

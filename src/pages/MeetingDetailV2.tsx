@@ -673,7 +673,7 @@ export default function MeetingDetailV2() {
       <EbCard padded={false}>
         <EbCardHeader title="Action items" count={actionItemCount || undefined} />
         {actionItemCount === 0 ? (
-          <p className="px-[18px] py-4 font-dmsans text-[12.5px] text-eb-muted">None from this meeting.</p>
+          <p className="px-[18px] py-4 font-dmsans text-[12.5px] text-eb-secondary">None from this meeting.</p>
         ) : (
           <div className="py-1">
             {(insights!.action_items as ActionItem[]).slice(0, 5).map((item, i) => (
@@ -1069,7 +1069,7 @@ export default function MeetingDetailV2() {
               {actionItemCount === 0 ? (
                 <EbCard className="py-10 text-center">
                   <CheckCircle2 size={28} className="mx-auto mb-3 text-eb-muted" strokeWidth={1.5} />
-                  <p className="font-dmsans text-[13px] text-eb-muted">No action items for this meeting.</p>
+                  <p className="font-dmsans text-[13px] text-eb-secondary">No action items for this meeting.</p>
                 </EbCard>
               ) : (
                 <EbCard padded={false}>
@@ -1085,7 +1085,7 @@ export default function MeetingDetailV2() {
                             {item.done && <CheckCircle2 size={11} strokeWidth={3} />}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className={cn('block font-dmsans text-sm', item.done && 'text-eb-muted line-through')}>
+                            <span className={cn('block font-dmsans text-sm', item.done && 'text-eb-secondary line-through')}>
                               {typeof item === 'string' ? item : item.task}
                             </span>
                             {(item.owner || item.due_date) && (
@@ -1233,7 +1233,7 @@ export default function MeetingDetailV2() {
               ) : (
                 <EbCard className="py-10 text-center">
                   <FileText size={28} className="mx-auto mb-3 text-eb-muted" strokeWidth={1.5} />
-                  <p className="font-dmsans text-[13px] text-eb-muted">
+                  <p className="font-dmsans text-[13px] text-eb-secondary">
                     The transcript appears here once processing finishes.
                   </p>
                 </EbCard>
@@ -1257,7 +1257,7 @@ export default function MeetingDetailV2() {
                       <div className={cn('mt-1.5 font-outfit text-[26px] font-semibold leading-none tracking-[-.02em]', m.verdict === 'good' ? 'text-eb-green' : m.verdict === 'ok' ? 'text-eb-text' : 'text-eb-red')}>
                         {m.value}{key === 'talk_ratio' ? '%' : key === 'longest_monologue' ? 's' : ''}
                       </div>
-                      <div className="mt-1.5 font-dmsans text-[11.5px] leading-snug text-eb-muted">{m.note}</div>
+                      <div className="mt-1.5 font-dmsans text-[11.5px] leading-snug text-eb-secondary">{m.note}</div>
                     </div>
                   ))}
                 </div>
@@ -1368,7 +1368,7 @@ export default function MeetingDetailV2() {
             <EbCard padded={false}>
               <EbCardHeader title="Email deliveries" count={emailMessages.length || undefined} />
               {emailMessages.length === 0 ? (
-                <p className="px-[18px] py-8 text-center font-dmsans text-[13px] text-eb-muted">
+                <p className="px-[18px] py-8 text-center font-dmsans text-[13px] text-eb-secondary">
                   Nothing sent yet. Use Email above to send this report.
                 </p>
               ) : (
@@ -1376,7 +1376,7 @@ export default function MeetingDetailV2() {
                   <div key={i} className="flex items-center gap-3 border-b border-eb-divider px-[18px] py-3 last:border-0">
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-dmsans text-[13.5px] font-medium">{msg.recipient_email}</div>
-                      <div className="font-mono text-[11.5px] text-eb-muted">
+                      <div className="font-mono text-[11.5px] text-eb-secondary">
                         {formatIST(new Date(msg.sent_at || msg.created_at), 'MMM d, yyyy h:mm a')}
                       </div>
                       {msg.error_message && (

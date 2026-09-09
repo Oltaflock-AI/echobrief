@@ -203,7 +203,7 @@ export function RecordDialogV2({
                   setCalendarEventId(undefined);
                 }}
                 placeholder="https://meet.google.com/abc-defg-hij"
-                className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[14px] text-eb-text outline-none placeholder:text-eb-muted"
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[14px] text-eb-text outline-none placeholder:text-eb-secondary"
               />
               {detected && (
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-eb-accent-soft text-eb-accent">
@@ -231,7 +231,7 @@ export function RecordDialogV2({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Weekly standup, client call…"
-              className="h-11 w-full rounded-input-lg border border-eb-border bg-white px-3.5 font-dmsans text-[14px] text-eb-text shadow-eb-input outline-none placeholder:text-eb-muted focus:border-eb-accent"
+              className="h-11 w-full rounded-input-lg border border-eb-border bg-white px-3.5 font-dmsans text-[14px] text-eb-text shadow-eb-input outline-none placeholder:text-eb-secondary focus:border-eb-accent"
             />
           </label>
         </div>

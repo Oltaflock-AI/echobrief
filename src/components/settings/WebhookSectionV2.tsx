@@ -196,7 +196,7 @@ export function WebhookSectionV2({
             </Button>
           </div>
         ) : (
-          <p className="mt-2 font-dmsans text-[12.5px] text-eb-muted">
+          <p className="mt-2 font-dmsans text-[12.5px] text-eb-secondary">
             A secret is generated the first time you save an endpoint URL.
           </p>
         )}
@@ -215,7 +215,7 @@ export function WebhookSectionV2({
               >
                 <div className="min-w-0 flex-1">
                   <p className="m-0 font-dmsans text-[13px] font-medium">{ev.event_type}</p>
-                  <p className="m-0 font-mono text-[11px] text-eb-muted">
+                  <p className="m-0 font-mono text-[11px] text-eb-secondary">
                     {formatIST(ev.created_at, "MMM d, yyyy h:mm a")}
                   </p>
                   {ev.error && (
@@ -231,7 +231,7 @@ export function WebhookSectionV2({
             ))}
           </div>
         ) : (
-          <p className="mt-2 font-dmsans text-[12.5px] text-eb-muted">No deliveries yet.</p>
+          <p className="mt-2 font-dmsans text-[12.5px] text-eb-secondary">No deliveries yet.</p>
         )}
       </div>
     </Section>

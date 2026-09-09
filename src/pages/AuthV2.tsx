@@ -283,7 +283,7 @@ export default function AuthV2() {
           </div>
         </div>
 
-        <p className="relative font-dmsans text-[12px] text-eb-muted">
+        <p className="relative font-dmsans text-[12px] text-eb-secondary">
           Made in India · Transcription runs in India
         </p>
       </div>
@@ -391,7 +391,7 @@ export default function AuthV2() {
                       </button>
                       <div className="my-6 flex items-center gap-3" aria-hidden>
                         <span className="h-px flex-1 bg-eb-border" />
-                        <span className="font-dmsans text-[12px] text-eb-muted">or</span>
+                        <span className="font-dmsans text-[12px] text-eb-secondary">or</span>
                         <span className="h-px flex-1 bg-eb-border" />
                       </div>
                     </>
@@ -482,7 +482,7 @@ export default function AuthV2() {
             </>
           )}
 
-          <p className="mt-7 text-center font-dmsans text-[12px] text-eb-muted">
+          <p className="mt-7 text-center font-dmsans text-[12px] text-eb-secondary">
             By continuing you agree to our{' '}
             <Link to="/terms" className="text-eb-secondary underline-offset-2">Terms</Link> and{' '}
             <Link to="/privacy" className="text-eb-secondary underline-offset-2">Privacy Policy</Link>.
@@ -497,7 +497,7 @@ export default function AuthV2() {
 const fieldInput =
   'h-11 w-full rounded-input-lg border border-eb-border bg-white pl-[38px] pr-3.5 ' +
   'font-dmsans text-[14px] text-eb-text shadow-eb-input outline-none ' +
-  'placeholder:text-eb-muted focus:border-eb-accent';
+  'placeholder:text-eb-secondary focus:border-eb-accent';
 
 function AuthField({
   label,
@@ -536,7 +536,7 @@ function StrengthBar({ score }: { score: number }) {
           />
         ))}
       </div>
-      <p className="mt-1.5 font-dmsans text-[12px] text-eb-muted">
+      <p className="mt-1.5 font-dmsans text-[12px] text-eb-secondary">
         Letters and numbers, 10 or more characters.
       </p>
     </div>

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 const control =
   "h-[38px] w-full rounded-input border border-eb-border bg-white px-3 " +
   "font-dmsans text-sm text-eb-text shadow-eb-input outline-none " +
-  "placeholder:text-eb-muted focus:border-eb-accent";
+  "placeholder:text-eb-secondary focus:border-eb-accent";
 
 export function Field({
   label,
@@ -22,7 +22,7 @@ export function Field({
     <label className={cn("flex flex-col gap-1.5", className)}>
       <span className="font-dmsans text-[13px] font-medium">{label}</span>
       {children}
-      {hint && <span className="font-dmsans text-[12.5px] text-eb-muted">{hint}</span>}
+      {hint && <span className="font-dmsans text-[12.5px] text-eb-secondary">{hint}</span>}
     </label>
   );
 }

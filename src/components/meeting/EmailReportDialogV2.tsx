@@ -121,7 +121,7 @@ export function EmailReportDialogV2({
             }}
             disabled={sending}
             placeholder="name@company.com"
-            className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[14px] text-eb-text outline-none placeholder:text-eb-muted"
+            className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[14px] text-eb-text outline-none placeholder:text-eb-secondary"
           />
         </span>
       </label>
@@ -140,7 +140,7 @@ export function EmailReportDialogV2({
               <span className="truncate">{a.displayName || a.email}</span>
             </button>
           ))}
-          <span className="font-dmsans text-[12px] text-eb-muted">attendees · sends to one</span>
+          <span className="font-dmsans text-[12px] text-eb-secondary">attendees · sends to one</span>
         </div>
       )}
 

@@ -162,7 +162,7 @@ export default function MoreV2() {
               </div>
             )}
             {meter.renewsAt && (
-              <p className="mt-1.5 font-dmsans text-[12px] text-eb-muted">
+              <p className="mt-1.5 font-dmsans text-[12px] text-eb-secondary">
                 Renews {formatIST(new Date(meter.renewsAt), 'd MMM')}
               </p>
             )}

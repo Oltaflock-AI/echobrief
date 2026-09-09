@@ -63,19 +63,23 @@ export function CardHeader({
   className?: string;
 }) {
   return (
+    /* The right slot holds filter chips on the busiest cards, and beside the
+       title at 390px they pushed the whole document to 449px wide — the page
+       scrolled sideways. It gets its own line on a phone, scrolling within
+       itself rather than dragging the page with it. */
     <div
       className={cn(
-        "flex items-center justify-between border-b border-eb-divider py-3 pl-[18px] pr-3",
+        "flex flex-col items-stretch gap-2 border-b border-eb-divider py-3 pl-[18px] pr-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3",
         className,
       )}
     >
-      <div className="font-outfit text-[15px] font-semibold leading-tight">
+      <div className="font-outfit text-[15px] font-semibold leading-tight text-eb-text">
         {title}
         {count !== undefined && (
-          <span className="ml-1.5 font-dmsans text-[12.5px] font-normal text-eb-muted">{count}</span>
+          <span className="ml-1.5 font-dmsans text-[12.5px] font-normal text-eb-secondary">{count}</span>
         )}
       </div>
-      {right}
+      {right && <div className="scroll-x -mx-1 flex min-w-0 items-center px-1 sm:mx-0 sm:flex-none sm:px-0">{right}</div>}
     </div>
   );
 }

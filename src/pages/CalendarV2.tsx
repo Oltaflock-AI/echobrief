@@ -289,7 +289,7 @@ export default function CalendarV2() {
                 <div className="font-outfit text-[15px] font-semibold leading-tight text-eb-text">
                   {day.label}
                 </div>
-                <div className="font-dmsans text-[12.5px] text-eb-muted">{day.sub}</div>
+                <div className="font-dmsans text-[12.5px] text-eb-secondary">{day.sub}</div>
               </div>
 
               <div className="flex min-w-0 flex-1 flex-col gap-2">

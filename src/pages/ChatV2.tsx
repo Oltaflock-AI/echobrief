@@ -242,7 +242,7 @@ export default function ChatV2() {
             </button>
           </div>
 
-          <div className="px-3 pb-1 font-dmsans text-[11px] font-semibold uppercase tracking-[.09em] text-eb-muted">
+          <div className="px-3 pb-1 font-dmsans text-[11px] font-semibold uppercase tracking-[.09em] text-eb-secondary">
             Recent
           </div>
 
@@ -341,7 +341,7 @@ export default function ChatV2() {
                                   <span className="min-w-0 flex-1 truncate font-dmsans text-[13px] font-medium text-eb-text">
                                     {c.title || 'Untitled meeting'}
                                   </span>
-                                  <span className="flex-none font-dmsans text-[12px] text-eb-muted">
+                                  <span className="flex-none font-dmsans text-[12px] text-eb-secondary">
                                     {citationDate(c.date)}
                                   </span>
                                   {typeof c.ts === 'number' && (
@@ -361,7 +361,7 @@ export default function ChatV2() {
                         )}
 
                         {t.truncated && (
-                          <p className="mt-2 font-dmsans text-[12px] text-eb-muted">
+                          <p className="mt-2 font-dmsans text-[12px] text-eb-secondary">
                             Not every meeting fitted in context — ask something narrower for a fuller answer.
                           </p>
                         )}
@@ -394,7 +394,7 @@ export default function ChatV2() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={turns.length ? 'Ask a follow-up…' : 'Ask anything about your meetings…'}
-              className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[13.5px] text-eb-text outline-none placeholder:text-eb-muted"
+              className="min-w-0 flex-1 border-0 bg-transparent p-0 font-dmsans text-[13.5px] text-eb-text outline-none placeholder:text-eb-secondary"
             />
             <button
               type="submit"
@@ -410,7 +410,7 @@ export default function ChatV2() {
               {loading ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} strokeWidth={2} />}
             </button>
           </form>
-          <p className="mt-2 text-center font-dmsans text-[12px] text-eb-muted">
+          <p className="mt-2 text-center font-dmsans text-[12px] text-eb-secondary">
             Answers come only from your own transcripts, with citations.
           </p>
         </div>

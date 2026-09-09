@@ -210,7 +210,7 @@ export function ShareLinkDialogV2({
       </Button>
 
       <div className="mt-5">
-        <div className="font-dmsans text-[11px] font-semibold uppercase tracking-[.09em] text-eb-muted">
+        <div className="font-dmsans text-[11px] font-semibold uppercase tracking-[.09em] text-eb-secondary">
           Active links
         </div>
         {shares.loading ? (
@@ -268,7 +268,7 @@ export function ShareLinkDialogV2({
             ))}
           </div>
         )}
-        <p className="mt-2 font-dmsans text-[12px] text-eb-muted">
+        <p className="mt-2 font-dmsans text-[12px] text-eb-secondary">
           A link is only shown once, when it is created — after that the token is stored hashed.
         </p>
       </div>

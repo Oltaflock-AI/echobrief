@@ -456,10 +456,10 @@ export default function ActionItemsV2() {
                   >
                     {group.title || 'Untitled meeting'}
                   </Link>
-                  <span className="flex-none font-dmsans text-[12.5px] text-eb-muted">
+                  <span className="flex-none font-dmsans text-[12.5px] text-eb-secondary">
                     {groupDate(group.date)}
                   </span>
-                  <span className="ml-auto flex-none font-dmsans text-[12.5px] text-eb-muted">
+                  <span className="ml-auto flex-none font-dmsans text-[12.5px] text-eb-secondary">
                     {openCount} open
                   </span>
                 </div>
@@ -496,7 +496,7 @@ export default function ActionItemsV2() {
                           <span
                             className={cn(
                               'min-w-0 flex-1 font-dmsans text-[13.5px] text-eb-text',
-                              done && 'text-eb-muted line-through',
+                              done && 'text-eb-secondary line-through',
                             )}
                           >
                             {item.task}

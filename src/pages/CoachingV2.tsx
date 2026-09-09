@@ -199,11 +199,11 @@ export default function CoachingV2() {
                   <table className="w-full border-collapse">
                     <thead>
                       <tr>
-                        <th className="px-[18px] pb-1 pt-2.5 text-left font-dmsans text-[11px] font-medium uppercase tracking-[.06em] text-eb-muted" />
+                        <th className="px-[18px] pb-1 pt-2.5 text-left font-dmsans text-[11px] font-medium uppercase tracking-[.06em] text-eb-secondary" />
                         {['Calls', 'Talk', 'Hedge'].map((h) => (
                           <th
                             key={h}
-                            className="px-2 pb-1 pt-2.5 text-right font-dmsans text-[11px] font-medium uppercase tracking-[.06em] text-eb-muted last:pr-[18px]"
+                            className="px-2 pb-1 pt-2.5 text-right font-dmsans text-[11px] font-medium uppercase tracking-[.06em] text-eb-secondary last:pr-[18px]"
                           >
                             {h}
                           </th>
@@ -245,7 +245,7 @@ export default function CoachingV2() {
                 <h3 className="m-0 font-outfit text-[15px] font-semibold leading-tight text-eb-text">
                   Recent coached calls
                 </h3>
-                <span className="font-dmsans text-[12.5px] text-eb-muted">
+                <span className="font-dmsans text-[12.5px] text-eb-secondary">
                   {calls.length} {calls.length === 1 ? 'call' : 'calls'}
                 </span>
               </div>
@@ -259,7 +259,7 @@ export default function CoachingV2() {
                     className="flex items-start gap-4 border-b border-eb-divider px-[18px] py-3.5 no-underline last:border-0 hover:bg-eb-row-hover"
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block font-dmsans text-[12px] text-eb-muted">
+                      <span className="block font-dmsans text-[12px] text-eb-secondary">
                         {formatIST(new Date(call.start_time), 'EEE, MMM d')}
                       </span>
                       <span className="block truncate font-dmsans text-[14px] font-medium text-eb-text">
@@ -274,7 +274,7 @@ export default function CoachingV2() {
 
                     {call.talkRatio !== null && (
                       <span className="flex-none text-right">
-                        <span className="block font-dmsans text-[11.5px] text-eb-muted">Talk ratio</span>
+                        <span className="block font-dmsans text-[11.5px] text-eb-secondary">Talk ratio</span>
                         <span className="block font-outfit text-[16px] font-semibold text-eb-accent">
                           {fmtPct(call.talkRatio)}
                         </span>
