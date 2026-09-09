@@ -180,6 +180,11 @@ The resolution itself lives in `_shared/recording-media.ts`, because
 `get-shared-meeting` serves the same media to anonymous readers of a share link that
 carries the recording. Only the authorisation differs between the two call sites.
 
+> Bots pin retention to 336 h (`RECORDING_RETENTION_HOURS`), so the mp4 is playable for
+> **14 days**. Recall's free window is 7; the second week is billed at $0.000069 per hour
+> of media per hour stored. Retention is fixed at bot-creation time — neither PATCH
+> endpoint can extend a recording afterwards.
+>
 > The mp4 is never downloaded into Supabase Storage — 720p costs ~750 MB–1 GB per
 > hour against a 1 GB bucket cap. See `storage:bucket_full_blocks_pipeline` in
 > [`errors.md`](../errors.md) for what a full bucket does to the pipeline.

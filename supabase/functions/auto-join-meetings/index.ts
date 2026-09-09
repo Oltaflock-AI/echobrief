@@ -14,6 +14,7 @@ import {
 import { parseMeetingUrl } from "../_shared/validation.ts"
 import { BOT_AVATAR_OUTPUT } from "../_shared/bot-avatar.ts"
 import { captureError, withObservability } from "../_shared/observability.ts";
+import { RECORDING_RETENTION_HOURS } from "../_shared/recall-pipeline.ts";
 
 const RECALL_API_KEY = Deno.env.get('RECALL_API_KEY')
 const RECALL_API_BASE_URL =
@@ -219,7 +220,9 @@ serve(withObservability("auto-join-meetings", async (req) => {
               // stored by us. Must stay in sync with start-recall-recording.
               video_mixed_mp4: {},
               // 168 h is Recall's free storage ceiling; past it they bill.
-              retention: { type: "timed", hours: 168 },
+              // 14 days — see start-recall-recording for the cost note. The two
+              // bot-creating call sites must stay in sync.
+              retention: { type: "timed", hours: RECORDING_RETENTION_HOURS },
               // Required for speaker-name resolution: without a transcript
               // provider Recall produces no transcript, so sarvam-webhook has
               // no speaker timeline to map SPEAKER_XX onto real participants.

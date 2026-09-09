@@ -2,6 +2,21 @@
  * Shared logic for downloading audio from Recall and submitting to Sarvam.
  * Used by both `recall-webhook` and `check-recall-status`.
  */
+
+/**
+ * How long Recall keeps the mp4, in hours.
+ *
+ * 14 days. Recall stores media free for 7 and then bills $0.000069 per hour of
+ * media per hour stored, so the second week costs about $0.012 per
+ * recording-hour — single-digit dollars a month at our volume. It buys the two
+ * things 168 h did not: a share link that outlives its own video (links default
+ * to 7 days, and the video died the same day), and a customer who opens a
+ * recording the week after the call.
+ *
+ * Both bot-creating call sites read this constant, because two literals is how
+ * they drifted the first time.
+ */
+export const RECORDING_RETENTION_HOURS = 336;
 import {
   createSarvamJob,
   uploadToSarvamJob,

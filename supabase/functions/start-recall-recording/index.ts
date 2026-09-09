@@ -6,6 +6,7 @@ import { parseMeetingUrl } from "../_shared/validation.ts";
 import { checkRecordingAllowed, recordUsage } from "../_shared/entitlements.ts";
 import { BOT_AVATAR_OUTPUT } from "../_shared/bot-avatar.ts";
 import { captureError, withObservability } from "../_shared/observability.ts";
+import { RECORDING_RETENTION_HOURS } from "../_shared/recall-pipeline.ts";
 
 const RECALL_API_KEY = Deno.env.get("RECALL_API_KEY")!;
 const RECALL_API_BASE_URL =
@@ -19,8 +20,8 @@ const IN_PROGRESS_STATUSES = ["joining", "in_call", "recording"];
 const MAX_CONCURRENT_RECORDINGS = 3;
 // Only recent rows count. A meeting that got stuck in `recording` because a
 // webhook never arrived would otherwise consume a slot forever and lock the
-// user out of their own product; no real bot outlives this window (Recall's
-// own retention is 168 h and our longest observed call is ~1 h).
+// user out of their own product; no real bot outlives this window (our longest
+// observed call is ~1 h).
 const CAP_WINDOW_HOURS = 6;
 
 serve(withObservability("start-recall-recording", async (req) => {
@@ -135,11 +136,13 @@ serve(withObservability("start-recall-recording", async (req) => {
           // cap). MeetingDetail streams it straight from Recall through a
           // freshly signed URL. Must stay in sync with auto-join-meetings.
           video_mixed_mp4: {},
-          // Recall stores media free for 7 days and bills beyond that. Nothing
-          // needs the recording after that: the transcript and insights are
-          // ours within minutes, and the archived mp3 is pruned sooner still.
-          // 168 h is the free ceiling — raising it starts a storage bill.
-          retention: { type: "timed", hours: 168 },
+          // 14 days, deliberately past Recall's 7-day free window. Storage past
+          // that is $0.000069 per hour of media per hour stored, so the second
+          // week costs ~$0.012 per recording-hour — a couple of dollars a month
+          // at our volume, against share links that outlived their own video
+          // and customers who open a recording the week after the call.
+          // Must stay in sync with the other bot-creating call site.
+          retention: { type: "timed", hours: RECORDING_RETENTION_HOURS },
           transcript: {
             provider: {
               recallai_streaming: {
