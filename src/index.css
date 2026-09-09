@@ -1159,22 +1159,36 @@
   }
 }
 
-/* ─── Console light-lock (UI v2) ───────────────────────────────────────────
+/* ─── Console light-lock ───────────────────────────────────────────────────
    The Console palette above is light-only: every --eb-* token is declared once
-   on :root and there is no dark set yet. ThemeProvider still puts `.dark` on
-   the same element when the OS asks for dark, which flips the V1 --foreground
-   to bone while the Console surfaces stay paper. Anything without an explicit
-   text-eb-* class then rendered bone-on-paper — every bare <h1>/<h2> (the base
-   layer colours headings hsl(var(--foreground))) and every shadcn primitive
-   built on text-foreground. On a phone defaulting to dark, page titles were
-   all but invisible (reported 2026-09-09).
+   on :root and there is no dark set. ThemeProvider still puts `.dark` on the
+   root element when the OS asks for dark, which flips the Warm Dispatch
+   --foreground and --ink to bone while the Console surfaces stay paper.
+   Anything without an explicit text-eb-* class then renders bone-on-paper:
+   every bare <h1>/<h2> (the base layer colours headings hsl(var(--foreground)))
+   and every shadcn primitive built on text-foreground. On a phone defaulting to
+   dark, page titles were all but invisible — reported 2026-09-09 with
+   screenshots, and measured at 1.03:1.
 
-   So while the Console is on, the V1 shadcn tokens are restated in Console
-   values. This block sits after `.dark` and matches its specificity, so it
-   wins. Delete it the day the Console gets a real dark palette — and then give
-   the --eb-* tokens a `.dark` set instead.
+   It CANNOT be unconditional. The landing page and the other marketing surfaces
+   are still Warm Dispatch, they read var(--ink)/var(--paper) in 47 places, and
+   they have a real dark palette that works — pinning these at :root would trade
+   an invisible dashboard for an unreadable landing page.
+
+   So it is scoped to "a Console page is mounted". `.bg-eb-bg` is the paper
+   background painted by the two Console roots (AppShell and Auth) and by
+   nothing else — marketing uses zero eb-* classes. This survived the V1
+   deletion badly once already: it used to be a `.ui-v2` class that
+   UiVersionProvider toggled, and when that provider was deleted with the rest
+   of the V1 machinery the rule stayed behind as dead CSS and the bug came back.
+   Keying off a class the markup itself paints means there is no toggle left to
+   forget.
+
+   Specificity (0,2,0) beats `.dark` (0,1,0), and it sits after it either way.
+   Delete this the day the Console gets a real dark palette — and then give the
+   --eb-* tokens a `.dark` set instead.
    ────────────────────────────────────────────────────────────────────────── */
-.ui-v2 {
+:root:has(.bg-eb-bg) {
   color-scheme: light;
 
   /* The Warm Dispatch ink/paper set, not just the shadcn tokens. `.dark` maps
