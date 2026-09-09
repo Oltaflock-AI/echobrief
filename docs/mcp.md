@@ -1,6 +1,6 @@
 # MCP server
 
-EchoBrief exposes a user's own meetings to Claude Code, Claude Desktop, Cursor and any
+EchoBrief exposes a user's own meetings to Codex, Claude Code, Claude Desktop, Cursor and any
 other MCP client through one endpoint:
 
 ```
@@ -18,7 +18,45 @@ https://www.echobrief.in/api/mcp
 
 ## Connecting
 
-Mint a token at **Settings → Developer**. It is shown once.
+**Codex — browser sign-in (recommended):**
+
+Open **Settings → Developer → Connect Codex** in EchoBrief. Choose **App / IDE**
+for the server URL and setup steps, or **Terminal** for copyable CLI commands:
+
+```bash
+codex mcp add echobrief --url https://www.echobrief.in/api/mcp
+```
+
+Follow the browser prompt to sign in to EchoBrief and approve access. If adding
+the server does not start sign-in, run `codex mcp login echobrief`. Start a new
+Codex session and use `/mcp` to check that EchoBrief is available.
+
+For app/IDE setup, add a Streamable HTTP server named `echobrief` with the URL
+above, save/restart as prompted, and select Authenticate. No manually created
+EchoBrief token or OAuth client secret is needed. The browser must approve access;
+opening or copying the setup instructions alone does not connect the account.
+The resulting access token appears under Developer → Access tokens; that list
+refreshes when you return to the window.
+
+**Codex — personal access token alternative:**
+
+Create a token under **Settings → Developer**, set `ECHOBRIEF_API_TOKEN` in the
+environment of the process running Codex, then run:
+
+```bash
+codex mcp add echobrief --url https://www.echobrief.in/api/mcp --bearer-token-env-var ECHOBRIEF_API_TOKEN
+```
+
+This environment must be available each time Codex starts; an export in one
+terminal does not configure an app launched separately. For desktop use, prefer
+the browser sign-in flow above.
+
+Source: [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+CLI flags also verified against the installed `codex mcp add --help` and
+`codex mcp login --help` on 9 September 2026.
+
+For the token-based clients below, mint a token at **Settings → Developer**.
+It is shown once.
 
 **Claude Code:**
 

@@ -978,7 +978,7 @@ export default function Docs() {
                     <strong className="text-foreground">Pull</strong> — an{' '}
                     <a href="https://modelcontextprotocol.io" target="_blank" rel="noreferrer" className="underline">MCP</a>{' '}
                     endpoint at <Mono>https://www.echobrief.in/api/mcp</Mono>, which any MCP client
-                    (Claude, Cursor, your own agent) can read with an access token.
+                    (Codex, Claude, Cursor, your own agent) can read with an access token.
                   </li>
                   <li>
                     <strong className="text-foreground">Push</strong> — a signed webhook fired at
@@ -1039,7 +1039,20 @@ export default function Docs() {
                 </div>
                 <p>
                   One stateless Streamable-HTTP MCP server. Point any MCP client at it with a token,
-                  or — for Claude on the web and mobile — connect over OAuth with no token at all.
+                  or connect Codex and compatible clients over OAuth without creating a token manually.
+                </p>
+
+                <h3 className="pt-2 text-base font-semibold text-foreground">Codex</h3>
+                <p>
+                  Open <strong className="text-foreground">Settings → Developer → Connect Codex</strong>
+                  {' '}for app/IDE instructions, or run this with the Codex CLI installed:
+                </p>
+                <Code>{`codex mcp add echobrief --url https://www.echobrief.in/api/mcp`}</Code>
+                <p>
+                  Approve access in the browser. If sign-in doesn’t open automatically, run{' '}
+                  <Mono>codex mcp login echobrief</Mono>. Start a new Codex session and use{' '}
+                  <Mono>/mcp</Mono> to check the connection. You can also choose Codex under
+                  Connect a client for token-based setup.
                 </p>
 
                 <h3 className="pt-2 text-base font-semibold text-foreground">Claude Code</h3>

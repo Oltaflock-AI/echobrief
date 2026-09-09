@@ -20,6 +20,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Badge, Button, ChipGroup, Input, Section } from "@/ui";
+import { CODEX_TOKEN_COMMAND, MCP_URL } from "@/lib/mcp";
 
 interface ApiToken {
   id: string;
@@ -30,14 +31,17 @@ interface ApiToken {
   revoked_at: string | null;
 }
 
-const MCP_URL = "https://www.echobrief.in/api/mcp";
 /** Mirrors MAX_TOKENS_PER_USER in supabase/functions/manage-api-tokens. */
 const MAX_TOKENS = 10;
 
-const CLIENTS = ["Claude Code", "Claude Desktop", "Cursor", "cURL"] as const;
+const CLIENTS = ["Codex", "Claude Code", "Claude Desktop", "Cursor", "cURL"] as const;
 type ClientKey = (typeof CLIENTS)[number];
 
 const SNIPPETS: Record<ClientKey, { intro: string; code: string }> = {
+  Codex: {
+    intro: "For token-based setup, create a token above and set ECHOBRIEF_API_TOKEN in the environment where Codex runs. Then run this command. For browser sign-in, use Connect Codex above.",
+    code: CODEX_TOKEN_COMMAND,
+  },
   "Claude Code": {
     intro: "Run this in your terminal, with your token in place of YOUR_TOKEN:",
     code: `claude mcp add --transport http echobrief ${MCP_URL} \\\n  --header "Authorization: Bearer YOUR_TOKEN"`,
@@ -108,6 +112,10 @@ export function ApiTokensCard() {
 
   useEffect(() => {
     void refresh();
+    // OAuth finishes in another tab/window; show its token when the user returns.
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
 
   const handleCreate = async () => {
@@ -148,7 +156,7 @@ export function ApiTokensCard() {
     <>
       <Section
         title="Access tokens"
-        description="Connect Claude, Cursor or any MCP client to your meetings. A token is shown once and can be revoked at any time."
+        description="Manage access for Codex, Claude, Cursor or any MCP client. Manually created tokens are shown once and can be revoked at any time."
       >
         {loading ? (
           <div className="flex items-center gap-2 font-dmsans text-[13px] text-eb-secondary">
@@ -156,7 +164,7 @@ export function ApiTokensCard() {
           </div>
         ) : active.length === 0 ? (
           <p className="font-dmsans text-[12.5px] text-eb-secondary">
-            No active tokens. Create one to connect an MCP client.
+            No active tokens. Connect Codex above, or create a token for another client.
           </p>
         ) : (
           <div className="-mx-5 -mt-2">

@@ -139,6 +139,36 @@ try {
   await page.waitForURL('**/settings?tab=account&plan=pro');
   assert.equal(await page.getByRole('button', { name: 'Account', exact: true }).getAttribute('aria-pressed'), 'true');
   console.log('PASS: settings tabs survive reload and browser Back, preserving plan parameters');
+  await page.getByRole('button', { name: 'Developer', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect Codex', exact: true }).click();
+  const codexDialog = page.getByRole('dialog', { name: 'Connect Codex', exact: true });
+  await codexDialog.waitFor();
+  await page.evaluate(() => {
+    window.auditClipboard = '';
+    Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, writable: true, value: async (text) => { window.auditClipboard = text; } });
+  });
+  await codexDialog.getByRole('button', { name: 'Copy server URL', exact: true }).click();
+  assert.equal(await page.evaluate(() => window.auditClipboard), 'https://www.echobrief.in/api/mcp');
+  await codexDialog.getByRole('button', { name: 'Terminal', exact: true }).click();
+  await codexDialog.getByRole('button', { name: 'Copy add command', exact: true }).click();
+  assert.equal(await page.evaluate(() => window.auditClipboard), 'codex mcp add echobrief --url https://www.echobrief.in/api/mcp');
+  await codexDialog.getByRole('button', { name: 'Copy login command', exact: true }).click();
+  assert.equal(await page.evaluate(() => window.auditClipboard), 'codex mcp login echobrief');
+  await page.evaluate(() => { navigator.clipboard.writeText = async () => { throw new Error('Clipboard denied'); }; });
+  await codexDialog.getByRole('button', { name: 'Copy login command', exact: true }).click();
+  await page.getByText('Select the text and copy it manually.', { exact: true }).waitFor();
+  await page.screenshot({ path: `${artifacts}/connect-codex-desktop.png` });
+  await codexDialog.getByRole('button', { name: 'Close setup', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Connect Codex', exact: true }).click();
+  await codexDialog.waitFor();
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Codex setup mobile overflow');
+  await page.screenshot({ path: `${artifacts}/connect-codex-mobile.png` });
+  await codexDialog.getByRole('button', { name: 'Close setup', exact: true }).click();
+  await page.getByRole('group', { name: 'MCP client', exact: true }).getByRole('button', { name: 'Codex', exact: true }).click();
+  await page.getByText('codex mcp add echobrief --url https://www.echobrief.in/api/mcp --bearer-token-env-var ECHOBRIEF_API_TOKEN', { exact: true }).waitFor();
+  console.log('PASS: Connect Codex app/CLI setup, exact copied values, clipboard failure, mobile dialog and token alternative');
+
   empty = true;
   await page.goto(`${origin}/dashboard`);
   await page.getByText('Your next meeting, already briefed').waitFor();

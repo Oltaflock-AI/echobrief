@@ -22,6 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { displayNameFromUserMetadata } from "@/lib/userDisplayName";
 import { ApiTokensCard } from "@/components/settings/ApiTokensCard";
+import { ConnectCodexCard } from "@/components/settings/ConnectCodexCard";
 import { BillingCard } from "@/components/settings/BillingCard";
 import { IntegrationsPanel } from "@/components/settings/IntegrationsPanel";
 import { SecurityPanel } from "@/components/settings/SecurityPanel";
@@ -169,6 +170,7 @@ export default function Settings() {
 
         {activeTab === "developer" && (
           <>
+            <ConnectCodexCard />
             <ApiTokensCard />
             <WebhookSection profile={profile} setProfile={setProfile} />
           </>
