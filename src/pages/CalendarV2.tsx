@@ -299,7 +299,15 @@ export default function CalendarV2() {
                   return (
                     <div
                       key={row.id}
-                      className="group flex items-center gap-3 rounded-card border border-eb-border bg-eb-card px-3.5 py-3 shadow-eb-card"
+                      /* At 390px the fixed columns (time, icon, the badge, and
+                         a "Record now" button that is invisible at opacity-0
+                         but still occupies ~110px) left the title column no
+                         room, so every event WITH a meeting link rendered with
+                         no title at all — the one thing the row exists to say.
+                         On a phone the row is a grid and the actions drop to
+                         their own line; `sm:contents` hands the children back
+                         to the flex row from sm up, where it always fitted. */
+                      className="group grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-card border border-eb-border bg-eb-card px-3.5 py-3 shadow-eb-card sm:flex"
                     >
                       <span className="w-[74px] flex-none font-dmsans text-[12.5px] font-medium text-eb-secondary">
                         {formatIST(parseISO(row.start), 'h:mm a')}
@@ -329,27 +337,33 @@ export default function CalendarV2() {
                         </span>
                       </span>
 
-                      {row.meetingLink && (
-                        <EbButton
-                          size="sm"
-                          onClick={() => recordNow(row)}
-                          disabled={starting === row.id}
-                          className="flex-none opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-                          icon={
-                            starting === row.id ? (
-                              <Loader2 size={13} className="animate-spin" />
-                            ) : (
-                              <Mic size={13} strokeWidth={1.75} />
-                            )
-                          }
-                        >
-                          Record now
-                        </EbButton>
-                      )}
+                      {/* Second line on a phone, part of the flex row from sm up. */}
+                      <div className="col-span-3 flex items-center justify-between gap-2 sm:contents">
+                        {row.meetingLink && (
+                          <EbButton
+                            size="sm"
+                            onClick={() => recordNow(row)}
+                            disabled={starting === row.id}
+                            /* Revealed on hover only where a pointer can hover;
+                               on touch there is no hover, so the button was
+                               permanently invisible and permanently in the way. */
+                            className="flex-none sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus:opacity-100"
+                            icon={
+                              starting === row.id ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Mic size={13} strokeWidth={1.75} />
+                              )
+                            }
+                          >
+                            Record now
+                          </EbButton>
+                        )}
 
-                      <Badge tone={willJoin ? 'green' : 'neutral'} dot={willJoin} className="flex-none">
-                        {row.meetingLink ? (willJoin ? 'Bot will join' : 'Auto-join off') : 'No video link'}
-                      </Badge>
+                        <Badge tone={willJoin ? 'green' : 'neutral'} dot={willJoin} className="flex-none">
+                          {row.meetingLink ? (willJoin ? 'Bot will join' : 'Auto-join off') : 'No video link'}
+                        </Badge>
+                      </div>
                     </div>
                   );
                 })}

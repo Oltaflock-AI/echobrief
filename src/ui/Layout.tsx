@@ -30,8 +30,16 @@ export function PageHeader({
 }) {
   const label = eyebrow ?? eyebrowFor[title];
   return (
-    <div className={cn("mb-5 flex items-end justify-between gap-6", className)}>
-      <div>
+    /* Stacked on a phone. Side by side, the title column and the actions
+       fought over 390px: the subtitle wrapped into a four-line ribbon and the
+       last action (Sync now on the calendar) was pushed off the right edge. */
+    <div
+      className={cn(
+        "mb-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-6",
+        className,
+      )}
+    >
+      <div className="min-w-0">
         {label && (
           <div className="mb-1.5 font-dmsans text-[11px] font-semibold uppercase tracking-[.09em] text-eb-accent">
             {label}
@@ -44,7 +52,7 @@ export function PageHeader({
           <div className="mt-1 font-dmsans text-[13.5px] text-eb-secondary">{subtitle}</div>
         )}
       </div>
-      {actions}
+      {actions && <div className="flex flex-wrap items-center gap-2 sm:flex-none">{actions}</div>}
     </div>
   );
 }

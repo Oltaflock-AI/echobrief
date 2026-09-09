@@ -57,6 +57,8 @@ import {
   DarkPanel as EbDarkPanel,
   Label as EbLabel,
   TwoColumn as EbTwoColumn,
+  Dialog as EbDialog,
+  DialogNote,
 } from '@/ui';
 import { Flag } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -333,6 +335,7 @@ export default function MeetingDetailV2() {
   const [inviteAttendees, setInviteAttendees] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ from: string; value: string } | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const [regenOpen, setRegenOpen] = useState(false);
 
   const refreshMeeting = () => queryClient.invalidateQueries({ queryKey: ['meeting-detail', id, user?.id] });
 
@@ -900,27 +903,14 @@ export default function MeetingDetailV2() {
                 Draft follow-up
               </EbButton>
             )}
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <EbButton size="sm" disabled={regenerating} icon={regenerating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} strokeWidth={1.75} />}>
-                  {regenerating ? 'Regenerating…' : 'Regenerate'}
-                </EbButton>
-              </AlertDialogTrigger>
-              <AlertDialogContent className={EB_DIALOG}>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Regenerate insights?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Rebuilds the summary, extracted facts, action items and coaching from the stored
-                    transcript using the current pipeline (no re-transcription). Speaker renames are
-                    kept. Takes about a minute.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleRegenerate}>Regenerate</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <EbButton
+              size="sm"
+              disabled={regenerating}
+              onClick={() => setRegenOpen(true)}
+              icon={regenerating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} strokeWidth={1.75} />}
+            >
+              {regenerating ? 'Regenerating…' : 'Regenerate'}
+            </EbButton>
 
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -963,6 +953,44 @@ export default function MeetingDetailV2() {
         onSend={handleSendEmail}
       />
       <ShareLinkDialogV2 meetingId={meeting.id} open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
+
+      {/* Mockup 00g. Dark button, not red: this replaces generated text and is
+          repeatable — red is reserved for the delete that is not. */}
+      <EbDialog
+        open={regenOpen}
+        onOpenChange={setRegenOpen}
+        icon={<RefreshCw size={18} strokeWidth={1.75} />}
+        title="Regenerate insights?"
+        description="Rebuilds the summary, extracted facts, action items and coaching from the stored transcript with the current pipeline. No re-transcription. Speaker renames are kept."
+        width={480}
+        footer={
+          <>
+            <DialogNote>Takes about a minute</DialogNote>
+            <div className="flex items-center gap-2">
+              <EbButton onClick={() => setRegenOpen(false)}>Cancel</EbButton>
+              <EbButton
+                variant="dark"
+                disabled={regenerating}
+                onClick={() => {
+                  setRegenOpen(false);
+                  handleRegenerate();
+                }}
+                icon={<RefreshCw size={15} strokeWidth={1.75} />}
+              >
+                Regenerate
+              </EbButton>
+            </div>
+          </>
+        }
+      >
+        <div className="flex items-start gap-2.5 rounded-card border border-eb-border bg-eb-amber-bg px-3.5 py-3">
+          <Flag size={15} strokeWidth={1.75} className="mt-px shrink-0 text-eb-amber" />
+          <p className="m-0 font-dmsans text-[13px] leading-[1.55] text-eb-amber-text">
+            Any edits you made to the summary or action items will be replaced. Ticked action items
+            stay ticked.
+          </p>
+        </div>
+      </EbDialog>
 
       <AlertDialog open={draftOpen} onOpenChange={setDraftOpen}>
         <AlertDialogContent className={cn('max-w-2xl', EB_DIALOG)}>
