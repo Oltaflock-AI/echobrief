@@ -46,13 +46,17 @@ export function trackPageView(pathname: string, title?: string) {
   const path = redactPath(pathname);
   const location = `${window.location.origin}${path}`;
 
-  gtag('set', {
+  // `set` covers the events GA sends by itself (enhanced measurement: scroll,
+  // click, history change), which otherwise read window.location directly.
+  gtag('set', { page_location: location, page_referrer: lastLocation ?? undefined });
+  // Event-level params, because a `set` page_path is not reliably applied to
+  // the hit — verified against the real /g/collect payload.
+  gtag('event', 'page_view', {
     page_path: path,
     page_location: location,
     page_title: title ?? document.title,
-    page_referrer: lastLocation ?? undefined,
+    send_to: MEASUREMENT_ID,
   });
-  gtag('event', 'page_view', { send_to: MEASUREMENT_ID });
 
   lastLocation = location;
 }
