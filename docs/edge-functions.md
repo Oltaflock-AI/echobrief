@@ -21,7 +21,7 @@ awk '/^\[functions\./{f=$0} /verify_jwt *= *false/{print f}' supabase/config.tom
 
 See [Security § function auth](security.md#edge-function-authentication).
 
-**All 52 deployed functions are documented here.** If you add one, add it here too —
+**All 53 deployed functions are documented here.** If you add one, add it here too —
 `ls supabase/functions` against this file is the check.
 
 - [Pipeline](#pipeline)
@@ -165,6 +165,21 @@ inserts the `meetings` row at `status = joining`. Retention is pinned to
 it, and nothing needs the recording that long. The recording_config must stay in sync
 with `auto-join-meetings`.
 
+### `get-org-transcript`
+**Trigger:** meeting page, Transcript tab, for a colleague · **Auth:** caller JWT (`verify_jwt = true`, user tokens only)
+
+Returns `{ segments, text, zone_filtered: true }` for a meeting shared to the caller's
+workspace — the **meeting-zone** segments only, whitelisted to `speaker` / `text` /
+`start` by the same `_shared/share-view.ts` a public share link goes through.
+
+It exists because `transcripts` has no org RLS policy and must not get one: RLS cannot
+filter elements inside a JSONB array, so a policy would hand a colleague the internal
+pre/post-meeting zones wholesale. Access is decided by `_shared/org-access.ts` (live
+org share, `include_transcript` set); anything else is a 404, including a meeting the
+caller can see by some *other* route such as an observer grant — that route has its own
+read path. Owners and observers never reach here; their direct PostgREST read already
+returns everything. Every call writes a `transcript.queried` audit row.
+
 ### `get-recording-media`
 **Trigger:** meeting page, Recording tab · **Auth:** caller JWT (`verify_jwt = true`)
 
@@ -172,9 +187,11 @@ Resolves a short-lived playback URL for one meeting and returns
 `{ kind: "video" | "audio" | "none", url?, video_status? }`. Video comes from Recall's
 `video_mixed` artifact (signed by Recall, expires in hours — resolved per view, never
 persisted); if there is no video it signs the archived mp3 in the `recordings` bucket
-instead. A playback URL is minted only for the meeting's owner, or for an allowlisted
+instead. A playback URL is minted only for the meeting's owner, an allowlisted
 reviewer holding a `meeting_observers` grant on it (see `meeting_observers` in
-[`database.md`](database.md)); anyone else gets a 404, not a 403.
+[`database.md`](database.md)), or a colleague whose workspace the meeting is shared
+to with `include_recording` (resolved by `_shared/org-access.ts`); anyone else gets a
+404, not a 403.
 
 The resolution itself lives in `_shared/recording-media.ts`, because
 `get-shared-meeting` serves the same media to anonymous readers of a share link that

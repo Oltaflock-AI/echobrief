@@ -24,6 +24,7 @@ import {
   Shield,
   Sparkles,
   Terminal,
+  Users,
   Webhook,
 } from 'lucide-react';
 
@@ -924,6 +925,30 @@ export default function Docs() {
                   a link you have already sent. Everything else stays inside your account: attendee
                   email addresses, the coaching scorecard, the quoted facts, and every other
                   meeting you own.
+                </p>
+                <div className="mb-2 mt-6 flex items-center gap-2">
+                  <Users size={18} style={{ color: 'var(--ember)' }} />
+                  <span className="text-sm font-medium text-foreground">Sharing with your workspace</span>
+                </div>
+                <p>
+                  If you are in a workspace, the same Share dialog has a{' '}
+                  <strong className="text-foreground">Share with your workspace</strong> switch at
+                  the top. It needs no link and no expiry: everyone in the workspace sees the
+                  meeting in their own dashboard, with the summary, the transcript of the meeting
+                  itself and the recording. Your pre-call and post-call chatter is left out of the
+                  transcript here too — but the recording, as above, is the whole call.
+                </p>
+                <p>
+                  To stop deciding this meeting by meeting, open{' '}
+                  <strong className="text-foreground">Workspace</strong> and turn on{' '}
+                  <strong className="text-foreground">Share new meetings</strong>. Every meeting you
+                  record from then on is shared with your colleagues automatically. It applies to
+                  new meetings only — turning it on never shares meetings you have already had —
+                  and you can still switch off any single meeting from its Share dialog.
+                </p>
+                <p>
+                  Meetings are private until one of these is on. Joining a workspace by itself
+                  shares nothing, in either direction.
                 </p>
               </section>
 

@@ -14,14 +14,15 @@
  *
  * The resolution itself lives in `_shared/recording-media.ts`, because share
  * links serve the same media to anonymous readers. What stays here is the only
- * part that differs: the caller's JWT is required and the meeting is read scoped
- * to that user, so one user can never mint a playback URL for another user's
- * meeting.
+ * part that differs: who is allowed to ask. The caller's JWT is required, and
+ * the answer is the owner, an observer, or a colleague holding a workspace
+ * share that includes the recording — nobody else can mint a playback URL.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
 import { resolveRecordingMedia } from "../_shared/recording-media.ts";
+import { orgShareFor } from "../_shared/org-access.ts";
 import { recordAudit } from "../_shared/audit.ts";
 
 serve(async (req) => {
@@ -67,11 +68,14 @@ serve(async (req) => {
       .eq("id", meeting_id)
       .maybeSingle();
 
-    // The client is a service-role client, so authorisation is decided here:
-    // the owner, or an allowlisted reviewer who was on the invite and holds a
-    // `meeting_observers` grant. Anything else is a 404, not a 403 — a
-    // stranger should not learn that the meeting exists.
+    // The client is a service-role client, so authorisation is decided here.
+    // Three ways to earn it, and nothing else is a 403 — it is a 404, because a
+    // stranger should not learn that the meeting exists:
+    //   1. the owner;
+    //   2. an allowlisted reviewer who was on the invite (`meeting_observers`);
+    //   3. a colleague the meeting is shared to via their workspace.
     let authorised = meeting?.user_id === user.id;
+    let via = authorised ? "owner" : null;
     if (meeting && !authorised) {
       const { data: observer } = await supabase
         .from("meeting_observers")
@@ -80,6 +84,15 @@ serve(async (req) => {
         .eq("user_id", user.id)
         .maybeSingle();
       authorised = !!observer;
+      if (authorised) via = "observer";
+    }
+    if (meeting && !authorised) {
+      // The workspace share must say so explicitly. The mp4 is the one thing
+      // zones cannot trim — it is the whole call, waiting-room audio included —
+      // so it rides its own flag here exactly as it does on a public link.
+      const access = await orgShareFor(supabase, meeting.id, user.id);
+      authorised = !!access?.includeRecording;
+      if (authorised) via = "org_share";
     }
 
     if (!meeting || !authorised) {
@@ -98,7 +111,7 @@ serve(async (req) => {
       actorUserId: user.id,
       resourceType: "meeting",
       resourceId: meeting.id,
-      metadata: { kind: media?.kind ?? null },
+      metadata: { kind: media?.kind ?? null, via },
     }, req);
     return new Response(JSON.stringify(media), { headers: jsonHeaders });
   } catch (error) {

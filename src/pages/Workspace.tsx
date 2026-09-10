@@ -7,12 +7,15 @@
  * get, invite, revoke_invite, remove_member and leave — and that list is
  * exactly what this page offers.
  *
- * Three things in the mockup are not here, each for a missing backend:
+ * "Share new meetings with my workspace" writes `profiles.auto_share_to_org`
+ * directly — it is the caller's own profile row, so RLS covers it and there is
+ * no action to add. The pipeline reads it (`_shared/org-share.ts`) as each
+ * meeting completes. It is per member, not per organisation: you decide where
+ * YOUR meetings go.
+ *
+ * Two things in the mockup are still not here, each for a missing backend:
  *  - the per-member role dropdown: there is no change_role action, so a role
  *    is shown as what it is, a fact, not a control that silently does nothing;
- *  - the sharing-defaults toggles ("share new meetings with workspace",
- *    "members can see coaching scores"): `organizations` has no such columns,
- *    and meetings are private until an explicit share row exists;
  *  - pooled hours and shared-meeting counts across the workspace: usage_events
  *    and meeting_shares are RLS-scoped per user, and `get` does not return the
  *    pooled figures, so the rail shows YOUR usage and says so rather than
@@ -28,7 +31,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { ListSkeleton } from '@/components/dashboard/ListSkeleton';
 import { formatIST } from '@/lib/time';
 import { fetchUsageMeter, planLabel, type UsageMeter } from '@/lib/usageMeter';
-import { Avatar, Badge, Button as EbButton, Card, PageHeader, TwoColumn } from '@/ui';
+import { Avatar, Badge, Button as EbButton, Card, PageHeader, Toggle, TwoColumn } from '@/ui';
 import {
   Select,
   SelectContent,
@@ -74,6 +77,8 @@ export default function Workspace() {
   const [newName, setNewName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'member' | 'admin'>('member');
+  const [autoShare, setAutoShare] = useState(false);
+  const [savingAutoShare, setSavingAutoShare] = useState(false);
 
   const call = async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke('manage-organization', { body });
@@ -112,7 +117,42 @@ export default function Workspace() {
       .eq('user_id', user.id)
       .maybeSingle()
       .then(({ data }) => setPaidSeats((data as { subscription_quantity?: number } | null)?.subscription_quantity ?? null));
+
+    void supabase
+      .from('profiles')
+      .select('auto_share_to_org')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => setAutoShare(Boolean((data as { auto_share_to_org?: boolean } | null)?.auto_share_to_org)));
   }, [user]);
+
+  // Optimistic, then reverted on failure: a switch that lies about the state of
+  // a sharing setting is worse than one that is briefly slow.
+  const toggleAutoShare = async (next: boolean) => {
+    if (!user) return;
+    setAutoShare(next);
+    setSavingAutoShare(true);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ auto_share_to_org: next })
+      .eq('user_id', user.id);
+    setSavingAutoShare(false);
+    if (error) {
+      setAutoShare(!next);
+      toast({
+        title: 'Could not save that',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+    toast({
+      title: next ? 'New meetings will be shared' : 'New meetings stay private',
+      description: next
+        ? 'Meetings you record from now on appear for everyone in this workspace.'
+        : 'You can still share individual meetings from the meeting page.',
+    });
+  };
 
   const run = async (body: Record<string, unknown>, success: string) => {
     setWorking(true);
@@ -248,6 +288,29 @@ export default function Workspace() {
         }
       >
         <div className="flex flex-col gap-4">
+          <Card>
+            <div className="flex items-start justify-between gap-4">
+              <span className="min-w-0">
+                <span className="block font-outfit text-[15px] font-semibold leading-tight text-eb-text">
+                  Share new meetings with {org.name}
+                </span>
+                <span className="mt-1 block font-dmsans text-[13px] leading-snug text-eb-secondary">
+                  Everyone here sees the summary, transcript and recording of each meeting you record
+                  from now on — no link to send. Your existing meetings are untouched, and you can
+                  turn any single meeting off from its Share dialog.
+                </span>
+              </span>
+              <span className="flex items-center gap-2 pt-0.5">
+                {savingAutoShare && <Loader2 size={14} className="animate-spin text-eb-muted" />}
+                <Toggle
+                  on={autoShare}
+                  label="Share new meetings with the workspace"
+                  onChange={(v) => void toggleAutoShare(v)}
+                />
+              </span>
+            </div>
+          </Card>
+
           <Card padded={false}>
             <div className="flex items-center justify-between border-b border-eb-divider px-[18px] py-3">
               <h3 className="m-0 font-outfit text-[15px] font-semibold leading-tight text-eb-text">Members</h3>

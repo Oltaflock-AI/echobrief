@@ -1691,6 +1691,7 @@ export type Database = {
       profiles: {
         Row: {
           auto_join_enabled: boolean | null
+          auto_share_to_org: boolean | null
           avatar_url: string | null
           bot_color: string | null
           created_at: string
@@ -1724,6 +1725,7 @@ export type Database = {
         }
         Insert: {
           auto_join_enabled?: boolean | null
+          auto_share_to_org?: boolean | null
           avatar_url?: string | null
           bot_color?: string | null
           created_at?: string
@@ -1757,6 +1759,7 @@ export type Database = {
         }
         Update: {
           auto_join_enabled?: boolean | null
+          auto_share_to_org?: boolean | null
           avatar_url?: string | null
           bot_color?: string | null
           created_at?: string

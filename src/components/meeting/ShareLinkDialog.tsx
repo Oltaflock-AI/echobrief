@@ -167,7 +167,9 @@ export function ShareLinkDialog({
                 {shares.sharedToOrg ? 'Shared with your workspace' : 'Share with your workspace'}
               </span>
               <span className="block font-dmsans text-[12.5px] text-eb-secondary">
-                Colleagues see the summary, not the transcript.
+                {shares.sharedToOrg
+                  ? 'Your workspace sees the summary, transcript and full recording.'
+                  : 'Summary, transcript and recording — with no link to send.'}
               </span>
             </span>
           </div>

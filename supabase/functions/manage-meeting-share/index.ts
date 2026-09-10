@@ -14,6 +14,7 @@ import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from "../_shared
 import { generateShareToken } from "../_shared/share-token.ts";
 import { openMaybe, sealMaybe } from "../_shared/crypto.ts";
 import { recordAudit } from "../_shared/audit.ts";
+import { ORG_SHARE_DEFAULTS } from "../_shared/org-share.ts";
 
 const APP_URL = Deno.env.get("APP_URL") || "https://www.echobrief.in";
 
@@ -254,9 +255,12 @@ serve(async (req) => {
     }
 
     // ---- share to / unshare from the caller's workspace --------------------
-    // Same table, scope='org'. Grants colleagues the same surface a public link
-    // does — summary, decisions, action items — and nothing more; the RLS
-    // policies added in 20260901200000 deliberately stop short of transcripts.
+    // Same table, scope='org'. Grants colleagues everything the owner sees bar
+    // the internal zones: summary and insights via the RLS policies from
+    // 20260901200000, the meeting-zone transcript via `get-org-transcript`, and
+    // the recording via `get-recording-media`. Both of those read the flags set
+    // below through `_shared/org-access.ts` — a workspace share carries them on
+    // by default, because a colleague is not a stranger with a link.
     if (action === "share_to_org" || action === "unshare_from_org") {
       const { data: membership } = await supabase
         .from("org_members").select("org_id").eq("user_id", userId).maybeSingle();
@@ -278,6 +282,7 @@ serve(async (req) => {
         created_by: userId,
         scope: "org",
         org_id: membership.org_id,
+        ...ORG_SHARE_DEFAULTS,
       });
       // 23505 = already shared to this workspace, which is the desired state.
       if (error && error.code !== "23505") throw error;

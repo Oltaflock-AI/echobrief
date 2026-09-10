@@ -9,7 +9,8 @@
  *
  * Persistence stays at the call sites (they differ: insert vs update), but the
  * `meetingPatch` helper builds the meetings-row update for all of them, and
- * `afterInsightsSaved` runs the shared hooks (contacts, automation webhook, Slack, Zoho).
+ * `afterInsightsSaved` runs the shared hooks (contacts, observers, workspace
+ * auto-share, automation webhook, Slack, Zoho).
  */
 import OpenAI from "https://esm.sh/openai@4.20.1";
 import { generateInsights, SpeakerSegment, formatLabeledTranscript } from "./insights.ts";
@@ -24,6 +25,7 @@ import { applySpeakerOverrides } from "./rename.ts";
 import { estimateBoundariesWithLLM } from "./boundary-llm.ts";
 import { upsertMeetingContacts } from "./contacts.ts";
 import { grantMeetingObservers } from "./observers.ts";
+import { autoShareToOrg } from "./org-share.ts";
 import { notifyInsightsReady } from "./webhooks.ts";
 import { deliverToSlack } from "./slack-delivery.ts";
 import { deliverToZoho } from "./zoho-delivery.ts";
@@ -225,6 +227,12 @@ export async function afterInsightsSaved(
   // runs on regeneration too so a meeting reprocessed after a reviewer was
   // added still reaches them.
   await grantMeetingObservers(supabase, meeting);
+  // "Share my meetings with my workspace automatically." Only on first
+  // completion: a regeneration must not resurrect a share the owner had
+  // deliberately removed. Never throws.
+  if (eventType === "meeting.insights_ready") {
+    await autoShareToOrg(supabase, meeting);
+  }
   await notifyInsightsReady(supabase, meeting, insights, eventType);
   // Slack posts on regeneration too, which is why `deliverToSlack` claims a row
   // in `slack_deliveries` before it posts: the claim, not this call site, is

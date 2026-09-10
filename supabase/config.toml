@@ -119,6 +119,9 @@ verify_jwt = true
 [functions.monitor-stuck-meetings]
 verify_jwt = true
 
+[functions.get-org-transcript]
+verify_jwt = true
+
 [functions.get-recording-media]
 verify_jwt = true
 

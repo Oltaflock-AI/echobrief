@@ -440,10 +440,42 @@ export default function MeetingDetail() {
         .from('transcripts')
         .select('*')
         .eq('meeting_id', id!)
-        .single();
+        .maybeSingle();
 
       let transcript: Transcript | null = null;
       let speakerSegments: SpeakerSegment[] = [];
+
+      // A colleague reading a meeting shared to their workspace gets nothing
+      // from that query: `transcripts` has no org policy, because RLS cannot
+      // strip the pre/post-meeting zones out of a JSONB array. `get-org-transcript`
+      // is that zone-stripping read path — it returns meeting-zone segments only.
+      // Owners and observers never reach it; their direct read already worked.
+      if (!transcriptData && !isOwner) {
+        try {
+          const { data: orgTranscript } = await supabase.functions.invoke('get-org-transcript', {
+            body: { meeting_id: id },
+          });
+          const segments = (orgTranscript?.segments ?? []) as SpeakerSegment[];
+          if (segments.length > 0) {
+            speakerSegments = segments;
+            transcript = {
+              id: '',
+              meeting_id: id!,
+              content: orgTranscript?.text ?? '',
+              speakers: segments as unknown as Transcript['speakers'],
+              word_timestamps: [],
+              created_at: meetingData.created_at,
+            } as Transcript;
+            if (!meetingData.attendees || (meetingData.attendees as unknown[]).length === 0) {
+              const uniqueNames = [...new Set(segments.map((seg) => seg.speaker).filter(Boolean))];
+              attendees = uniqueNames.map((name) => ({ email: '', displayName: name }));
+            }
+          }
+        } catch {
+          // No transcript is a normal state for a shared meeting; the tab says so.
+        }
+      }
+
       if (transcriptData) {
         transcript = {
           ...transcriptData,
