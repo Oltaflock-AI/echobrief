@@ -5,6 +5,14 @@ import { pickChangedEvents } from "../_shared/calendar-diff.ts";
 import { openGoogleTokens, sealGoogleTokens } from "../_shared/oauth-tokens.ts";
 import { extractMeetingLink } from "../_shared/calendar-connections.ts";
 
+// An all-day event arrives as a bare date ("2026-09-11"). calendar_events.start_time
+// is timestamptz, so a bare date reads as UTC midnight — 5:30 am to an IST reader.
+// Pin it to IST midnight; timed events already carry their own offset.
+function dayToIst(raw?: string | null): string | null {
+  if (!raw) return raw ?? null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00+05:30` : raw;
+}
+
 function extractMeetingUrl(event: Record<string, unknown>): string | null {
   const conferenceData = event.conferenceData as
     | { entryPoints?: { entryPointType?: string; uri?: string }[] }
@@ -275,8 +283,8 @@ serve(async (req) => {
               event_id: event.id,
               title: event.summary,
               description: event.description,
-              start_time: event.start?.dateTime || event.start?.date,
-              end_time: event.end?.dateTime || event.end?.date,
+              start_time: dayToIst(event.start?.dateTime || event.start?.date),
+              end_time: dayToIst(event.end?.dateTime || event.end?.date),
               location: event.location,
               meeting_link: extractMeetingUrl(event),
               organizer_name: event.organizer?.displayName,

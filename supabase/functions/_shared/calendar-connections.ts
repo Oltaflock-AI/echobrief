@@ -287,6 +287,14 @@ function microsoftResponse(event: Record<string, any>): NormalizedEvent["respons
   }
 }
 
+// An all-day event arrives as a bare date ("2026-09-11"). calendar_events.start_time
+// is timestamptz, and a bare date is read as UTC midnight — 5:30 am to an IST
+// reader. Pin it to IST midnight, which is what the calendar means by that day.
+// (Timed events already carry their own offset; leave those alone.)
+function dayToIst(raw: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00+05:30` : raw;
+}
+
 function googleEventToNormalized(
   event: Record<string, any>,
   calendarId: string,
@@ -305,8 +313,8 @@ function googleEventToNormalized(
     calendarId,
     title: typeof event.summary === "string" ? event.summary : "No title",
     description: typeof event.description === "string" ? event.description : null,
-    startTime: startRaw,
-    endTime: endRaw || startRaw,
+    startTime: dayToIst(startRaw),
+    endTime: dayToIst(endRaw || startRaw),
     location: typeof event.location === "string" ? event.location : null,
     meetingLink: extractMeetingLink([
       conferenceUri,

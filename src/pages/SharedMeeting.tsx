@@ -16,6 +16,14 @@ import { formatIST } from '@/lib/time';
  * the recording only when the link that was sent carries them. The transcript
  * arrives already filtered to the meeting zone — the page has no way to widen
  * what it was given, which is where that guarantee belongs.
+ *
+ * It is drawn in the **Console** palette, not Warm Dispatch: what a reader sees
+ * here is meeting content, the same content the app shows, and a link that
+ * looked like a different product from the dashboard it was sent from was the
+ * last V1 surface left after the 2026-09-09 migration. The `bg-eb-bg` class on
+ * the root is load-bearing — it is what `:root:has(.bg-eb-bg)` in index.css
+ * keys the light-lock off (see the note there). The header and footer still
+ * point at the Warm Dispatch landing page; that surface migrates separately.
  */
 
 interface ActionItem {
@@ -89,24 +97,22 @@ function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="mb-2" style={{ borderTop: '1px solid var(--rule)' }}>
+    <section className="mb-2 border-t border-eb-divider">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-0 py-2 text-left"
+        className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-0 py-3 text-left"
       >
         {icon}
-        <span className="text-[15px] font-semibold" style={{ color: 'var(--ink)' }}>{title}</span>
-        {meta && (
-          <span className="text-[12.5px]" style={{ color: 'var(--ink-soft)' }}>{meta}</span>
-        )}
+        <span className="font-outfit text-[15px] font-semibold text-eb-text">{title}</span>
+        {meta && <span className="font-dmsans text-[12.5px] text-eb-secondary">{meta}</span>}
         <ChevronDown
-          className="ml-auto h-[16px] w-[16px] transition-transform"
-          style={{ color: 'var(--ink-soft)', transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+          className="ml-auto h-4 w-4 text-eb-muted transition-transform"
+          style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}
         />
       </button>
-      {open && <div className="pt-2">{children}</div>}
+      {open && <div className="pb-1 pt-1">{children}</div>}
     </section>
   );
 }
@@ -157,18 +163,11 @@ export default function SharedMeeting() {
     : null;
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
-      <header
-        className="sticky top-0 z-10 backdrop-blur"
-        style={{ borderBottom: '1px solid var(--rule)', background: 'color-mix(in oklch, var(--paper) 85%, transparent)' }}
-      >
+    <div className="min-h-screen bg-eb-bg font-dmsans text-eb-text">
+      <header className="sticky top-0 z-10 border-b border-eb-border bg-eb-bg">
         <div className="mx-auto flex max-w-[820px] items-center justify-between gap-4 px-6 py-3">
-          <Logo size="sm" linkTo="/" />
-          <Link
-            to="/"
-            className="text-[13px] font-medium no-underline"
-            style={{ color: 'var(--ember)' }}
-          >
+          <Logo size="sm" linkTo="/" variant="console" />
+          <Link to="/" className="text-[13px] font-medium text-eb-accent-text no-underline hover:text-eb-accent">
             What is EchoBrief?
           </Link>
         </div>
@@ -176,42 +175,32 @@ export default function SharedMeeting() {
 
       <main className="mx-auto max-w-[820px] px-4 py-8 sm:px-6 sm:py-12">
         {loading ? (
-          <div className="flex items-center gap-2 text-[14px]" style={{ color: 'var(--ink-mid)' }}>
+          <div className="flex items-center gap-2 text-[14px] text-eb-prose">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading meeting…
           </div>
         ) : error ? (
-          <div
-            className="rounded-2xl p-8 text-center"
-            style={{ border: '1px solid var(--rule)', background: 'var(--paper-card)' }}
-          >
-            <h1 className="mb-2 text-[20px] font-semibold" style={{ color: 'var(--ink)' }}>
+          <div className="rounded-card border border-eb-border bg-eb-card p-8 text-center shadow-eb-card">
+            <h1 className="mb-2 font-outfit text-[20px] font-semibold text-eb-text">
               This link is not available
             </h1>
-            <p className="mb-6 text-[14px]" style={{ color: 'var(--ink-mid)' }}>{error}</p>
+            <p className="mb-6 text-[14px] text-eb-prose">{error}</p>
             <Link
               to="/"
-              className="inline-block rounded-full px-5 py-2.5 text-[14px] font-semibold text-white no-underline"
-              style={{ background: 'var(--ember)' }}
+              className="inline-block rounded-pill bg-gradient-to-b from-eb-accent-top to-eb-accent px-5 py-2.5 text-[14px] font-medium text-white no-underline shadow-eb-primary"
             >
               See what EchoBrief does
             </Link>
           </div>
         ) : data ? (
           <article>
-            <p
-              className="mb-3 text-[11.5px] font-semibold uppercase"
-              style={{ color: 'var(--ember)', letterSpacing: '0.14em' }}
-            >
+            <p className="mb-3 text-[11.5px] font-semibold uppercase tracking-[0.14em] text-eb-accent-text">
               Shared meeting summary
             </p>
-            <h1
-              className="mb-4 text-[clamp(1.8rem,4vw,2.6rem)] leading-[1.1]"
-              style={{ color: 'var(--ink)', fontFamily: 'var(--font-brand-serif)', fontWeight: 400 }}
-            >
+            <h1 className="mb-4 font-outfit text-[clamp(1.7rem,4vw,2.4rem)] font-semibold leading-[1.15] tracking-[-0.02em] text-eb-text">
               {data.meeting.title}
             </h1>
 
-            <div className="mb-10 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]" style={{ color: 'var(--ink-soft)' }}>
+            <div className="mb-10 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-eb-secondary">
               {data.meeting.start_time && (
                 <span className="inline-flex items-center gap-1.5">
                   <CalendarDays className="h-[14px] w-[14px]" />
@@ -227,8 +216,8 @@ export default function SharedMeeting() {
             </div>
 
             {(data.insights.summary_detailed || data.insights.summary_short) && (
-              <Section title="Summary" icon={<FileText className="h-[15px] w-[15px]" style={{ color: 'var(--ember)' }} />}>
-                <p className="whitespace-pre-line text-[15px] leading-[1.7]" style={{ color: 'var(--ink-mid)' }}>
+              <Section title="Summary" icon={<FileText className="h-[15px] w-[15px] text-eb-accent" />}>
+                <p className="whitespace-pre-line text-[15px] leading-[1.7] text-eb-prose">
                   {data.insights.summary_detailed || data.insights.summary_short}
                 </p>
               </Section>
@@ -237,19 +226,18 @@ export default function SharedMeeting() {
             {data.insights.decisions?.length > 0 && (
               <Section
                 title="Decisions"
-                icon={<GitBranch className="h-[15px] w-[15px]" style={{ color: 'var(--ember)' }} />}
+                icon={<GitBranch className="h-[15px] w-[15px] text-eb-accent" />}
                 meta={String(data.insights.decisions.length)}
               >
-                <ul className="space-y-3 p-0" style={{ listStyle: 'none' }}>
+                <ul className="list-none space-y-3 p-0">
                   {data.insights.decisions.map((decision, i) => (
                     <li
                       key={i}
-                      className="rounded-xl p-4 text-[14px] leading-[1.6]"
-                      style={{ border: '1px solid var(--rule)', background: 'var(--paper-card)', color: 'var(--ink)' }}
+                      className="rounded-card border border-eb-border bg-eb-card p-4 text-[14px] leading-[1.6] text-eb-text shadow-eb-card"
                     >
                       {asText(decision.decision) || asText(decision.text)}
                       {decision.context && (
-                        <span className="mt-1.5 block text-[13px]" style={{ color: 'var(--ink-soft)' }}>
+                        <span className="mt-1.5 block text-[13px] text-eb-secondary">
                           {decision.context}
                         </span>
                       )}
@@ -262,24 +250,20 @@ export default function SharedMeeting() {
             {data.insights.action_items?.length > 0 && (
               <Section
                 title="Action items"
-                icon={<CheckCircle2 className="h-[15px] w-[15px]" style={{ color: 'var(--ember)' }} />}
+                icon={<CheckCircle2 className="h-[15px] w-[15px] text-eb-accent" />}
                 meta={String(data.insights.action_items.length)}
               >
-                <ul className="space-y-3 p-0" style={{ listStyle: 'none' }}>
+                <ul className="list-none space-y-3 p-0">
                   {data.insights.action_items.map((item, i) => {
                     const owner = asText(item.owner) || asText(item.assignee);
                     const due = asText(item.due_date) || asText(item.due);
                     return (
-                      <li
-                        key={i}
-                        className="rounded-xl p-4"
-                        style={{ border: '1px solid var(--rule)', background: 'var(--paper-card)' }}
-                      >
-                        <p className="m-0 text-[14px] leading-[1.6]" style={{ color: 'var(--ink)' }}>
+                      <li key={i} className="rounded-card border border-eb-border bg-eb-card p-4 shadow-eb-card">
+                        <p className="m-0 text-[14px] leading-[1.6] text-eb-text">
                           {asText(item.task) || asText(item.title)}
                         </p>
                         {(owner || due) && (
-                          <p className="m-0 mt-1.5 text-[12.5px]" style={{ color: 'var(--ink-soft)' }}>
+                          <p className="m-0 mt-1.5 text-[12.5px] text-eb-secondary">
                             {owner}
                             {owner && due ? ' · ' : ''}
                             {due}
@@ -295,7 +279,7 @@ export default function SharedMeeting() {
             {data.has_recording && (
               <Section
                 title="Recording"
-                icon={<Video className="h-[15px] w-[15px]" style={{ color: 'var(--ember)' }} />}
+                icon={<Video className="h-[15px] w-[15px] text-eb-accent" />}
                 // Closed by default: opening it asks the edge function for a
                 // signed URL and starts the browser fetching metadata, which a
                 // reader who came for the summary never asked for.
@@ -308,56 +292,47 @@ export default function SharedMeeting() {
             {data.transcript && data.transcript.length > 0 && (
               <Section
                 title="Transcript"
-                icon={<MessageSquare className="h-[15px] w-[15px]" style={{ color: 'var(--ember)' }} />}
+                icon={<MessageSquare className="h-[15px] w-[15px] text-eb-accent" />}
                 meta={`${data.transcript.length} line${data.transcript.length === 1 ? '' : 's'}`}
                 defaultOpen={false}
               >
-                <div
-                  className="max-h-[70dvh] overflow-y-auto rounded-xl p-5"
-                  style={{ border: '1px solid var(--rule)', background: 'var(--paper-card)' }}
-                >
+                <div className="max-h-[70dvh] overflow-y-auto rounded-card border border-eb-border bg-eb-card p-5 shadow-eb-card">
                   {data.transcript.map((seg, i) => {
                     const sameSpeaker = i > 0 && data.transcript![i - 1].speaker === seg.speaker;
                     return (
                       <div key={i} className={sameSpeaker ? 'mt-1.5' : 'mt-5 first:mt-0'}>
                         {!sameSpeaker && (
-                          <p className="m-0 mb-1 text-[12.5px] font-semibold" style={{ color: 'var(--ember-deep)' }}>
+                          <p className="m-0 mb-1 text-[12.5px] font-semibold text-eb-accent-text">
                             {seg.speaker}
                             {seg.start != null && (
-                              <span className="ml-2 font-normal" style={{ color: 'var(--ink-soft)' }}>
+                              <span className="ml-2 font-mono text-[11.5px] font-normal text-eb-muted">
                                 {timestamp(seg.start)}
                               </span>
                             )}
                           </p>
                         )}
-                        <p className="m-0 text-[14px] leading-[1.7]" style={{ color: 'var(--ink-mid)' }}>
-                          {seg.text}
-                        </p>
+                        <p className="m-0 text-[14px] leading-[1.7] text-eb-prose">{seg.text}</p>
                       </div>
                     );
                   })}
                 </div>
-                <p className="mt-2 text-[12px]" style={{ color: 'var(--ink-soft)' }}>
+                <p className="mt-2 text-[12px] text-eb-secondary">
                   Anything said before the meeting started or after it ended is left out.
                 </p>
               </Section>
             )}
 
-            <footer
-              className="mt-14 rounded-2xl p-6 text-center"
-              style={{ border: '1px solid var(--rule)', background: 'var(--paper-raised)' }}
-            >
-              <p className="mb-1 text-[15px] font-semibold" style={{ color: 'var(--ink)' }}>
+            <footer className="mt-14 rounded-card border border-eb-border bg-eb-card-alt p-6 text-center">
+              <p className="mb-1 font-outfit text-[15px] font-semibold text-eb-text">
                 This summary was written by EchoBrief
               </p>
-              <p className="mb-5 text-[13.5px]" style={{ color: 'var(--ink-mid)' }}>
+              <p className="mb-5 text-[13.5px] text-eb-prose">
                 Meeting notes for teams who work in Hindi, English and everything in between —
                 with a quote and a timestamp behind every claim.
               </p>
               <Link
                 to="/"
-                className="inline-block rounded-full px-5 py-2.5 text-[14px] font-semibold text-white no-underline"
-                style={{ background: 'var(--ember)' }}
+                className="inline-block rounded-pill bg-gradient-to-b from-eb-accent-top to-eb-accent px-5 py-2.5 text-[14px] font-medium text-white no-underline shadow-eb-primary"
               >
                 Try EchoBrief
               </Link>

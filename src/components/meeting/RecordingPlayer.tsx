@@ -25,11 +25,10 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 function Placeholder({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="rounded-xl px-4 py-8 sm:px-6 sm:py-12 text-center"
-      style={{ background: 'var(--paper-card)', border: '1px solid var(--rule)' }}
+      className="rounded-card border border-eb-border bg-eb-card px-4 py-8 text-center sm:px-6 sm:py-12"
     >
-      <Video size={32} className="mx-auto mb-3" style={{ color: 'var(--ink-soft)' }} strokeWidth={1.5} />
-      <p className="text-sm" style={{ color: 'var(--ink-mid)' }}>{children}</p>
+      <Video size={32} className="mx-auto mb-3 text-eb-muted" strokeWidth={1.5} />
+      <p className="font-dmsans text-sm text-eb-prose">{children}</p>
     </div>
   );
 }
@@ -114,8 +113,8 @@ export function RecordingPlayer({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center rounded-xl py-16" style={{ border: '1px solid var(--rule)' }}>
-        <Loader2 className="h-6 w-6 animate-spin" style={{ color: 'var(--ink-soft)' }} />
+      <div className="flex items-center justify-center rounded-card border border-eb-border py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-eb-muted" />
       </div>
     );
   }
@@ -127,8 +126,7 @@ export function RecordingPlayer({
         <button
           type="button"
           onClick={() => refetch()}
-          className="inline-flex items-center gap-1 font-medium"
-          style={{ color: 'var(--ember-deep)' }}
+          className="inline-flex items-center gap-1 font-medium text-eb-accent-text"
         >
           <RefreshCw size={12} strokeWidth={1.75} /> Try again
         </button>
@@ -145,16 +143,15 @@ export function RecordingPlayer({
         controls
         preload="metadata"
         onTimeUpdate={onTime ? (e) => onTime(e.currentTarget.currentTime) : undefined}
-        className={className ?? 'w-full rounded-xl'}
-        style={className ? undefined : { background: 'var(--ink)', border: '1px solid var(--rule)' }}
+        className={className ?? 'w-full rounded-card border border-eb-border bg-eb-sidebar'}
       />
     );
   }
 
   if (data?.kind === 'audio' && data.url) {
     return (
-      <div className="rounded-xl p-5" style={{ background: 'var(--paper-card)', border: '1px solid var(--rule)' }}>
-        <p className="mb-3 text-[13px]" style={{ color: 'var(--ink-mid)' }}>
+      <div className="rounded-card border border-eb-border bg-eb-card p-5">
+        <p className="mb-3 font-dmsans text-[13px] text-eb-prose">
           No video for this meeting — playing the archived audio.
         </p>
         <audio
@@ -178,8 +175,7 @@ export function RecordingPlayer({
           type="button"
           onClick={() => refetch()}
           disabled={isFetching}
-          className="inline-flex items-center gap-1 font-medium"
-          style={{ color: 'var(--ember-deep)' }}
+          className="inline-flex items-center gap-1 font-medium text-eb-accent-text"
         >
           <RefreshCw size={12} strokeWidth={1.75} /> Check again
         </button>
