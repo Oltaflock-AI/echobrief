@@ -321,7 +321,7 @@ export function buildSummaryMessage(
   const actions = asActionItems(insights?.action_items, 6);
   const totalActions = Array.isArray(insights?.action_items) ? insights.action_items.length : 0;
   const nextSteps = asNextSteps(insights?.follow_ups, actions, 4);
-  const link = `${appUrl.replace(/\/$/, "")}/meetings/${meeting.id}`;
+  const link = `${appUrl.replace(/\/$/, "")}/meeting/${meeting.id}`;
 
   const blocks: unknown[] = [
     { type: "header", text: { type: "plain_text", text: title, emoji: true } },

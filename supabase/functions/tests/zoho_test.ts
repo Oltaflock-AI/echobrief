@@ -178,7 +178,7 @@ Deno.test("zoho: the note carries the four sections and a link back", () => {
   assertStringIncludes(content, "- Send the proposal (Khush, 2026-09-12)");
   assertStringIncludes(content, "Next steps:\n- Schedule a follow-up call.");
   // Trailing slash on appUrl must not double up.
-  assertStringIncludes(content, "https://www.echobrief.in/meetings/m-1");
+  assertStringIncludes(content, "https://www.echobrief.in/meeting/m-1");
 });
 
 Deno.test("zoho: the transcript and internal-zone fields never reach the CRM", () => {
@@ -198,5 +198,5 @@ Deno.test("zoho: the transcript and internal-zone fields never reach the CRM", (
 Deno.test("zoho: a meeting with nothing to report still produces a usable note", () => {
   const { title, content } = buildNote(meeting, {}, "https://www.echobrief.in", "");
   assertEquals(title.length > 0, true);
-  assertStringIncludes(content, "/meetings/m-1");
+  assertStringIncludes(content, "/meeting/m-1");
 });

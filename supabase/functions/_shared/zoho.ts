@@ -330,7 +330,7 @@ export function buildNote(
   const next = bullets(insights?.follow_ups, (o) => String(o.description ?? o.text ?? ""), 10);
   if (next.length) parts.push(`Next steps:\n${next.map((n) => `- ${n}`).join("\n")}`);
 
-  parts.push(`Full report: ${appUrl.replace(/\/$/, "")}/meetings/${meeting.id}`);
+  parts.push(`Full report: ${appUrl.replace(/\/$/, "")}/meeting/${meeting.id}`);
 
   const content = parts.join("\n\n");
   return { title, content: content.length > NOTE_LIMIT ? content.slice(0, NOTE_LIMIT - 1) + "…" : content };

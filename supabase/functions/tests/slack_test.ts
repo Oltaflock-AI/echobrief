@@ -51,7 +51,7 @@ Deno.test("slack: a meeting with no insights still produces a valid message", ()
   assertEquals(typeof text, "string");
   assertEquals(text.length > 0, true);          // never an empty notification
   assertEquals(blocks.length >= 2, true);        // header + context link
-  assertStringIncludes(textOf(blocks), "/meetings/m-123");
+  assertStringIncludes(textOf(blocks), "/meeting/m-123");
 });
 
 Deno.test("slack: no text block exceeds Slack's 3000-character limit", () => {
@@ -100,7 +100,7 @@ Deno.test("slack: the notification preview is never empty", () => {
 Deno.test("slack: the meeting link points at this meeting", () => {
   const { blocks } = buildSummaryMessage({ id: "abc-def", title: "T" }, {}, "https://www.echobrief.in/");
   // Trailing slash on appUrl must not produce a double slash.
-  assertStringIncludes(textOf(blocks), "https://www.echobrief.in/meetings/abc-def");
+  assertStringIncludes(textOf(blocks), "https://www.echobrief.in/meeting/abc-def");
 });
 
 /* ── the four sections ──────────────────────────────────────────────────── */
@@ -208,7 +208,7 @@ Deno.test("slack: mrkdwn control characters in insights cannot forge markup", ()
 Deno.test("slack: the report link is still a real Slack link, not escaped", () => {
   // The control for the escaping test above: OUR link must survive intact.
   const { blocks } = buildSummaryMessage(richMeeting, full, APP);
-  assertStringIncludes(textOf(blocks), "<https://www.echobrief.in/meetings/m-9|Open the full report");
+  assertStringIncludes(textOf(blocks), "<https://www.echobrief.in/meeting/m-9|Open the full report");
 });
 
 /* ── next steps ─────────────────────────────────────────────────────────── */
