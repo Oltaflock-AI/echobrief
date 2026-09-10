@@ -2,6 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Google tag (gtag.js). Two things are deliberate here:
+         send_page_view is off because page views are sent per client-side route
+         by src/lib/analytics.ts, and page_location is pinned to a redacted URL
+         because our paths carry credentials — /share/<token> IS the credential
+         for a public link — and GA4 enhanced measurement (scroll, click, …)
+         otherwise reads window.location directly. This must be set at config
+         time, before the tag can fire its first automatic event. -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-TPNYWWNCTR"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      (function () {
+        // Mirrors redactPath() in src/lib/analytics.ts.
+        var p = location.pathname
+          .replace(/^\/meeting\/[^/]+/, '/meeting/:id')
+          .replace(/^\/share\/[^/]+/, '/share/:token')
+          .replace(/^\/invite\/[^/]+/, '/invite/:token');
+        gtag('config', 'G-TPNYWWNCTR', {
+          send_page_view: false,
+          page_path: p,
+          page_location: location.origin + p,
+        });
+      })();
+    </script>
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EchoBrief - AI Meeting Recorder</title>
     <meta name="description" content="Meeting summaries in 22 Indian languages. Auto-join Meet, Zoom & Teams. Delivered to your inbox." />

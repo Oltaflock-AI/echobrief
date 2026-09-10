@@ -10,6 +10,7 @@ import { CalendarProvider } from "@/contexts/CalendarContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PreMeetingNotification } from "@/components/dashboard/PreMeetingNotification";
+import { Analytics } from "@/components/Analytics";
 
 // Eager: the three routes a signed-out visitor can land on. Everything else is
 // lazy — previously every page was a static import, so a first-time visitor to
@@ -207,6 +208,7 @@ const App = () => (
         <Sonner />
         <ErrorBoundary>
           <BrowserRouter>
+            <Analytics />
             <AuthProvider>
                       <CalendarProvider>
                   <AppRoutes />

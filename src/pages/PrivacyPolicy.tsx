@@ -66,6 +66,12 @@ const SUBPROCESSORS: Array<{
     location: 'United States',
   },
   {
+    name: 'Google Analytics',
+    purpose: 'Website traffic measurement',
+    data: 'Page path (identifiers removed), device, approximate location',
+    location: 'United States',
+  },
+  {
     name: 'Sentry',
     purpose: 'Error monitoring',
     data: 'Technical error reports, user ID',
