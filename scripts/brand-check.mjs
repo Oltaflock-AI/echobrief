@@ -96,11 +96,13 @@ const BANNED_WORDS = ['AI-powered', 'AI powered', 'cutting-edge', 'cutting edge'
 
 /* ── file walk ───────────────────────────────────────────────────────────── */
 // 'docs' holds internal engineering notes, not a customer-facing surface.
+// 'artifacts' holds client proposal packs — decks and PDFs made FOR a customer,
+// carrying that customer's palette, not ours. Gitignored for the same reason.
 // 'echobrief-ui-v2' is the design handoff package (mockup HTML, reference kit,
 // brand marks) — documentation, not shipped code. The mockups carry values the
 // product does not ship; the tokens that DO ship live in src/index.css.
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'brand', 'scripts', 'docs',
-  '.next', 'coverage', 'recordings', 'echobrief-ui-v2']);
+  '.next', 'coverage', 'recordings', 'echobrief-ui-v2', 'artifacts']);
 const CODE_EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.css', '.html']);
 
 function walk(dir, out = []) {

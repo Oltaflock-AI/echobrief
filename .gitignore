@@ -60,3 +60,11 @@ public/__tmp_session.json
 brand/src/.fonts/
 scripts/evals/compare-out/
 .claude/worktrees/
+
+# Codex CLI local config. Holds a live `eb_live_` PAT in an MCP auth header —
+# this repo is PUBLIC, so the file can never be committed.
+.codex/
+
+# Client proposal packs (decks, PDFs, internal meeting analysis). Work product
+# for a customer, not product code, and not for a public repo.
+artifacts/
