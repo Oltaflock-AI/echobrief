@@ -110,6 +110,9 @@ export function syncClarity(pathname: string, hash = '') {
       w.clarity ||
       (function (this: unknown) {
         const c = w.clarity as Clarity;
+        // Clarity's own stub queues the raw `arguments` object and its tag
+        // script replays that queue; kept verbatim rather than reshaped.
+        // eslint-disable-next-line prefer-rest-params
         (c.q = c.q || []).push(arguments);
       } as Clarity);
     const s = document.createElement('script');
