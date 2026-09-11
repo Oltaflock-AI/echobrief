@@ -19,7 +19,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   return (
-    <div className="relative min-h-screen bg-eb-bg text-eb-text">
+    <div className="relative min-h-screen bg-eb-bg text-eb-text" data-clarity-mask="true">
       <a href="#main-content" className="skip-to-content">
         Skip to content
       </a>

@@ -93,7 +93,7 @@ export default function SharedMeeting() {
   const activeTab = tabs.some((option) => option.value === tab) ? tab : 'summary';
 
   return (
-    <div className="min-h-screen bg-eb-bg font-dmsans text-eb-text">
+    <div className="min-h-screen bg-eb-bg font-dmsans text-eb-text" data-clarity-mask="true">
       <ShareHeader />
 
       <main className="mx-auto max-w-[1080px] px-4 py-8 sm:px-6 sm:py-10">
