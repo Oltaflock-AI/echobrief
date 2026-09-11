@@ -8,3 +8,15 @@ node scripts/brand-check.mjs || {
   exit 1
 }
 node scripts/secret-log-check.mjs || exit 1
+
+# ESLint errors fail CI, so catch them here. Staged .ts/.tsx only, to keep the
+# hook fast; warnings do not block (CI passes with them too).
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' '*.js' '*.mjs')
+if [ -n "$staged" ]; then
+  # shellcheck disable=SC2086
+  npx eslint --quiet $staged || {
+    echo ""
+    echo "Commit blocked by eslint. Fix the errors above (npm run lint)."
+    exit 1
+  }
+fi
