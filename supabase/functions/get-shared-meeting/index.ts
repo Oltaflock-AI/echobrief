@@ -10,7 +10,9 @@
  * particular link: the meeting-zone transcript, and a short-lived playback URL
  * for the recording. What it never shows, whatever the URL says: the pre/post
  * meeting chatter that `zones.ts` works to exclude, attendee email addresses,
- * coaching notes, facts, or anything about the owner's other meetings.
+ * coaching notes, the verbatim quotes and sales-read lists inside `facts` (only
+ * the `publicFacts` whitelist gets out), or anything about the owner's other
+ * meetings.
  *
  * The two opt-ins are not the same risk and are not treated as such. The
  * transcript is filtered to `zone = 'meeting'` here, segment by segment, so the
@@ -24,7 +26,7 @@ import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
 import { checkRateLimit, createRateLimitResponse, getClientIdentifier, RATE_LIMITS } from "../_shared/rate-limit.ts";
 import { hashShareToken, looksLikeShareToken } from "../_shared/share-token.ts";
 import { resolveRecordingMedia } from "../_shared/recording-media.ts";
-import { publicSegments, type PublicSegment } from "../_shared/share-view.ts";
+import { publicFacts, publicSegments, type PublicSegment } from "../_shared/share-view.ts";
 import { recordAudit } from "../_shared/audit.ts";
 
 serve(async (req) => {
@@ -122,7 +124,7 @@ serve(async (req) => {
 
     const { data: insights } = await supabase
       .from("meeting_insights")
-      .select("summary_short, summary_detailed, key_points, action_items, decisions")
+      .select("summary_short, summary_detailed, key_points, action_items, decisions, follow_ups, timeline_entries, facts")
       .eq("meeting_id", share.meeting_id)
       .maybeSingle();
 
@@ -176,8 +178,17 @@ serve(async (req) => {
         key_points: insights?.key_points ?? [],
         action_items: insights?.action_items ?? [],
         decisions: insights?.decisions ?? [],
+        follow_ups: Array.isArray(insights?.follow_ups) ? insights.follow_ups : [],
+        timeline_entries: Array.isArray(insights?.timeline_entries) ? insights.timeline_entries : [],
       },
+      // Topic headings and the timestamped rows the page groups under them.
+      // Null for meetings that predate the facts pass; the page then falls
+      // back to the prose summary.
+      facts: publicFacts(insights?.facts),
       transcript,
+      // "Ask this meeting" needs the transcript the model would answer from —
+      // a summary-only link offers nothing to ask.
+      viewer_can_ask: Boolean(share.include_transcript && transcript && transcript.length > 0),
       // The page asks for the media separately; this only says whether it may.
       has_recording: Boolean(share.include_recording),
     });
