@@ -16,10 +16,17 @@
  * re-listen, the audio can go. Rows are kept; only `audio_url` is cleared.
  *
  * Scheduled daily by pg_cron (see 20260820160000_prune_recordings_cron.sql).
+ *
+ * The same tick also runs the Cloudflare R2 audio archive
+ * (`_shared/recording-archive.ts`): copy new meetings' audio out of Recall
+ * before its 7-day retention ends, then sweep deleted/expired copies and keep
+ * the bucket under the free tier. Riding this tick instead of adding a cron job
+ * is deliberate — pg_cron write churn is what the Disk IO budget can't afford.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, json } from "../_shared/auth.ts";
+import { runArchiveTick } from "../_shared/recording-archive.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -135,7 +142,18 @@ serve(async (req) => {
     }
 
     const after = await bucketBytes(supabase);
+
+    // R2 archive. Its own failure is reported, never allowed to fail the prune.
+    // ~100 s leaves the edge function's 150 s wall clock room to return.
+    let archive: unknown;
+    try {
+      archive = await runArchiveTick(supabase, 100_000);
+    } catch (err) {
+      archive = { error: err instanceof Error ? err.message : String(err) };
+    }
+
     const result = {
+      archive,
       retain_days: retainDays,
       removed,
       bytes_before: before,

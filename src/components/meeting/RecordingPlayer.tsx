@@ -16,6 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
  */
 interface RecordingMedia {
   kind: 'video' | 'audio' | 'none';
+  source?: string;
   url?: string;
   video_status?: string;
 }
@@ -152,7 +153,9 @@ export function RecordingPlayer({
     return (
       <div className="rounded-card border border-eb-border bg-eb-card p-5">
         <p className="mb-3 font-dmsans text-[13px] text-eb-prose">
-          No video for this meeting — playing the archived audio.
+          {data.source === 'archive'
+            ? 'The video expired after 7 days — playing the saved audio. Timestamps still jump.'
+            : 'No video for this meeting — playing the archived audio.'}
         </p>
         <audio
           key={data.url}
@@ -185,8 +188,8 @@ export function RecordingPlayer({
 
   return (
     <Placeholder>
-      No recording is available for this meeting. Recordings expire 7 days after the
-      meeting.
+      No recording is available for this meeting. Video is kept for 7 days after the
+      meeting; the audio is kept after that while storage allows.
     </Placeholder>
   );
 }

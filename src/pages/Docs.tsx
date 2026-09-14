@@ -946,7 +946,7 @@ export default function Docs() {
                   <li>
                     <strong className="text-foreground">Include the recording</strong> — the
                     reader can play the recording back in their browser for as long as it exists
-                    (recordings expire after 7 days).
+                    (the video is kept for 7 days; after that the reader hears the saved audio instead).
                   </li>
                 </ul>
                 <Callout tone="warn" title="The recording is the whole call">

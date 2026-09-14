@@ -246,7 +246,10 @@ export async function getVideoDownloadUrl(
   }
 }
 
-export async function getAudioDownloadUrl(botData: Record<string, any>) {
+export async function getAudioDownloadUrl(
+  botData: Record<string, any>,
+  { allowVideoFallback = true }: { allowVideoFallback?: boolean } = {},
+) {
   const recordings = Array.isArray(botData.recordings)
     ? botData.recordings
     : [];
@@ -277,6 +280,9 @@ export async function getAudioDownloadUrl(botData: Record<string, any>) {
       console.warn("[recall-pipeline] audio_mixed endpoint returned:", response.status);
     }
   }
+
+  // The R2 archive wants the mp3 or nothing — an mp4 there would be 15x the bytes.
+  if (!allowVideoFallback) return null;
 
   // Last resort: video_url (mp4 — will likely fail transcription but logs the issue)
   console.warn("[recall-pipeline] Falling back to video_url — audio_mixed not available");

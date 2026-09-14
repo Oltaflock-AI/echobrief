@@ -198,7 +198,9 @@ The resolution itself lives in `_shared/recording-media.ts`, because
 carries the recording. Only the authorisation differs between the two call sites.
 
 > Bots pin retention to 168 h (`RECORDING_RETENTION_HOURS`), so the mp4 is playable for
-> **7 days** — exactly Recall's free window, so no storage is billed. (It was 240 h from
+> **7 days** — exactly Recall's free window, so no storage is billed. After that,
+> playback falls back to the meeting's audio in Cloudflare R2, copied by the daily
+> `prune-recordings` tick (`_shared/recording-archive.ts`; free tier, capped at 9 GB). (It was 240 h from
 > 2026-09-09 to 2026-09-14; bots created in that span keep 10 days.)
 > Retention is fixed at bot-creation time: neither PATCH endpoint can extend a recording
 > afterwards (`/recording/{id}/` returns 200 and ignores the field, `/bot/{id}/` refuses

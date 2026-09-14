@@ -93,6 +93,7 @@ NOT_TENANT_SCOPED = {
     "organizations": "membership-scoped, checked via org paths",
     "org_invites": "admin-scoped, checked via org paths",
     "rate_limits": "counters, no user data",
+    "recording_archives": "RLS on, 0 policies — deny-all (R2 audio archive ledger)",
     "summary_recipient_allowlist": "global reviewer list, service-role only",
     "waitlist": "pre-signup contact form",
 }

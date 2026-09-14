@@ -343,7 +343,11 @@ account. Stale keys are swept by the `prune-job-logs` tick.
 ## Data handling
 
 - **Audio** is archived to the `recordings` bucket and **deleted after 30 days** by
-  the `prune-recordings` cron (7 days when the bucket is near cap). The transcript and
+  the `prune-recordings` cron (7 days when the bucket is near cap). A second copy of
+  the meeting audio lives in a private Cloudflare R2 bucket (`recording_archives`,
+  service-role only) and is only ever served as a one-hour presigned URL to a caller
+  already authorised for the recording; deleting a meeting or an account removes the
+  R2 object on the next daily tick. The transcript and
   insights are the product; the mp3 is an archive.
 - **Transcripts and insights** are retained indefinitely and are what chat retrieves.
 - **Third parties that see meeting content:** Recall.ai (audio + its own transcript),
