@@ -1,3 +1,5 @@
+import type { PublicFacts } from './notes';
+
 /**
  * The shape `get-shared-meeting` returns, and the small readers the share
  * surface needs to survive it.
@@ -30,6 +32,16 @@ export interface TranscriptSegment {
   start: number | null;
 }
 
+/** `follow_ups` has been strings and objects; both must render. */
+export type FollowUp = string | { description?: string; assignee?: string | null; type?: string };
+
+export interface TimelineEntry {
+  timestamp?: number;
+  type?: string;
+  content?: string;
+  speaker?: string | null;
+}
+
 export interface SharedPayload {
   meeting: {
     title: string;
@@ -43,10 +55,25 @@ export interface SharedPayload {
     key_points: string[];
     action_items: ActionItem[];
     decisions: Decision[];
+    follow_ups?: FollowUp[];
+    timeline_entries?: TimelineEntry[];
   };
+  /** The whitelisted facts (see `_shared/share-view.ts`); null before the facts pass existed. */
+  facts?: PublicFacts | null;
+  /** True when the link carries a transcript a signed-in reader may ask about. */
+  viewer_can_ask?: boolean;
   /** Null when this link does not carry the transcript. */
   transcript: TranscriptSegment[] | null;
   has_recording: boolean;
+}
+
+export function followUpText(item: FollowUp): string {
+  if (typeof item === 'string') return item.trim();
+  return asText(item?.description);
+}
+
+export function followUpOwner(item: FollowUp): string {
+  return typeof item === 'string' ? '' : asText(item?.assignee);
 }
 
 export function asText(value: unknown): string {
