@@ -197,9 +197,9 @@ The resolution itself lives in `_shared/recording-media.ts`, because
 `get-shared-meeting` serves the same media to anonymous readers of a share link that
 carries the recording. Only the authorisation differs between the two call sites.
 
-> Bots pin retention to 240 h (`RECORDING_RETENTION_HOURS`), so the mp4 is playable for
-> **10 days**. Recall's free window is 7 days; the other 72 hours are billed at
-> $0.000069 per hour of media per hour stored — about $0.005 per recording-hour.
+> Bots pin retention to 168 h (`RECORDING_RETENTION_HOURS`), so the mp4 is playable for
+> **7 days** — exactly Recall's free window, so no storage is billed. (It was 240 h from
+> 2026-09-09 to 2026-09-14; bots created in that span keep 10 days.)
 > Retention is fixed at bot-creation time: neither PATCH endpoint can extend a recording
 > afterwards (`/recording/{id}/` returns 200 and ignores the field, `/bot/{id}/` refuses
 > with "Only scheduled bots can be updated").
