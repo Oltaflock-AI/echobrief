@@ -218,6 +218,73 @@ export function anchorTopic(
 
 type FactItem = Record<string, unknown>;
 
+/**
+ * Chapter times for topics that could not be anchored on their own words.
+ *
+ * The old fallback put every such topic at its window's start, so a window
+ * that yielded three chapters showed all three at 20:00 (measured 2026-09-14 on
+ * a 41-minute call: `[0, 0, 0, 780, …, 1200, 1200, 1200, 1800, 1800, …]`).
+ * Topics come back in speaking order, so an unanchored one belongs *between*
+ * its neighbours: it keeps the model's own `ts` when that fits strictly
+ * between them, and is otherwise spaced evenly in the gap and snapped to the
+ * speech turn that starts there, so a click lands on someone talking.
+ *
+ * `anchored[i]` is the heading-match time or null; `modelTs[i]` the number the
+ * model wrote; `starts` every segment start in the meeting.
+ */
+export function spreadTopicTimes(
+  anchored: Array<number | null>,
+  modelTs: number[],
+  starts: number[],
+  bounds?: { from: number; to: number },
+): number[] {
+  const inRange = starts
+    .filter((t) => Number.isFinite(t) && (!bounds || (t >= bounds.from && t < bounds.to)))
+    .sort((a, b) => a - b);
+  if (anchored.length === 0) return [];
+  const lower = bounds ? bounds.from : (inRange[0] ?? 0);
+  const upper = bounds ? bounds.to : (inRange[inRange.length - 1] ?? lower);
+
+  const out: Array<number | null> = anchored.map((a) => (a === null ? null : a));
+
+  // A model ts that sits strictly between the neighbouring known times is kept.
+  for (let i = 0; i < out.length; i += 1) {
+    if (out[i] !== null) continue;
+    const m = modelTs[i];
+    if (!Number.isFinite(m)) continue;
+    const prev = i > 0 && out[i - 1] !== null ? (out[i - 1] as number) : lower - 1;
+    let next = upper + 1;
+    for (let j = i + 1; j < out.length; j += 1) {
+      if (anchored[j] !== null) { next = anchored[j] as number; break; }
+    }
+    if (m > prev && m < next && m >= lower && m <= upper) out[i] = Math.round(m);
+  }
+
+  // Everything still unknown is spaced evenly in the gap between known times.
+  let i = 0;
+  while (i < out.length) {
+    if (out[i] !== null) { i += 1; continue; }
+    let j = i;
+    while (j < out.length && out[j] === null) j += 1;
+    const left = i > 0 ? (out[i - 1] as number) : lower;
+    const right = j < out.length ? (out[j] as number) : upper;
+    // A run at the very start begins AT the lower bound (the first chapter
+    // opens the window); elsewhere the run sits strictly inside the gap.
+    const leading = i === 0;
+    const slots = j - i + (leading ? 0 : 1);
+    const step = Math.max(0, right - left) / Math.max(1, slots);
+    for (let k = i; k < j; k += 1) {
+      const n = k - i + (leading ? 0 : 1);
+      const target = left + step * n;
+      // Snap forward to the first speech turn at or after the target.
+      const snapped = inRange.find((t) => t >= target && t < right);
+      out[k] = Math.round(snapped ?? target);
+    }
+    i = j;
+  }
+  return out as number[];
+}
+
 /** Keys of the facts object whose rows carry a verbatim `quote`. */
 const QUOTED_KEYS = [
   "numbers",
@@ -274,10 +341,13 @@ export function anchorFacts<T extends object>(
   // window's own words, and demand a strong overlap before trusting it.
   const topics = Array.isArray(out.topics) ? (out.topics as FactItem[]) : null;
   if (topics) {
-    out.topics = topics.map((t) => {
-      const anchored = anchorTopic(t.topic, t.notes, index, bounds);
-      return { ...t, ts: anchored ?? clamp(t.ts) };
-    });
+    const resolved = spreadTopicTimes(
+      topics.map((t) => anchorTopic(t.topic, t.notes, index, bounds)),
+      topics.map((t) => Number(t.ts)),
+      index.segments.map((seg) => seg.start),
+      bounds,
+    );
+    out.topics = topics.map((t, i) => ({ ...t, ts: resolved[i] }));
   }
 
   const risks = Array.isArray(out.risks) ? (out.risks as FactItem[]) : null;

@@ -159,3 +159,29 @@ Deno.test("evenSample keeps items spanning the meeting, not the first N", () => 
   assertEquals(kept, [0, 600, 1200, 1800, 2400]);
   assertEquals(evenSample(rows.slice(0, 3), 5).length, 3);
 });
+
+// ---- spreadTopicTimes ------------------------------------------------------
+import { spreadTopicTimes } from "../_shared/anchor.ts";
+
+const STARTS = [1200, 1260, 1330, 1400, 1480, 1550, 1620, 1700, 1790];
+
+Deno.test("spreadTopicTimes no longer stacks unanchored topics on the window start", () => {
+  // Three chapters from one 20:00–30:00 window, none anchored, model ts out of range.
+  const out = spreadTopicTimes([null, null, null], [0, 0, 0], STARTS, { from: 1200, to: 1800 });
+  assertEquals(out[0], 1200);
+  assertEquals(new Set(out).size, 3);
+  assertEquals([...out].sort((a, b) => a - b), out);
+  for (const t of out) assertEquals(STARTS.includes(t), true);
+});
+
+Deno.test("spreadTopicTimes keeps anchors and places unknowns between them", () => {
+  const out = spreadTopicTimes([1200, null, 1700], [0, 0, 0], STARTS, { from: 1200, to: 1800 });
+  assertEquals(out[0], 1200);
+  assertEquals(out[2], 1700);
+  assertEquals(out[1] > 1200 && out[1] < 1700, true);
+});
+
+Deno.test("spreadTopicTimes keeps a model ts that fits between its neighbours", () => {
+  const out = spreadTopicTimes([1200, null, 1700], [0, 1480, 0], STARTS, { from: 1200, to: 1800 });
+  assertEquals(out, [1200, 1480, 1700]);
+});
