@@ -18,6 +18,7 @@ import OpenAI from "https://esm.sh/openai@4.20.1";
 import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
 import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from "../_shared/rate-limit.ts";
 import { captureError, withObservability } from "../_shared/observability.ts";
+import { locateQuotes } from "../_shared/quote-locate.ts";
 
 const MAX_CONTEXT_TOKENS = 100_000;
 
@@ -110,66 +111,6 @@ function renderContext(items: MeetingContext[]): string {
     .join("\n\n");
 }
 
-
-/** Whitespace, case and punctuation folded — quotes come back lightly reworded. */
-function normalize(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
-}
-
-/**
- * Where in the meeting a quote was said.
- *
- * The model supplies the words; the timestamp is derived here from the stored
- * speaker segments, so a citation can never point at a moment that was invented.
- * Exact-ish match first, then the longest run of words shared with a segment —
- * which is what survives a model dropping a filler word. Unmatched quotes get
- * no timestamp rather than a guessed one.
- */
-async function locateQuotes(
-  supabase: SupabaseClient,
-  meetingIds: string[],
-  quotes: Map<string, string>,
-): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  const wanted = meetingIds.filter((id) => quotes.has(id));
-  if (wanted.length === 0) return out;
-
-  const { data } = await supabase
-    .from("transcripts")
-    .select("meeting_id, speakers")
-    .in("meeting_id", wanted);
-
-  for (const row of (data ?? []) as Array<{ meeting_id: string; speakers: unknown }>) {
-    const quote = normalize(quotes.get(row.meeting_id) ?? "");
-    if (!quote) continue;
-    const segments = Array.isArray(row.speakers)
-      ? (row.speakers as Array<{ text?: string; start?: number }>)
-      : [];
-
-    let best: { score: number; start: number } | null = null;
-    const quoteWords = quote.split(" ");
-    for (const seg of segments) {
-      if (typeof seg?.start !== "number" || typeof seg?.text !== "string") continue;
-      const text = normalize(seg.text);
-      if (!text) continue;
-      let score = 0;
-      if (text.includes(quote) || quote.includes(text)) {
-        score = 1000 + Math.min(text.length, quote.length);
-      } else {
-        // Longest shared word run — cheap, and enough to beat coincidence.
-        let run = 0;
-        for (const w of quoteWords) {
-          if (w.length > 3 && text.includes(w)) run += 1;
-        }
-        score = run;
-      }
-      if (score > 0 && (!best || score > best.score)) best = { score, start: seg.start };
-    }
-    // A couple of shared words is noise, not a location.
-    if (best && best.score >= 4) out.set(row.meeting_id, Math.max(0, Math.floor(best.start)));
-  }
-  return out;
-}
 
 serve(withObservability("chat-transcripts", async (req) => {
   const corsResponse = handleCorsPrelight(req);
