@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { Avatar, Card, CardHeader, Chip } from '@/ui';
-import { timestamp, type TranscriptSegment } from './types';
+import { Ts, useJump } from './jump';
+import type { TranscriptSegment } from './types';
 
 /**
  * The meeting-zone transcript, grouped into turns.
@@ -14,6 +15,10 @@ import { timestamp, type TranscriptSegment } from './types';
  *
  * The payload arrives already filtered to the meeting zone; this component has
  * no way to widen it, which is where that guarantee belongs.
+ *
+ * A timestamp click elsewhere on the page (a note, an action item, a cited
+ * answer) lands here when the link has no recording: the turn open at that
+ * second scrolls into view and flashes once.
  */
 
 interface Turn {
@@ -59,6 +64,9 @@ export function TranscriptPanel({
 }) {
   const [query, setQuery] = useState('');
   const [speaker, setSpeaker] = useState<string | null>(null);
+  const { scrollTo, scrollNonce } = useJump();
+  const [flash, setFlash] = useState<number | null>(null);
+  const rows = useRef<Map<number, HTMLDivElement>>(new Map());
 
   const turns = useMemo(() => toTurns(segments), [segments]);
   const visible = useMemo(() => {
@@ -69,6 +77,29 @@ export function TranscriptPanel({
       return turn.lines.join(' ').toLowerCase().includes(needle);
     });
   }, [turns, query, speaker]);
+
+  // The turn open at the requested second: the last one that starts at or
+  // before it. Filters are cleared first so the target is actually rendered.
+  useEffect(() => {
+    if (scrollTo == null) return;
+    setQuery('');
+    setSpeaker(null);
+    let target = 0;
+    for (let i = 0; i < turns.length; i += 1) {
+      if (turns[i].start != null && turns[i].start! <= scrollTo) target = i;
+      else if (turns[i].start != null) break;
+    }
+    // Wait a frame so the unfiltered list is in the DOM before measuring.
+    const frame = requestAnimationFrame(() => {
+      rows.current.get(target)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setFlash(target);
+    });
+    const timer = setTimeout(() => setFlash(null), 1600);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
+  }, [scrollTo, scrollNonce, turns]);
 
   return (
     <Card padded={false}>
@@ -131,24 +162,32 @@ export function TranscriptPanel({
         </p>
       ) : (
         <div className="max-h-[72dvh] overflow-y-auto px-[18px] py-4">
-          {visible.map((turn, i) => (
-            <div key={i} className="mt-5 flex gap-3 first:mt-0">
+          {visible.map((turn) => {
+            const index = turns.indexOf(turn);
+            return (
+            <div
+              key={index}
+              ref={(el) => {
+                if (el) rows.current.set(index, el);
+                else rows.current.delete(index);
+              }}
+              className={`-mx-2 mt-5 flex gap-3 rounded-card px-2 py-1 transition-colors duration-700 first:mt-0 ${
+                flash === index ? 'bg-eb-accent-soft' : ''
+              }`}
+            >
               <Avatar name={turn.speaker} size={28} round className="mt-[2px]" />
               <div className="min-w-0 flex-1">
-                <p className="m-0 mb-1 font-dmsans text-[12.5px] font-semibold text-eb-text">
+                <p className="m-0 mb-1 flex items-baseline gap-2 font-dmsans text-[12.5px] font-semibold text-eb-text">
                   {turn.speaker}
-                  {turn.start != null && (
-                    <span className="ml-2 font-mono text-[11.5px] font-normal text-eb-muted">
-                      {timestamp(turn.start)}
-                    </span>
-                  )}
+                  <Ts seconds={turn.start} />
                 </p>
                 <p className="m-0 font-dmsans text-[14px] leading-[1.7] text-eb-prose">
                   {highlight(turn.lines.join(' '), query.trim())}
                 </p>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

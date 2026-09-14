@@ -1,5 +1,6 @@
 import { CalendarClock, CheckCircle2, UserRound } from 'lucide-react';
 import { Card, CardHeader } from '@/ui';
+import { Ts } from './jump';
 import { actionDue, actionOwner, actionTask, type ActionItem } from './types';
 
 /**
@@ -35,8 +36,9 @@ export function ActionItemsPanel({ items }: { items: ActionItem[] }) {
             >
               <span className="mt-[2px] flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[6px] border border-eb-control-edge bg-white" />
               <div className="min-w-0 flex-1">
-                <p className="m-0 font-dmsans text-[14px] leading-[1.5] text-eb-text">
-                  {actionTask(item)}
+                <p className="m-0 flex items-baseline gap-2.5 font-dmsans text-[14px] leading-[1.5] text-eb-text">
+                  <span className="flex-1">{actionTask(item)}</span>
+                  <Ts seconds={item.source_timestamp} />
                 </p>
                 {(owner || due) && (
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">

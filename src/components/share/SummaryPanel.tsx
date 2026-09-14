@@ -1,18 +1,30 @@
-import { ArrowRight, GitBranch, Sparkles, Video } from 'lucide-react';
-import { Avatar, Card, CardHeader, Label, TwoColumn } from '@/ui';
+import { useMemo } from 'react';
+import { ArrowRight, ChevronDown, GitBranch, ListChecks, Sparkles, Video } from 'lucide-react';
+import { Avatar, Card, CardHeader, TwoColumn } from '@/ui';
+import { Ts } from './jump';
+import { bucketFacts } from './notes';
+import { NotesPanel } from './NotesPanel';
+import { AskPanel } from './AskPanel';
 import {
   actionDue,
   actionOwner,
   actionTask,
   decisionContext,
   decisionText,
+  followUpOwner,
+  followUpText,
   type SharedPayload,
 } from './types';
 
 /**
- * The tab a shared link opens on: what happened, what was decided, and a rail
- * with what a reader most often came to check — the action items, who spoke,
- * and whether there is a recording to watch.
+ * The tab a shared link opens on: what happened, chapter by chapter, what was
+ * decided, what happens next — and a rail with what a reader most often came
+ * to check: the action items, who spoke, and whether there is a recording.
+ *
+ * Notes by topic are the primary reading (`NotesPanel`); the prose summary
+ * sits behind "Read full summary" so the page opens on the map, not the
+ * essay. Meetings from before the facts pass have no topics and get the
+ * prose card as before.
  *
  * The rail is a preview that hands off to the full tab rather than a second
  * copy of it; two renderings of the same list is how the V1 page ended up
@@ -20,20 +32,36 @@ import {
  */
 export function SummaryPanel({
   insights,
+  facts,
   speakers,
   hasRecording,
+  canAsk,
+  token,
   onOpenTab,
 }: {
   insights: SharedPayload['insights'];
+  facts: SharedPayload['facts'];
   speakers: string[];
   hasRecording: boolean;
-  onOpenTab: (tab: string) => void;
+  canAsk: boolean;
+  token: string;
+  onOpenTab: (tab: 'actions' | 'recording') => void;
 }) {
   const decisions = (insights.decisions ?? []).filter((d) => decisionText(d));
   const keyPoints = (insights.key_points ?? []).filter(Boolean);
   const actions = insights.action_items ?? [];
+  const followUps = (insights.follow_ups ?? []).filter((f) => followUpText(f));
+  const sections = useMemo(() => bucketFacts(facts), [facts]);
+  const hasNotes = sections.length > 0;
   const lead = insights.summary_short || insights.summary_detailed;
+  // With topic notes on the page the long prose is a second reading, folded
+  // away; without them it is the only reading and stays open.
   const body = insights.summary_short ? insights.summary_detailed : null;
+  const decisionTs = (text: string): number | null => {
+    const needle = text.trim().toLowerCase();
+    const hit = (facts?.decisions ?? []).find((d) => d.decision.trim().toLowerCase() === needle);
+    return hit ? hit.ts : null;
+  };
 
   return (
     <TwoColumn
@@ -62,6 +90,7 @@ export function SummaryPanel({
                           </span>
                         )}
                       </span>
+                      <Ts seconds={item.source_timestamp} />
                     </div>
                   );
                 })}
@@ -120,38 +149,80 @@ export function SummaryPanel({
             <p className="mt-2.5 whitespace-pre-line font-dmsans text-[15px] leading-[1.65] text-eb-text">
               {lead}
             </p>
-            {body && (
+            {body && !hasNotes && (
               <p className="mt-3.5 whitespace-pre-line border-t border-eb-divider pt-3.5 font-dmsans text-[14px] leading-[1.7] text-eb-prose">
                 {body}
               </p>
             )}
-
-            {decisions.length > 0 && (
-              <div className="mt-5 border-t border-eb-divider pt-4">
-                <Label className="flex items-center gap-1.5">
-                  <GitBranch size={12} strokeWidth={1.75} /> Decisions
-                </Label>
-                <ul className="mt-2.5 flex list-none flex-col gap-2 p-0">
-                  {decisions.map((decision, i) => {
-                    const context = decisionContext(decision);
-                    return (
-                      <li key={i} className="flex gap-2.5 font-dmsans text-[13.5px] leading-[1.55]">
-                        <span className="mt-[7px] h-1.5 w-1.5 flex-none rounded-full bg-eb-accent" />
-                        <span className="text-eb-prose">
-                          {decisionText(decision)}
-                          {context && (
-                            <span className="mt-0.5 block text-[12.5px] text-eb-secondary">
-                              {context}
-                            </span>
-                          )}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
           </Card>
+        )}
+
+        <NotesPanel sections={sections} />
+
+        {decisions.length > 0 && (
+          <Card padded={false}>
+            <CardHeader title="Decisions" count={decisions.length} />
+            <ul className="flex list-none flex-col p-0">
+              {decisions.map((decision, i) => {
+                const text = decisionText(decision);
+                const context = decisionContext(decision);
+                return (
+                  <li
+                    key={i}
+                    className="flex gap-2.5 border-b border-eb-divider px-[18px] py-3 font-dmsans text-[13.5px] leading-[1.55] last:border-0"
+                  >
+                    <GitBranch size={13} strokeWidth={1.75} className="mt-[3px] flex-none text-eb-accent" />
+                    <span className="flex-1 text-eb-prose">
+                      {text}
+                      {context && (
+                        <span className="mt-0.5 block text-[12.5px] text-eb-secondary">{context}</span>
+                      )}
+                    </span>
+                    <Ts seconds={decisionTs(text)} />
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        )}
+
+        {followUps.length > 0 && (
+          <Card padded={false}>
+            <CardHeader title="Next steps" count={followUps.length} />
+            <ul className="flex list-none flex-col p-0">
+              {followUps.map((item, i) => {
+                const owner = followUpOwner(item);
+                return (
+                  <li
+                    key={i}
+                    className="flex gap-2.5 border-b border-eb-divider px-[18px] py-3 font-dmsans text-[13.5px] leading-[1.55] text-eb-prose last:border-0"
+                  >
+                    <ListChecks size={13} strokeWidth={1.75} className="mt-[3px] flex-none text-eb-accent" />
+                    <span className="flex-1">
+                      {followUpText(item)}
+                      {owner && <span className="text-eb-secondary"> — {owner}</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        )}
+
+        {body && hasNotes && (
+          <details className="group rounded-card border border-eb-border bg-eb-card shadow-eb-card">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-[18px] py-3.5 font-outfit text-[14px] font-semibold text-eb-text [&::-webkit-details-marker]:hidden">
+              Read full summary
+              <ChevronDown
+                size={15}
+                strokeWidth={1.75}
+                className="text-eb-muted transition-transform group-open:rotate-180"
+              />
+            </summary>
+            <p className="m-0 whitespace-pre-line border-t border-eb-divider px-[18px] py-4 font-dmsans text-[14px] leading-[1.7] text-eb-prose">
+              {body}
+            </p>
+          </details>
         )}
 
         {keyPoints.length > 0 && (
@@ -170,6 +241,8 @@ export function SummaryPanel({
             </ul>
           </Card>
         )}
+
+        {canAsk && <AskPanel token={token} />}
       </div>
     </TwoColumn>
   );
