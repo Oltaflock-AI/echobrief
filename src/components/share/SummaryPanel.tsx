@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import { ArrowRight, ChevronDown, GitBranch, ListChecks, Sparkles, Video } from 'lucide-react';
+import { ArrowRight, ChevronDown, GitBranch, ListChecks, Video } from 'lucide-react';
 import { Avatar, Card, CardHeader, TwoColumn } from '@/ui';
 import { Ts } from './jump';
-import { bucketFacts } from './notes';
-import { NotesPanel } from './NotesPanel';
+import { chaptersOf, highlightsOf } from './notes';
+import { ChaptersPanel, HighlightsPanel } from './NotesPanel';
 import { AskPanel } from './AskPanel';
 import {
   actionDue,
@@ -17,14 +17,13 @@ import {
 } from './types';
 
 /**
- * The tab a shared link opens on: what happened, chapter by chapter, what was
- * decided, what happens next — and a rail with what a reader most often came
- * to check: the action items, who spoke, and whether there is a recording.
- *
- * Notes by topic are the primary reading (`NotesPanel`); the prose summary
- * sits behind "Read full summary" so the page opens on the map, not the
- * essay. Meetings from before the facts pass have no topics and get the
- * prose card as before.
+ * The tab a shared link opens on, in the order a reader wants it: the summary
+ * paragraph, the highlights (sentences, timestamped where a number in them can
+ * be traced), the chapters (an outline of the call), what was decided, what
+ * happens next — and a rail with the action items, who spoke, and the
+ * recording. The long prose sits behind "Read full summary" when chapters
+ * exist; meetings from before the facts pass have no chapters and keep the
+ * prose open.
  *
  * The rail is a preview that hands off to the full tab rather than a second
  * copy of it; two renderings of the same list is how the V1 page ended up
@@ -48,11 +47,11 @@ export function SummaryPanel({
   onOpenTab: (tab: 'actions' | 'recording') => void;
 }) {
   const decisions = (insights.decisions ?? []).filter((d) => decisionText(d));
-  const keyPoints = (insights.key_points ?? []).filter(Boolean);
   const actions = insights.action_items ?? [];
   const followUps = (insights.follow_ups ?? []).filter((f) => followUpText(f));
-  const sections = useMemo(() => bucketFacts(facts), [facts]);
-  const hasNotes = sections.length > 0;
+  const chapters = useMemo(() => chaptersOf(facts), [facts]);
+  const highlights = useMemo(() => highlightsOf(insights.key_points, facts), [insights.key_points, facts]);
+  const hasNotes = chapters.length > 0;
   const lead = insights.summary_short || insights.summary_detailed;
   // With topic notes on the page the long prose is a second reading, folded
   // away; without them it is the only reading and stays open.
@@ -157,7 +156,9 @@ export function SummaryPanel({
           </Card>
         )}
 
-        <NotesPanel sections={sections} />
+        <HighlightsPanel highlights={highlights} />
+
+        <ChaptersPanel chapters={chapters} />
 
         {decisions.length > 0 && (
           <Card padded={false}>
@@ -223,23 +224,6 @@ export function SummaryPanel({
               {body}
             </p>
           </details>
-        )}
-
-        {keyPoints.length > 0 && (
-          <Card padded={false}>
-            <CardHeader title="Key points" count={keyPoints.length} />
-            <ul className="flex list-none flex-col p-0">
-              {keyPoints.map((point, i) => (
-                <li
-                  key={i}
-                  className="flex gap-2.5 border-b border-eb-divider px-[18px] py-3 font-dmsans text-[13.5px] leading-[1.55] text-eb-prose last:border-0"
-                >
-                  <Sparkles size={13} strokeWidth={1.75} className="mt-[3px] flex-none text-eb-accent" />
-                  {point}
-                </li>
-              ))}
-            </ul>
-          </Card>
         )}
 
         {canAsk && <AskPanel token={token} />}

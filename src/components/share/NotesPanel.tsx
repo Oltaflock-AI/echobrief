@@ -1,67 +1,62 @@
-import { CircleAlert, GitBranch, Hash, MessageSquareQuote } from 'lucide-react';
 import { Card, CardHeader } from '@/ui';
 import { Ts } from './jump';
-import type { NoteKind, TopicSection } from './notes';
+import type { Chapter, Highlight } from './notes';
 
 /**
- * The notes, chapter by chapter: each topic the extraction pass named, when it
- * opened, its one-line note, and every number, ask, pain point and decision
- * said while it was open — each with a timestamp that jumps into the call.
+ * What a reader scans first: the highlights, then the chapters.
  *
- * This is the reader's map of the meeting. The prose summary still exists
- * (behind "Read full summary"), but a reader scanning for "what did they say
- * about pricing" wants the chapter, not the paragraph that mentions it.
+ * Highlights are the synthesised key points — whole sentences, one line each,
+ * with a timestamp when a number in the sentence can be traced to the moment
+ * it was said. Chapters are an outline of the call in time order: when each
+ * topic opened and a one-line note on it. Neither shows raw extraction rows;
+ * a `metric: value` fragment is data for the summary, not a note for a person.
  */
-
-const KIND: Record<NoteKind, { label: string; icon: React.ReactNode }> = {
-  number: { label: 'Number', icon: <Hash size={12} strokeWidth={1.75} /> },
-  pain: { label: 'Pain point', icon: <CircleAlert size={12} strokeWidth={1.75} /> },
-  ask: { label: 'Ask', icon: <MessageSquareQuote size={12} strokeWidth={1.75} /> },
-  decision: { label: 'Decision', icon: <GitBranch size={12} strokeWidth={1.75} /> },
-};
-
-export function NotesPanel({ sections }: { sections: TopicSection[] }) {
-  if (sections.length === 0) return null;
+export function HighlightsPanel({ highlights }: { highlights: Highlight[] }) {
+  if (highlights.length === 0) return null;
   return (
     <Card padded={false}>
-      <CardHeader title="Notes" count={sections.length} />
-      <div className="flex flex-col">
-        {sections.map((section, i) => (
-          <section
-            key={`${section.ts}-${i}`}
-            className="border-b border-eb-divider px-[18px] py-4 last:border-0"
+      <CardHeader title="Highlights" count={highlights.length} />
+      <ul className="flex list-none flex-col p-0">
+        {highlights.map((item, i) => (
+          <li
+            key={i}
+            className="flex items-baseline gap-3 border-b border-eb-divider px-[18px] py-3 font-dmsans text-[14px] leading-[1.6] text-eb-text last:border-0"
           >
-            <div className="flex items-baseline gap-2.5">
-              <h3 className="m-0 font-outfit text-[14.5px] font-semibold leading-snug text-eb-text">
-                {section.topic}
-              </h3>
-              <Ts seconds={section.ts} />
-            </div>
-            {section.notes && (
-              <p className="mb-0 mt-1.5 font-dmsans text-[13.5px] leading-[1.6] text-eb-prose">
-                {section.notes}
-              </p>
-            )}
-            {section.items.length > 0 && (
-              <ul className="mb-0 mt-3 flex list-none flex-col gap-2 p-0">
-                {section.items.map((item, j) => (
-                  <li key={j} className="flex items-baseline gap-2.5 font-dmsans text-[13.5px] leading-[1.55]">
-                    <span
-                      className="inline-flex flex-none items-center gap-1 self-center text-eb-muted"
-                      title={KIND[item.kind].label}
-                      aria-label={KIND[item.kind].label}
-                    >
-                      {KIND[item.kind].icon}
-                    </span>
-                    <span className="flex-1 text-eb-prose">{item.text}</span>
-                    <Ts seconds={item.ts} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+            <span className="mt-[9px] h-1.5 w-1.5 flex-none self-start rounded-full bg-eb-accent" />
+            <span className="flex-1">{item.text}</span>
+            <Ts seconds={item.ts} />
+          </li>
         ))}
-      </div>
+      </ul>
+    </Card>
+  );
+}
+
+export function ChaptersPanel({ chapters }: { chapters: Chapter[] }) {
+  if (chapters.length === 0) return null;
+  return (
+    <Card padded={false}>
+      <CardHeader title="Chapters" count={chapters.length} />
+      <ol className="flex list-none flex-col p-0">
+        {chapters.map((chapter, i) => (
+          <li
+            key={`${chapter.ts}-${i}`}
+            className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 border-b border-eb-divider px-[18px] py-3 last:border-0"
+          >
+            <Ts seconds={chapter.ts} className="min-w-[46px] justify-center" />
+            <div className="min-w-0">
+              <p className="m-0 font-dmsans text-[14px] font-medium leading-[1.5] text-eb-text">
+                {chapter.topic}
+              </p>
+              {chapter.notes && (
+                <p className="m-0 mt-0.5 font-dmsans text-[13px] leading-[1.55] text-eb-secondary">
+                  {chapter.notes}
+                </p>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
     </Card>
   );
 }

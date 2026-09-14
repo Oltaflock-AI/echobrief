@@ -20,10 +20,16 @@ zone stripping, and never force a sign-in.
   (each with `ts`), `timeline_entries`, `follow_ups` and
   `action_items[].source_timestamp` already exist. The share page just never
   rendered them.
-- **Topics primary, prose collapsed.** `summary_short` stays the lead. Notes
-  become one section per topic with the timestamped facts bucketed under it.
-  `summary_detailed` moves behind a "Read full summary" disclosure. Meetings
-  without facts (pre-2026-08-31) fall back to today's prose card.
+- **Highlights, then chapters; prose collapsed.** `summary_short` stays the
+  lead. Then **Highlights** — the key points, sentences, each stamped with the
+  second a number inside it was said (matched against `facts.numbers`: one
+  strong token such as "2500"/"6%", or two weak ones). Then **Chapters** — the
+  topics as a time-ordered outline (`m:ss · topic — one-line note`). Raw
+  `metric: value` / pain-point / ask rows are **not** rendered: the first cut
+  hung them under each chapter and produced "uptime reliability: 2 to 3" as a
+  note, which nobody could read. `summary_detailed` moves behind a "Read full
+  summary" disclosure. Meetings without facts (pre-2026-08-31) fall back to
+  today's prose card.
 - **Timestamp click order:** recording on the link → Recording tab + seek;
   else transcript on the link → Transcript tab + scroll/flash that turn; else
   plain text.
@@ -50,11 +56,10 @@ Adds to the `meeting` response, all optional-by-history:
   by a `useJump()` context provided by `SharedMeeting` — owns the active tab,
   `seekSeconds`/`seekNonce` for `RecordingPlayer`, and a `scrollTo` seconds
   value the transcript panel watches.
-- **Summary tab:** lead → Notes (topic sections; facts bucketed by
-  `topic[i].ts ≤ fact.ts < topic[i+1].ts`, facts before the first topic go to
-  the first) → Decisions (`<Ts>` from `facts.decisions` matched by text) → Next
-  steps (`follow_ups`) → "Read full summary" → Key points → Ask this meeting.
-  Rail unchanged, action items gain `<Ts>`.
+- **Summary tab:** lead → Highlights (`highlightsOf`) → Chapters
+  (`chaptersOf`) → Decisions (`<Ts>` from `facts.decisions` matched by text) →
+  Next steps (`follow_ups`) → "Read full summary" → Ask this meeting. Rail
+  unchanged, action items gain `<Ts>`.
 - **Actions tab:** `<Ts>` per item.
 - **Transcript tab:** turn timestamp becomes the `<Ts>` chip; on `scrollTo`
   the nearest turn at-or-before that second scrolls into view and flashes.
@@ -78,8 +83,8 @@ Adds to the `meeting` response, all optional-by-history:
 - Not offered on org shares; colleagues have the real chat.
 
 ## Tests
-- Unit: `publicFacts` drops quotes/entities/etc.; `bucketFacts` topic
-  bucketing; `locateQuote` extraction keeps `chat-transcripts` behaviour.
+- Unit: `publicFacts` drops quotes/entities/etc.; `chaptersOf` / `highlightsOf`
+  number matching; `locateQuote` extraction keeps `chat-transcripts` behaviour.
 - `npm run test:rls` — a new function reads share rows.
 - `python3 scripts/pipeline-test/harness.py` before deploying either function.
 - `tsc --noEmit` against a stash baseline; `npm run build`; `npm run brand:check`.

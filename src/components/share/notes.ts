@@ -1,15 +1,17 @@
 /**
- * Notes grouped by topic, from the whitelisted facts a share link carries.
+ * The reading order of a shared meeting, from the whitelisted facts.
  *
- * Dependency-free on purpose: the bucketing is tested from the deno harness
+ * Dependency-free on purpose: tested from the deno harness
  * (`supabase/functions/tests/share_notes_test.ts`), which imports this file
  * directly the way `meeting_url_parity_test.ts` imports `src/lib/meetingUrl.ts`.
  *
- * A topic owns everything said from its timestamp until the next topic's. The
- * extraction pass emits topics in order with the time each one opened, so
- * "which chapter was this number said in" is a range lookup, not a second LLM
- * call — and a number the model placed at 14:02 lands under the chapter that
- * started at 12:30, exactly where a reader scrubbing the recording finds it.
+ * Two things are derived here. **Chapters** are the topics the extraction pass
+ * named, in time order — an outline, not a container: the first version of
+ * this page hung every raw `metric: value` row under its chapter and produced
+ * "uptime reliability: 2 to 3" as a note, which nobody can read. **Highlights**
+ * are the synthesised key points, which are sentences; each is stamped with a
+ * time when a number inside it matches a fact the extraction pass timestamped,
+ * so "Expedia pays 6%" jumps to the second "6%" was said.
  */
 
 export interface PublicFacts {
@@ -20,52 +22,70 @@ export interface PublicFacts {
   decisions: Array<{ decision: string; owner: string | null; ts: number }>;
 }
 
-export type NoteKind = 'number' | 'pain' | 'ask' | 'decision';
-
-export interface NoteItem {
-  kind: NoteKind;
-  text: string;
-  ts: number;
-}
-
-export interface TopicSection {
+export interface Chapter {
   topic: string;
   ts: number;
   notes: string;
-  items: NoteItem[];
 }
 
-function flatten(facts: PublicFacts): NoteItem[] {
-  const out: NoteItem[] = [];
-  for (const n of facts.numbers ?? []) out.push({ kind: 'number', text: `${n.metric}: ${n.value}`, ts: n.ts });
-  for (const p of facts.pain_points ?? []) out.push({ kind: 'pain', text: p.statement, ts: p.ts });
-  for (const a of facts.explicit_asks ?? []) out.push({ kind: 'ask', text: a.statement, ts: a.ts });
-  for (const d of facts.decisions ?? []) {
-    out.push({ kind: 'decision', text: d.owner ? `${d.decision} — ${d.owner}` : d.decision, ts: d.ts });
-  }
-  return out;
+export interface Highlight {
+  text: string;
+  ts: number | null;
+}
+
+/** Topics in time order. */
+export function chaptersOf(facts: PublicFacts | null | undefined): Chapter[] {
+  if (!facts || !Array.isArray(facts.topics)) return [];
+  return [...facts.topics]
+    .filter((t) => t && typeof t.topic === 'string' && t.topic.trim())
+    .sort((a, b) => a.ts - b.ts)
+    .map((t) => ({ topic: t.topic.trim(), ts: t.ts, notes: (t.notes ?? '').trim() }));
+}
+
+/** Digits and % only: "₹2,500" and "2500" are the same number. */
+function numberTokens(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/\d[\d,]*(?:\.\d+)?%?/g)) out.add(m[0].replace(/,/g, ''));
+  return [...out];
 }
 
 /**
- * Topics in time order, each carrying the facts that fall inside its window.
- * Anything said before the first topic opened belongs to it: the extraction
- * timestamps a topic where it is named, which is often a beat after the first
- * number in it was spoken.
+ * How much a shared numeric token proves. "2500" or "6%" almost certainly
+ * name the same figure; a bare "10" is in half the sentences of any call
+ * ("10 to 20 hours", "10 to 20%") and on its own proves nothing.
  */
-export function bucketFacts(facts: PublicFacts | null | undefined): TopicSection[] {
-  if (!facts || !Array.isArray(facts.topics) || facts.topics.length === 0) return [];
-  const sections: TopicSection[] = [...facts.topics]
-    .sort((a, b) => a.ts - b.ts)
-    .map((t) => ({ topic: t.topic, ts: t.ts, notes: t.notes ?? '', items: [] }));
+function weight(token: string): number {
+  return token.endsWith('%') || token.replace('%', '').replace('.', '').length >= 3 ? 2 : 1;
+}
 
-  for (const item of flatten(facts)) {
-    let index = 0;
-    for (let i = 0; i < sections.length; i += 1) {
-      if (sections[i].ts <= item.ts) index = i;
-      else break;
+/**
+ * Key points with a timestamp where one can be derived.
+ *
+ * A key point is matched to a number fact when they share numeric tokens
+ * worth at least one strong match ("2500", "6%") or two weak ones ("10" and
+ * "20"). The best-scoring fact wins, earliest on a tie, since a figure is
+ * usually introduced before it is repeated. Text-only matching against pain
+ * points and asks is deliberately not attempted — the sentences are
+ * paraphrases, and a wrong timestamp is worse than none.
+ */
+export function highlightsOf(keyPoints: unknown, facts: PublicFacts | null | undefined): Highlight[] {
+  const points = Array.isArray(keyPoints)
+    ? keyPoints.filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+    : [];
+  const numbers = (facts?.numbers ?? [])
+    .map((n) => ({ tokens: numberTokens(`${n.metric} ${n.value}`), ts: n.ts }))
+    .filter((n) => n.tokens.length > 0)
+    .sort((a, b) => a.ts - b.ts);
+
+  return points.map((text) => {
+    const tokens = numberTokens(text);
+    let best: { score: number; ts: number } | null = null;
+    if (tokens.length > 0) {
+      for (const fact of numbers) {
+        const score = fact.tokens.filter((t) => tokens.includes(t)).reduce((sum, t) => sum + weight(t), 0);
+        if (score >= 2 && (!best || score > best.score)) best = { score, ts: fact.ts };
+      }
     }
-    sections[index].items.push(item);
-  }
-  for (const section of sections) section.items.sort((a, b) => a.ts - b.ts);
-  return sections;
+    return { text: text.trim(), ts: best ? best.ts : null };
+  });
 }
