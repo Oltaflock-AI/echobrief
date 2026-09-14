@@ -55,7 +55,7 @@ npm run functions:serve  # Serve Supabase Edge Functions locally (needs supabase
 - `src/App.tsx` -- Routes, providers (Auth, Recording, Theme, Query)
 - `src/contexts/AuthContext.tsx` -- Supabase auth state, signIn/signUp/signOut, password recovery flow detection
 - `src/contexts/RecordingContext.tsx` -- Recording state management
-- `src/pages/` -- Dashboard, Recordings, MeetingDetail, Calendar, ActionItems, Settings, Auth, Landing
+- `src/pages/` -- Dashboard, Recordings, MeetingDetail, Calendar, ActionItems, Settings, Auth, Landing. **`MeetingDetail` and `SharedMeeting` are the same "reading desk"** (2026-09-14): no tabs — player + notes on one scroll, the transcript sticky beside them, a chip row / rail that scrolls to sections, and every timestamp seeking the player *and* scrolling the transcript through `src/components/meeting/jump.tsx`. Shared pieces live in `src/components/meeting/` (`notes.ts` = highlights + chapters from facts, `NotesPanel`, `sections.ts`, `PlayerPanel`, `TranscriptColumn`); the share page adds its own rail and the login-gated `AskPanel`.
 - **Data fetching / caching:** `App.tsx` sets global TanStack Query defaults (`staleTime` 60s, `refetchOnWindowFocus: false`) so revisiting a page renders instantly from cache instead of re-fetching cold. `Dashboard.tsx` and `MeetingDetail.tsx` use cached queries (the dashboard runs its profile + meetings reads in parallel; realtime `postgres_changes` patches/invalidates the query cache rather than re-fetching). `Settings.tsx` intentionally stays on local `useState` — it's a form page with write-on-load side effects and user-mutated lists, a poor fit for read-caching. See [`docs/engineering-notes.md`](docs/engineering-notes.md) #21.
 
 **Edge Functions (Deno):**

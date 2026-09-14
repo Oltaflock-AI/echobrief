@@ -23,7 +23,12 @@ import { MeetingMetrics } from '@/components/meeting/MeetingMetrics';
 import { ShareLinkDialog } from '@/components/meeting/ShareLinkDialog';
 import { InsightSection, InsightItem } from '@/components/meeting/InsightSection';
 import { RecordingPlayer } from '@/components/meeting/RecordingPlayer';
-import { RecordingPanel, PanelTopic } from '@/components/meeting/RecordingPanel';
+import { PlayerPanel } from '@/components/meeting/PlayerPanel';
+import { TranscriptColumn } from '@/components/meeting/TranscriptColumn';
+import { JumpProvider, Ts, useJump } from '@/components/meeting/jump';
+import { chaptersOf, highlightsOf } from '@/components/meeting/notes';
+import { ChaptersPanel, HighlightsPanel } from '@/components/meeting/NotesPanel';
+import { scrollToSection, type Section, type SectionId } from '@/components/meeting/sections';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Meeting, asMeeting, Transcript, MeetingInsights, StrategicInsight, SpeakerHighlight, ActionItem, FollowUp, TimelineEntry, MeetingFacts, CoachingReport, CoachingVerdict, CoachingFlag } from '@/types/meeting';
@@ -40,11 +45,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { 
-  ArrowLeft, Calendar, Clock, Loader2, ChevronRight, Trash2, Users, 
-  Lightbulb, AlertTriangle, HelpCircle, RefreshCw, Zap, CheckCircle2, 
-  FileText, Globe, Mail, Languages, Bot, Video, Target, EyeOff, Eye, Hash,
-  CalendarPlus, PenLine, Copy, ExternalLink, Pencil, Link2
+import {
+  ArrowLeft, Loader2, ChevronRight, Trash2, AlertTriangle, RefreshCw, CheckCircle2,
+  Mail, Bot, CalendarPlus, PenLine, Copy, ExternalLink, Link2,
 } from 'lucide-react';
 
 import {
@@ -56,7 +59,6 @@ import {
   ChipGroup as EbChipGroup,
   DarkPanel as EbDarkPanel,
   Label as EbLabel,
-  TwoColumn as EbTwoColumn,
   Dialog as EbDialog,
   DialogNote,
 } from '@/ui';
@@ -189,20 +191,6 @@ function formatDueDate(iso: string): string {
 }
 
 /** Clickable [m:ss] chip that jumps the recording tab to that moment. */
-function TsLink({ ts, onJump }: { ts?: number | null; onJump: (ts: number) => void }) {
-  if (typeof ts !== 'number' || !Number.isFinite(ts)) return null;
-  return (
-    <button
-      type="button"
-      onClick={() => onJump(ts)}
-      className="font-mono text-[11px] font-semibold transition-opacity hover:opacity-70"
-      style={{ color: 'var(--ember)' }}
-      title="Jump to this moment in the recording"
-    >
-      {formatTimelineTime(ts)}
-    </button>
-  );
-}
 
 /** Inline sentiment-over-time sparkline (prospect side), from the coaching pass. */
 function SentimentSparkline({ timeline }: { timeline: { t: number; score: number; note?: string }[] }) {
@@ -289,7 +277,21 @@ const FACT_GROUPS: Array<{ key: string; title: string; primary: string; secondar
   { key: 'topics', title: 'Topics', primary: 'topic' },
 ];
 
+/**
+ * The page is a reading desk, not a tabbed app: the player and the notes on
+ * one scroll in the middle, the transcript sticky beside them, a chip row that
+ * scrolls to each section. Every timestamp seeks the player and scrolls the
+ * transcript together (`JumpProvider`) — including the `?t=` deep link.
+ */
 export default function MeetingDetail() {
+  return (
+    <JumpProvider hasRecording hasTranscript>
+      <MeetingDetailBody />
+    </JumpProvider>
+  );
+}
+
+function MeetingDetailBody() {
   const { id } = useParams<{ id: string }>();
   const { user, session } = useAuth();
   const navigate = useNavigate();
@@ -307,15 +309,20 @@ export default function MeetingDetail() {
     const t = Number(raw);
     return Number.isFinite(t) && t >= 0 ? Math.floor(t) : null;
   })();
-  const [activeTab, setActiveTab] = useState(initialSeek !== null ? 'recording' : 'summary');
-  const [seekSeconds, setSeekSeconds] = useState<number | null>(initialSeek);
-  const [showInternal, setShowInternal] = useState(false);
+  const { jump, seekSeconds, seekNonce } = useJump();
+  const [currentTime, setCurrentTime] = useState(0);
 
-  // Deep link target: every timestamp on this page jumps the recording here.
-  const jumpToRecording = (ts: number) => {
-    setSeekSeconds(Math.max(0, Math.floor(ts)));
-    setActiveTab('recording');
-  };
+  // The ?t= deep link, applied once.
+  useEffect(() => {
+    if (initialSeek !== null) jump(initialSeek);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A seek from the notes brings the player back into view — it sits at the
+  // top of the column and the reader may be a screen below it.
+  useEffect(() => {
+    if (seekSeconds == null) return;
+    document.getElementById('share-player')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [seekSeconds, seekNonce]);
 
   // Authenticated call to one of the meeting-action edge functions.
   const callFn = async (name: string, body: Record<string, unknown>) => {
@@ -340,8 +347,6 @@ export default function MeetingDetail() {
   const [draft, setDraft] = useState<{ subject: string; body: string; to?: string[] } | null>(null);
   const [calendarBusy, setCalendarBusy] = useState<number | null>(null);
   const [inviteAttendees, setInviteAttendees] = useState(false);
-  const [renameTarget, setRenameTarget] = useState<{ from: string; value: string } | null>(null);
-  const [renaming, setRenaming] = useState(false);
   const [regenOpen, setRegenOpen] = useState(false);
 
   const refreshMeeting = () => queryClient.invalidateQueries({ queryKey: ['meeting-detail', id, user?.id] });
@@ -395,20 +400,14 @@ export default function MeetingDetail() {
     }
   };
 
-  const handleRename = async () => {
-    if (!renameTarget) return;
-    const to = renameTarget.value.trim();
-    if (!to || to === renameTarget.from) { setRenameTarget(null); return; }
-    setRenaming(true);
+  const handleRename = async (from: string, to: string) => {
     try {
-      const res = await callFn('rename-speaker', { meeting_id: id, from: renameTarget.from, to });
+      const res = await callFn('rename-speaker', { meeting_id: id, from, to });
       await refreshMeeting();
       toast({ title: `Renamed to ${to}`, description: `${res.segments_renamed} transcript segments and every derived view were updated.` });
-      setRenameTarget(null);
     } catch (e) {
       toast({ title: 'Could not rename speaker', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
-    } finally {
-      setRenaming(false);
+      throw e;
     }
   };
 
@@ -707,191 +706,30 @@ export default function MeetingDetail() {
   const facts = insights?.facts;
   const coaching = insights?.coaching as CoachingReport | undefined;
 
-  const tabs: Array<{ value: string; label: string }> = [
-    { value: 'summary', label: 'Summary' },
-    { value: 'actions', label: `Actions${actionItemCount ? ` (${actionItemCount})` : ''}` },
-    { value: 'recording', label: 'Recording' },
-    { value: 'transcript', label: 'Transcript' },
-    ...(coaching ? [{ value: 'coaching', label: 'Coaching' }] : []),
-    ...(facts ? [{ value: 'facts', label: 'Facts' }] : []),
-    { value: 'delivery', label: 'Delivery' },
-  ];
-
   const inProgress = IN_PROGRESS_STATUSES.includes(meeting.status);
-  const internalCount = speakerSegments.filter((s) => (s.zone ?? 'meeting') !== 'meeting').length;
-  const visibleSegments = showInternal
-    ? speakerSegments
-    : speakerSegments.filter((s) => (s.zone ?? 'meeting') === 'meeting');
+  const meetingSegments = speakerSegments.filter((s) => (s.zone ?? 'meeting') === 'meeting');
+  const chapters = chaptersOf(facts ?? null);
+  const highlights = highlightsOf(insights?.key_points, facts ?? null);
+  const followUps = ((insights?.follow_ups ?? []) as Array<string | { description?: string; assignee?: string | null }>)
+    .map((f) => (typeof f === 'string' ? { text: f.trim(), owner: '' } : { text: (f?.description ?? '').trim(), owner: (f?.assignee ?? '').trim() }))
+    .filter((f) => f.text);
+  const decisionTs = (text: string): number | null => {
+    const needle = text.trim().toLowerCase();
+    const hit = (facts?.decisions ?? []).find((d) => d.decision.trim().toLowerCase() === needle);
+    return hit && typeof hit.ts === 'number' ? hit.ts : null;
+  };
 
-  const summaryRail = (
-    <div className="flex flex-col gap-4">
-      <EbCard padded={false}>
-        <EbCardHeader title="Action items" count={actionItemCount || undefined} />
-        {actionItemCount === 0 ? (
-          <p className="px-[18px] py-4 font-dmsans text-[12.5px] text-eb-secondary">None from this meeting.</p>
-        ) : (
-          <div className="py-1">
-            {(insights!.action_items as ActionItem[]).slice(0, 5).map((item, i) => (
-              <div key={i} className="flex items-baseline gap-2.5 px-[18px] py-2">
-                <span className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-eb-accent" />
-                <span className="flex-1 font-dmsans text-[13px] leading-[1.45]">
-                  {typeof item === 'string' ? item : item.task}
-                  {item.owner && <span className="text-eb-secondary"> — {item.owner}</span>}
-                </span>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => setActiveTab('actions')}
-              className="px-[18px] pb-3 pt-1 font-dmsans text-[12.5px] text-eb-accent hover:underline"
-            >
-              All action items →
-            </button>
-          </div>
-        )}
-      </EbCard>
-
-      {(facts?.numbers?.length ?? 0) > 0 && (
-        <EbCard padded={false}>
-          <EbCardHeader title="Numbers mentioned" count={facts!.numbers!.length} />
-          <div className="flex flex-wrap gap-1.5 p-[18px] pt-3">
-            {facts!.numbers!.slice(0, 8).map((n, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1.5 rounded-pill bg-eb-accent-soft px-2.5 py-1 font-mono text-[11.5px] text-eb-accent-text"
-                title={n.quote}
-              >
-                {n.metric}: {n.value}
-              </span>
-            ))}
-          </div>
-        </EbCard>
-      )}
-
-      {coaching?.metrics && Object.keys(coaching.metrics).length > 0 && (
-        <EbCard padded={false}>
-          <EbCardHeader title="Coaching" right={
-            <button type="button" onClick={() => setActiveTab('coaching')} className="pr-2 font-dmsans text-[12.5px] text-eb-accent hover:underline">
-              Open →
-            </button>
-          } />
-          <div className="grid grid-cols-2 gap-px bg-eb-divider">
-            {(Object.entries(coaching.metrics) as [string, CoachingVerdict][]).slice(0, 4).map(([key, m]) => (
-              <div key={key} className="bg-white p-3">
-                <div className="font-dmsans text-[11.5px] text-eb-secondary">{COACH_METRIC_LABELS[key] ?? key}</div>
-                <div className={cn('font-outfit text-[18px] font-semibold', m.verdict === 'good' ? 'text-eb-green' : m.verdict === 'ok' ? 'text-eb-text' : 'text-eb-red')}>
-                  {m.value}{key === 'talk_ratio' ? '%' : key === 'longest_monologue' ? 's' : ''}
-                </div>
-              </div>
-            ))}
-          </div>
-        </EbCard>
-      )}
-
-      <button
-        type="button"
-        onClick={() => setActiveTab('recording')}
-        className="flex items-center gap-3 rounded-card border border-eb-border bg-eb-card p-4 text-left shadow-eb-card hover:bg-eb-row-hover"
-      >
-        <span className="inline-flex h-10 w-10 flex-none items-center justify-center rounded-tile bg-eb-sidebar text-eb-accent-sidebar">
-          <Video size={17} strokeWidth={1.75} />
-        </span>
-        <span>
-          <span className="block font-dmsans text-sm font-medium">Recording</span>
-          <span className="block font-dmsans text-[12.5px] text-eb-secondary">
-            {meeting.duration_seconds ? formatDuration(meeting.duration_seconds) : 'Watch the call'}
-          </span>
-        </span>
-      </button>
-    </div>
-  );
-
-  const summaryTab = insights && (
-    <div className="flex flex-col gap-4">
-      <EbCard>
-        <h2 className="font-outfit text-[15px] font-semibold text-eb-text">Summary</h2>
-        <p className="mt-2 font-dmsans text-sm leading-[1.6] text-eb-prose">{insights.summary_short}</p>
-        {insights.summary_detailed && (
-          <p className="mt-3 whitespace-pre-wrap font-dmsans text-sm leading-[1.6] text-eb-prose">
-            {insights.summary_detailed}
-          </p>
-        )}
-        {(facts?.validation?.unverified?.length ?? 0) > 0 && (
-          <p className="mt-3 flex items-center gap-1.5 font-dmsans text-xs text-eb-secondary">
-            <AlertTriangle size={12} strokeWidth={1.75} />
-            {facts!.validation!.unverified.length} claim
-            {facts!.validation!.unverified.length === 1 ? '' : 's'} could not be verified against the transcript.
-          </p>
-        )}
-
-        {(insights.decisions?.length ?? 0) > 0 && (
-          <div className="mt-5 border-t border-eb-divider pt-4">
-            <EbLabel>Decisions</EbLabel>
-            <ul className="mt-2 flex flex-col gap-1.5">
-              {insights.decisions.map((d, i) => (
-                <li key={i} className="flex gap-2.5 font-dmsans text-[13.5px] leading-[1.5] text-eb-prose">
-                  <span className="mt-[7px] h-1.5 w-1.5 flex-none rounded-full bg-eb-accent" />
-                  {typeof d === 'string' ? d : (d as { decision?: string }).decision}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {(insights.risks?.length ?? 0) > 0 && (
-          <div className="mt-4 rounded-input bg-eb-amber-bg p-4">
-            <EbLabel className="text-eb-amber-text">Risks flagged</EbLabel>
-            <ul className="mt-2 flex flex-col gap-1.5">
-              {insights.risks.map((r, i) => (
-                <li key={i} className="flex gap-2.5 font-dmsans text-[13.5px] leading-[1.5] text-eb-amber-text">
-                  <Flag size={12} strokeWidth={1.75} className="mt-1 flex-none" />
-                  {typeof r === 'string' ? r : (r as { risk?: string }).risk}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </EbCard>
-
-      {(insights.timeline_entries?.length ?? 0) > 0 && (
-        <EbCard padded={false}>
-          <EbCardHeader title="Key moments" count={insights.timeline_entries.length} />
-          {(insights.timeline_entries as TimelineEntry[]).map((entry, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => jumpToRecording(entry.timestamp)}
-              className="flex w-full items-baseline gap-3 border-b border-eb-divider px-[18px] py-3 text-left last:border-0 hover:bg-eb-row-hover"
-            >
-              <span className="w-12 flex-none font-mono text-[11.5px] text-eb-accent">
-                {formatTimelineTime(entry.timestamp)}
-              </span>
-              <span className="flex-1">
-                <span className="block font-dmsans text-[13.5px] font-medium">{entry.content}</span>
-                {entry.speaker && (
-                  <span className="mt-0.5 block font-dmsans text-[12.5px] text-eb-secondary">{entry.speaker}</span>
-                )}
-              </span>
-            </button>
-          ))}
-        </EbCard>
-      )}
-
-      {(insights.key_points?.length ?? 0) > 0 && (
-        <EbCard>
-          <EbLabel>Key points</EbLabel>
-          <ul className="mt-2 flex flex-col gap-2">
-            {insights.key_points.map((point, i) => (
-              <li key={i} className="flex gap-2.5 font-dmsans text-[13.5px] leading-[1.5] text-eb-prose">
-                <span className="mt-[7px] h-1.5 w-1.5 flex-none rounded-full bg-eb-chip" />
-                {point}
-              </li>
-            ))}
-          </ul>
-        </EbCard>
-      )}
-    </div>
-  );
+  // Only the sections this meeting actually has.
+  const sections: Section[] = [{ id: 'summary', label: 'Summary' }];
+  if (highlights.length) sections.push({ id: 'highlights', label: 'Highlights', count: highlights.length });
+  if (chapters.length) sections.push({ id: 'chapters', label: 'Chapters', count: chapters.length });
+  if (insights?.decisions?.length) sections.push({ id: 'decisions', label: 'Decisions', count: insights.decisions.length });
+  if (followUps.length) sections.push({ id: 'next-steps', label: 'Next steps', count: followUps.length });
+  sections.push({ id: 'actions', label: 'Action items', count: actionItemCount || undefined });
+  if (coaching) sections.push({ id: 'coaching', label: 'Coaching' });
+  if (facts) sections.push({ id: 'facts', label: 'Facts' });
+  sections.push({ id: 'delivery', label: 'Delivery' });
+  sections.push({ id: 'transcript', label: 'Transcript' });
 
   return (
     <AppShell>
@@ -1108,17 +946,114 @@ export default function MeetingDetail() {
       </AlertDialog>
 
       {insights ? (
-        <>
-          <div className="mb-5">
-            <EbChipGroup ariaLabel="Meeting sections" value={activeTab} onChange={setActiveTab} options={tabs} />
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,38%)] lg:items-start">
+        <div className="min-w-0">
+          <div className="scroll-x sticky top-[60px] z-10 mb-4 bg-eb-bg py-2">
+            <EbChipGroup
+              ariaLabel="Jump to section"
+              value=""
+              onChange={(value) => scrollToSection(value as SectionId)}
+              options={sections.map((sec) => ({
+                value: sec.id,
+                label: sec.count != null ? `${sec.label} (${sec.count})` : sec.label,
+              }))}
+              className="flex-nowrap"
+            />
           </div>
 
-          {activeTab === 'summary' && (
-            <EbTwoColumn rail={summaryRail}>{summaryTab}</EbTwoColumn>
+          <PlayerPanel
+            meetingId={meeting.id}
+            segments={meetingSegments}
+            currentTime={currentTime}
+            onTime={setCurrentTime}
+          />
+
+          <div className="mt-4 flex flex-col gap-4">
+          <div id="s-summary" className="scroll-mt-28">
+          <EbCard>
+            <h2 className="font-outfit text-[15px] font-semibold text-eb-text">Summary</h2>
+            <p className="mt-2.5 font-dmsans text-[15px] leading-[1.65] text-eb-text">{insights.summary_short}</p>
+            {insights.summary_detailed && chapters.length === 0 && (
+              <p className="mt-3 whitespace-pre-wrap border-t border-eb-divider pt-3.5 font-dmsans text-sm leading-[1.7] text-eb-prose">
+                {insights.summary_detailed}
+              </p>
+            )}
+            {(facts?.validation?.unverified?.length ?? 0) > 0 && (
+              <p className="mt-3 flex items-center gap-1.5 font-dmsans text-xs text-eb-secondary">
+                <AlertTriangle size={12} strokeWidth={1.75} />
+                {facts!.validation!.unverified.length} claim
+                {facts!.validation!.unverified.length === 1 ? '' : 's'} could not be verified against the transcript.
+              </p>
+            )}
+            {(insights.risks?.length ?? 0) > 0 && (
+              <div className="mt-4 rounded-input bg-eb-amber-bg p-4">
+                <EbLabel className="text-eb-amber-text">Risks flagged</EbLabel>
+                <ul className="mt-2 flex flex-col gap-1.5">
+                  {insights.risks.map((r, i) => (
+                    <li key={i} className="flex gap-2.5 font-dmsans text-[13.5px] leading-[1.5] text-eb-amber-text">
+                      <Flag size={12} strokeWidth={1.75} className="mt-1 flex-none" />
+                      {typeof r === 'string' ? r : (r as { risk?: string }).risk}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </EbCard>
+          </div>
+
+          <div id="s-highlights" className="scroll-mt-28">
+            <HighlightsPanel highlights={highlights} />
+          </div>
+          <div id="s-chapters" className="scroll-mt-28">
+            <ChaptersPanel chapters={chapters} />
+          </div>
+
+          {(insights.decisions?.length ?? 0) > 0 && (
+            <div id="s-decisions" className="scroll-mt-28">
+            <EbCard padded={false}>
+              <EbCardHeader title="Decisions" count={insights.decisions.length} />
+              <ul className="flex list-none flex-col p-0">
+                {insights.decisions.map((d, i) => {
+                  const text = typeof d === 'string' ? d : ((d as { decision?: string }).decision ?? '');
+                  const context = typeof d === 'string' ? '' : ((d as { context?: string }).context ?? '');
+                  return (
+                    <li key={i} className="flex gap-2.5 border-b border-eb-divider px-[18px] py-3 font-dmsans text-[14px] leading-[1.55] last:border-0">
+                      <span className="mt-[8px] h-1.5 w-1.5 flex-none rounded-full bg-eb-accent" />
+                      <span className="flex-1 text-eb-text">
+                        {text}
+                        {context && <span className="mt-0.5 block text-[12.5px] text-eb-secondary">{context}</span>}
+                      </span>
+                      <Ts seconds={decisionTs(text)} />
+                    </li>
+                  );
+                })}
+              </ul>
+            </EbCard>
+            </div>
           )}
 
-          {activeTab === 'actions' && (
+          {followUps.length > 0 && (
+            <div id="s-next-steps" className="scroll-mt-28">
+            <EbCard padded={false}>
+              <EbCardHeader title="Next steps" count={followUps.length} />
+              <ul className="flex list-none flex-col p-0">
+                {followUps.map((f, i) => (
+                  <li key={i} className="flex gap-2.5 border-b border-eb-divider px-[18px] py-3 font-dmsans text-[14px] leading-[1.55] text-eb-text last:border-0">
+                    <ChevronRight size={13} strokeWidth={1.75} className="mt-[4px] flex-none text-eb-accent" />
+                    <span className="flex-1">
+                      {f.text}
+                      {f.owner && <span className="text-eb-secondary"> — {f.owner}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </EbCard>
+            </div>
+          )}
+
+          <div id="s-actions" className="scroll-mt-28">
             <div className="flex flex-col gap-3">
+              <h2 className="m-0 font-outfit text-[15px] font-semibold text-eb-text">Action items{actionItemCount ? ` · ${actionItemCount}` : ''}</h2>
               {(insights.action_items as ActionItem[]).some((it) => it.due_date_resolved) && (
                 <label className="flex items-center gap-2 font-dmsans text-[12.5px] text-eb-secondary">
                   <Checkbox checked={inviteAttendees} onCheckedChange={(v) => setInviteAttendees(v === true)} />
@@ -1144,8 +1079,9 @@ export default function MeetingDetail() {
                             {item.done && <CheckCircle2 size={11} strokeWidth={3} />}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className={cn('block font-dmsans text-sm', item.done && 'text-eb-secondary line-through')}>
-                              {typeof item === 'string' ? item : item.task}
+                            <span className={cn('flex items-baseline gap-2.5 font-dmsans text-sm', item.done && 'text-eb-secondary line-through')}>
+                              <span className="flex-1">{typeof item === 'string' ? item : item.task}</span>
+                              <Ts seconds={(item as ActionItem & { source_timestamp?: number }).source_timestamp} />
                             </span>
                             {(item.owner || item.due_date) && (
                               <span className="mt-0.5 block font-dmsans text-[12.5px] text-eb-secondary">
@@ -1190,126 +1126,11 @@ export default function MeetingDetail() {
                 </EbCard>
               )}
             </div>
-          )}
+          </div>
 
-          {activeTab === 'recording' && (
-            <RecordingPanel
-              meetingId={meeting.id}
-              segments={visibleSegments}
-              topics={(facts?.topics as PanelTopic[] | undefined) ?? []}
-              seekSeconds={seekSeconds}
-              onSeek={setSeekSeconds}
-            />
-          )}
-
-          {activeTab === 'transcript' && (
-            <div className="flex flex-col gap-3">
-              {internalCount > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-input border border-eb-border bg-eb-card px-4 py-2.5">
-                  <span className="font-dmsans text-[12.5px] text-eb-secondary">
-                    {internalCount} internal segment{internalCount === 1 ? '' : 's'} (pre/post-meeting chatter){' '}
-                    {showInternal ? 'shown below' : 'hidden'} — visible only to you, never included in
-                    summaries or shares.
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowInternal((v) => !v)}
-                    className="inline-flex items-center gap-1.5 font-dmsans text-[12.5px] font-medium text-eb-accent"
-                  >
-                    {showInternal ? <EyeOff size={13} strokeWidth={1.75} /> : <Eye size={13} strokeWidth={1.75} />}
-                    {showInternal ? 'Hide internal audio' : 'Show internal audio'}
-                  </button>
-                </div>
-              )}
-
-              {visibleSegments.length > 0 ? (
-                <EbCard padded={false}>
-                  {visibleSegments.map((seg, i) => {
-                    const prev = i > 0 ? visibleSegments[i - 1] : null;
-                    const zone = seg.zone ?? 'meeting';
-                    const isInternal = zone !== 'meeting';
-                    const isNewSpeaker = seg.speaker !== prev?.speaker || zone !== (prev?.zone ?? 'meeting');
-                    return (
-                      <div key={i} className={cn('flex gap-3 px-[18px]', isNewSpeaker ? 'pt-3.5' : 'pt-0', 'pb-1.5', isInternal && 'opacity-60')}>
-                        <span className="w-8 flex-none">
-                          {isNewSpeaker && <EbAvatar name={seg.speaker} size={30} round />}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          {isNewSpeaker && (
-                            <div className="mb-1 flex flex-wrap items-center gap-2">
-                              {renameTarget && renameTarget.from === seg.speaker ? (
-                                <span className="flex items-center gap-1.5">
-                                  <input
-                                    autoFocus
-                                    value={renameTarget.value}
-                                    onChange={(e) => setRenameTarget({ from: seg.speaker, value: e.target.value })}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') handleRename();
-                                      if (e.key === 'Escape') setRenameTarget(null);
-                                    }}
-                                    className="w-[min(180px,60vw)] rounded-input border border-eb-border bg-white px-2 py-1 font-dmsans text-[13px] outline-none"
-                                    aria-label="New speaker name"
-                                  />
-                                  <button type="button" onClick={handleRename} disabled={renaming} className="font-dmsans text-[12px] font-medium text-eb-accent">
-                                    {renaming ? 'Saving…' : 'Save'}
-                                  </button>
-                                  <button type="button" onClick={() => setRenameTarget(null)} className="font-dmsans text-[12px] text-eb-secondary">
-                                    Cancel
-                                  </button>
-                                </span>
-                              ) : !isOwner ? (
-                                // Renaming rewrites the transcript for the
-                                // owner too; an observer only reads.
-                                <span className="font-dmsans text-[13px] font-medium">{seg.speaker}</span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setRenameTarget({ from: seg.speaker, value: seg.speaker })}
-                                  className="group inline-flex items-center gap-1 font-dmsans text-[13px] font-medium"
-                                  title="Rename this speaker everywhere"
-                                >
-                                  {seg.speaker}
-                                  <Pencil size={11} strokeWidth={1.75} className="opacity-0 transition-opacity group-hover:opacity-60" />
-                                </button>
-                              )}
-                              {seg.start !== undefined && (
-                                <button
-                                  type="button"
-                                  onClick={() => jumpToRecording(seg.start!)}
-                                  className="font-mono text-[11.5px] text-eb-accent hover:underline"
-                                >
-                                  {formatTimelineTime(seg.start)}
-                                </button>
-                              )}
-                              {isInternal && <EbBadge tone="neutral">Internal — not shared</EbBadge>}
-                            </div>
-                          )}
-                          <p className="font-dmsans text-[13.5px] leading-[1.6] text-eb-prose">{seg.text}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div className="h-3" />
-                </EbCard>
-              ) : transcript ? (
-                <EbCard>
-                  <p className="whitespace-pre-wrap font-dmsans text-[13.5px] leading-[1.6] text-eb-prose">
-                    {transcript.content}
-                  </p>
-                </EbCard>
-              ) : (
-                <EbCard className="py-10 text-center">
-                  <FileText size={28} className="mx-auto mb-3 text-eb-muted" strokeWidth={1.5} />
-                  <p className="font-dmsans text-[13px] text-eb-secondary">
-                    The transcript appears here once processing finishes.
-                  </p>
-                </EbCard>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'coaching' && coaching && (
-            <div className="flex flex-col gap-4">
+          {coaching && (
+            <div id="s-coaching" className="flex scroll-mt-28 flex-col gap-4">
+              <h2 className="m-0 font-outfit text-[15px] font-semibold text-eb-text">Coaching</h2>
               {coaching.summary && (
                 <EbDarkPanel eyebrow={`Coach's summary${coaching.rep ? ` · ${coaching.rep}` : ''}`}>
                   <p className="font-dmsans text-sm leading-[1.6]">{coaching.summary}</p>
@@ -1344,9 +1165,7 @@ export default function MeetingDetail() {
                           <Flag size={13} strokeWidth={1.75} className="text-eb-red" />
                           <span className="font-dmsans text-[13.5px] font-medium">{COACH_FLAG_LABELS[key] ?? key}</span>
                           {f.evidence_ts != null && (
-                            <button type="button" onClick={() => jumpToRecording(f.evidence_ts!)} className="font-mono text-[11.5px] text-eb-accent hover:underline">
-                              {formatTimelineTime(f.evidence_ts)}
-                            </button>
+                            <Ts seconds={f.evidence_ts} />
                           )}
                         </div>
                         {f.note && <p className="mt-1 font-dmsans text-[12.5px] text-eb-secondary">{f.note}</p>}
@@ -1361,9 +1180,7 @@ export default function MeetingDetail() {
                           {nextStep.value && nextStep.strength === 'date_locked' && <span className="font-dmsans text-[12.5px] text-eb-secondary">date locked</span>}
                           {nextStep.value && nextStep.strength === 'vague' && <span className="font-dmsans text-[12.5px] text-eb-secondary">but vague</span>}
                           {nextStep.evidence_ts != null && (
-                            <button type="button" onClick={() => jumpToRecording(nextStep.evidence_ts!)} className="font-mono text-[11.5px] text-eb-accent hover:underline">
-                              {formatTimelineTime(nextStep.evidence_ts)}
-                            </button>
+                            <Ts seconds={nextStep.evidence_ts} />
                           )}
                         </div>
                         {nextStep.note && <p className="mt-1 font-dmsans text-[12.5px] text-eb-secondary">{nextStep.note}</p>}
@@ -1387,8 +1204,9 @@ export default function MeetingDetail() {
             </div>
           )}
 
-          {activeTab === 'facts' && facts && (
-            <div className="flex flex-col gap-4">
+          {facts && (
+            <div id="s-facts" className="flex scroll-mt-28 flex-col gap-4">
+              <h2 className="m-0 font-outfit text-[15px] font-semibold text-eb-text">Facts</h2>
               {FACT_GROUPS.map(({ key, title, primary, secondary }) => {
                 const rows = (facts as unknown as Record<string, Array<Record<string, unknown>>>)[key];
                 if (!Array.isArray(rows) || rows.length === 0) return null;
@@ -1403,9 +1221,7 @@ export default function MeetingDetail() {
                             {secondary && row[secondary] ? `: ${String(row[secondary])}` : ''}
                           </span>
                           {typeof row.ts === 'number' && (
-                            <button type="button" onClick={() => jumpToRecording(row.ts as number)} className="font-mono text-[11.5px] text-eb-accent hover:underline">
-                              {formatTimelineTime(row.ts as number)}
-                            </button>
+                            <Ts seconds={row.ts} />
                           )}
                         </div>
                         {typeof row.quote === 'string' && (
@@ -1431,7 +1247,7 @@ export default function MeetingDetail() {
             </div>
           )}
 
-          {activeTab === 'delivery' && (
+          <div id="s-delivery" className="scroll-mt-28">
             <EbCard padded={false}>
               <EbCardHeader title="Email deliveries" count={emailMessages.length || undefined} />
               {emailMessages.length === 0 ? (
@@ -1457,8 +1273,32 @@ export default function MeetingDetail() {
                 ))
               )}
             </EbCard>
+          </div>
+
+          {insights.summary_detailed && chapters.length > 0 && (
+            <details className="group rounded-card border border-eb-border bg-eb-card shadow-eb-card">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-[18px] py-3.5 font-outfit text-[14px] font-semibold text-eb-text [&::-webkit-details-marker]:hidden">
+                Read full summary
+                <ChevronRight size={15} strokeWidth={1.75} className="text-eb-muted transition-transform group-open:rotate-90" />
+              </summary>
+              <p className="m-0 whitespace-pre-wrap border-t border-eb-divider px-[18px] py-4 font-dmsans text-[14px] leading-[1.7] text-eb-prose">
+                {insights.summary_detailed}
+              </p>
+            </details>
           )}
-        </>
+          </div>
+
+          {/* Phones: the transcript below the notes */}
+          <div id="s-transcript" className="mt-4 scroll-mt-28 lg:hidden">
+            <TranscriptColumn segments={speakerSegments} isOwner={isOwner} currentTime={currentTime} onRename={handleRename} />
+          </div>
+        </div>
+
+        {/* The transcript, sticky and full height beside the notes */}
+        <aside id="s-transcript-desktop" className="sticky top-[76px] hidden h-[calc(100dvh-108px)] min-h-0 lg:block">
+          <TranscriptColumn segments={speakerSegments} isOwner={isOwner} currentTime={currentTime} onRename={handleRename} fill />
+        </aside>
+        </div>
       ) : inProgress ? (
         <EbCard className="py-14 text-center">
           <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-eb-muted" />

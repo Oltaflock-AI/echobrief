@@ -14,6 +14,9 @@ export type SectionId =
   | 'decisions'
   | 'next-steps'
   | 'actions'
+  | 'coaching'
+  | 'facts'
+  | 'delivery'
   | 'transcript';
 
 export interface Section {
