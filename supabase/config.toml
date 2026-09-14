@@ -160,6 +160,11 @@ verify_jwt = true
 [functions.get-shared-meeting]
 verify_jwt = false
 
+# A signed-in reader of a share link asking the meeting a question. User JWT
+# only (service callers 403); the share token in the body picks the meeting.
+[functions.ask-shared-meeting]
+verify_jwt = true
+
 [functions.manage-billing]
 verify_jwt = true
 

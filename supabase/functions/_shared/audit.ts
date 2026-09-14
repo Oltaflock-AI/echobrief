@@ -30,6 +30,7 @@ export type AuditAction =
   | "share.updated"
   | "share.revoked"
   | "share.viewed"
+  | "share.asked"
   | "recording.accessed"
   // Credentials.
   | "api_token.created"
