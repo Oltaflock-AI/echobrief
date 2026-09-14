@@ -244,7 +244,14 @@ is a summary an attachment could have carried.
 **Trigger:** the public `/share/:token` page · **Auth:** none (`verify_jwt = false`) — the
 token in the URL is the entire credential; rate-limited per IP (`RATE_LIMITS.PUBLIC`)
 
-Returns the meeting title/time, the summary, decisions and action items. Two things
+Returns the meeting title/time, the summary, decisions, next steps (`follow_ups`),
+key points and action items (with `source_timestamp`), `timeline_entries`, and `facts`
+— **only the `publicFacts()` whitelist** in `_shared/share-view.ts`: topics, numbers,
+pain points, explicit asks and decisions, each as text + `ts`. The verbatim quotes,
+speaker attribution on numbers, entities, objections, buying signals, notable quotes and
+the validation block never leave the account. The page groups the timestamped rows
+under the topic that was open when they were said (`src/components/share/notes.ts`).
+`viewer_can_ask` says whether `ask-shared-meeting` will accept this link. Two things
 are served only when the share row asks for them:
 
 | Opt-in | What is served | What still cannot leak |
@@ -258,10 +265,26 @@ switch, defaulting off, warned about where it is turned on. Requesting the recor
 link that does not carry it is a 403, not a redirect to the summary.
 
 Nothing else is reachable through this endpoint at any setting: no attendee emails, no
-coaching, no facts, and nothing about the owner's other meetings. Expired, revoked and
+coaching, nothing in `facts` beyond the whitelist, and nothing about the owner's other
+meetings. Expired, revoked and
 never-existed links share one 404 message, so the endpoint is not an oracle for whether
 a link was ever real. A meeting whose content retention has passed says so plainly
 rather than rendering an empty page.
+
+### `ask-shared-meeting`
+**Trigger:** the "Ask this meeting" box on `/share/:token` · **Auth:** user JWT only
+(`verify_jwt = true` + `authenticate()`; a service-role bearer is 403) · rate-limited
+per **user id** at `RATE_LIMITS.LLM`
+
+`{ token, question, history }` → `{ answer, citation_seconds }`. The share token picks
+the meeting and must be live, `scope = 'link'` and carry `include_transcript` (403
+otherwise — a summary-only link has nothing to ask). The model is given exactly what the
+page shows: `publicSegments()` of the transcript, meeting zone only, as `[m:ss] Speaker:
+text` lines — never the raw transcript, the facts or any other meeting. The cited quote
+is located in those segments by `_shared/quote-locate.ts` (shared with
+`chat-transcripts`), so `citation_seconds` is derived, never invented. Cost is metered
+against the meeting via `_shared/cost.ts`; every question writes a `share.asked` audit
+row (share id and whether a citation landed — never the question text).
 
 ### `auto-join-meetings`
 **Trigger:** pg_cron, every 5 min · **Auth:** service-role bearer only (`verify_jwt = true`; the cron job sends the Vault-sourced key — see [Operations § scheduled jobs](operations.md#scheduled-jobs))

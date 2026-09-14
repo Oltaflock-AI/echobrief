@@ -177,7 +177,10 @@ bearer). Functions then fall into three shapes:
     datacentre domain they are only valid in,
   - `get-shared-meeting` — public by design: the reader of a shared link has no
     account, so the `ebs_live_` token **is** the credential (stored as a sha256
-    digest) and the share row decides what it unlocks,
+    digest) and the share row decides what it unlocks. Its sibling
+    `ask-shared-meeting` is **not** on this list: it needs the token *and* a user
+    session, and is rate-limited on the user id so a forwarded link cannot spend
+    the LLM budget anonymously,
   - `get-google-client-id` — serves only the public OAuth client ID.
 
   Counted five here until 2026-09-07. `microsoft-oauth-redirect` and

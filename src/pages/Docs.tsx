@@ -925,8 +925,9 @@ export default function Docs() {
                 <p>
                   Open a meeting and press <strong className="text-foreground">Share</strong> to
                   create a link anyone can open — no EchoBrief account, no sign-in. The link shows
-                  the summary, the decisions and the action items, and you choose how long it
-                  lives: 24 hours, 7 days, 30 days, or never expiring. The link is shown once when
+                  the summary, the notes chapter by chapter with the numbers, asks and decisions
+                  said in each, the next steps and the action items — every one stamped with the
+                  moment in the call it came from. You choose how long it lives: 24 hours, 7 days, 30 days, or never expiring. The link is shown once when
                   you create it and is copied to your clipboard; you can revoke it at any time,
                   after which it shows an expired page.
                 </p>
@@ -937,7 +938,10 @@ export default function Docs() {
                   <li>
                     <strong className="text-foreground">Include the transcript</strong> — the
                     reader gets the full transcript of the meeting itself. Your pre-call and
-                    post-call chatter is left out exactly as it is in the summary.
+                    post-call chatter is left out exactly as it is in the summary. A reader who
+                    signs in to EchoBrief can also <strong className="text-foreground">ask the
+                    meeting a question</strong> and get the answer with the moment it was said;
+                    nobody is asked to sign in just to read.
                   </li>
                   <li>
                     <strong className="text-foreground">Include the recording</strong> — the
@@ -952,8 +956,10 @@ export default function Docs() {
                 </Callout>
                 <p>
                   Both switches are off unless you turn them on, and you can change them later on
-                  a link you have already sent. Everything else stays inside your account: attendee
-                  email addresses, the coaching scorecard, the quoted facts, and every other
+                  a link you have already sent. Timestamps on the page jump into the recording
+                  when the link carries it, and to the transcript when it carries only that.
+                  Everything else stays inside your account: attendee email addresses, the
+                  coaching scorecard, the word-for-word quotes behind the notes, and every other
                   meeting you own.
                 </p>
                 <div className="mb-2 mt-6 flex items-center gap-2">
