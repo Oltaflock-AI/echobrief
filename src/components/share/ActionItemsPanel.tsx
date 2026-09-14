@@ -1,6 +1,6 @@
 import { CalendarClock, CheckCircle2, UserRound } from 'lucide-react';
 import { Card, CardHeader } from '@/ui';
-import { Ts } from './jump';
+import { Ts } from '@/components/meeting/jump';
 import { actionDue, actionOwner, actionTask, type ActionItem } from './types';
 
 /**

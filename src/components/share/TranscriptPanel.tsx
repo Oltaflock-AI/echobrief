@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { Avatar, Card, CardHeader, Chip } from '@/ui';
-import { Ts, useJump } from './jump';
+import { Ts, useJump } from '@/components/meeting/jump';
 import type { TranscriptSegment } from './types';
 
 /**

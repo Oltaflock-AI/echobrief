@@ -14,9 +14,9 @@ import { NotesColumn } from '@/components/share/NotesColumn';
 import { TranscriptPanel } from '@/components/share/TranscriptPanel';
 import { AskPanel } from '@/components/share/AskPanel';
 import { ShareRail } from '@/components/share/ShareRail';
-import { JumpProvider, useJump } from '@/components/share/jump';
-import { chaptersOf, highlightsOf } from '@/components/share/notes';
-import { scrollToSection, type Section, type SectionId } from '@/components/share/sections';
+import { JumpProvider, useJump } from '@/components/meeting/jump';
+import { chaptersOf, highlightsOf } from '@/components/meeting/notes';
+import { scrollToSection, type Section, type SectionId } from '@/components/meeting/sections';
 import { decisionText, followUpText, speakersOf, type SharedPayload } from '@/components/share/types';
 
 /**

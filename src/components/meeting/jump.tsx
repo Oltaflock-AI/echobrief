@@ -1,5 +1,11 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { timestamp } from './types';
+
+/** m:ss, the transcript/timeline format used everywhere in the product. */
+export function timestamp(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds)) return '';
+  const total = Math.max(0, Math.round(seconds));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
 
 /**
  * One place that knows what a timestamp click means on the share page.

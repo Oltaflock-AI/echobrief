@@ -1,7 +1,7 @@
 import { Avatar } from '@/ui';
-import { Ts } from './jump';
-import type { Chapter } from './notes';
-import { scrollToSection, useActiveSection, type Section } from './sections';
+import { Ts } from '@/components/meeting/jump';
+import type { Chapter } from '@/components/meeting/notes';
+import { scrollToSection, useActiveSection, type Section } from '@/components/meeting/sections';
 
 /**
  * The left rail: where you are on the page, where you are in the call.

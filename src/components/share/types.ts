@@ -1,4 +1,4 @@
-import type { PublicFacts } from './notes';
+import type { PublicFacts } from '@/components/meeting/notes';
 
 /**
  * The shape `get-shared-meeting` returns, and the small readers the share
@@ -102,12 +102,7 @@ export function actionDue(item: ActionItem): string {
   return asText(item?.due_date) || asText(item?.due);
 }
 
-/** m:ss, the transcript/timeline format used everywhere in the product. */
-export function timestamp(seconds: number | null | undefined): string {
-  if (seconds == null || !Number.isFinite(seconds)) return '';
-  const total = Math.max(0, Math.round(seconds));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
-}
+export { timestamp } from '@/components/meeting/jump';
 
 const LANGUAGE_NAMES: Record<string, string> = {
   en: 'English',

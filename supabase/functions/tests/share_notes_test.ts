@@ -3,7 +3,7 @@
  * with the second a matching number was said.
  */
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { chaptersOf, highlightsOf } from "../../../src/components/share/notes.ts";
+import { chaptersOf, highlightsOf } from "../../../src/components/meeting/notes.ts";
 
 const FACTS = {
   topics: [

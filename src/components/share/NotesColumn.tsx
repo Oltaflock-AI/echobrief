@@ -1,16 +1,19 @@
-import { ChevronDown, GitBranch, ListChecks } from "lucide-react";
-import { Card, CardHeader } from "@/ui";
-import { Ts } from "./jump";
-import type { Chapter, Highlight } from "./notes";
-import { ChaptersPanel, HighlightsPanel } from "./NotesPanel";
-import { ActionItemsPanel } from "./ActionItemsPanel";
+import { ChevronDown, GitBranch, ListChecks } from 'lucide-react';
+import { Card, CardHeader } from '@/ui';
+import { Ts } from '@/components/meeting/jump';
+import type { Chapter, Highlight } from '@/components/meeting/notes';
+import {
+  ChaptersPanel,
+  HighlightsPanel,
+} from '@/components/meeting/NotesPanel';
+import { ActionItemsPanel } from './ActionItemsPanel';
 import {
   decisionContext,
   decisionText,
   followUpOwner,
   followUpText,
   type SharedPayload,
-} from "./types";
+} from './types';
 
 /**
  * The reading column, top to bottom: the summary paragraph, the highlights,
@@ -26,8 +29,8 @@ export function NotesColumn({
   chapters,
   highlights,
 }: {
-  insights: SharedPayload["insights"];
-  facts: SharedPayload["facts"];
+  insights: SharedPayload['insights'];
+  facts: SharedPayload['facts'];
   chapters: Chapter[];
   highlights: Highlight[];
 }) {

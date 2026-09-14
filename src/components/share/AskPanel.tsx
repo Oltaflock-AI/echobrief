@@ -5,7 +5,7 @@ import { Button, Card, CardHeader } from '@/ui';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { rememberPostLoginRedirect } from '@/lib/postLoginRedirect';
-import { Ts } from './jump';
+import { Ts } from '@/components/meeting/jump';
 
 /**
  * "Ask this meeting", the one thing on a share link that needs an account.

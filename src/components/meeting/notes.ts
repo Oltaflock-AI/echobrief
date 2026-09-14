@@ -14,12 +14,21 @@
  * so "Expedia pays 6%" jumps to the second "6%" was said.
  */
 
+/**
+ * What both callers can hand in: the share payload's `publicFacts` (every
+ * `ts` present) and the owner page's full `MeetingFacts` (every `ts`
+ * optional). Rows without a usable time are skipped, never guessed.
+ */
 export interface PublicFacts {
-  topics: Array<{ topic: string; ts: number; notes: string }>;
-  numbers: Array<{ metric: string; value: string; ts: number }>;
-  pain_points: Array<{ statement: string; ts: number }>;
-  explicit_asks: Array<{ statement: string; ts: number }>;
-  decisions: Array<{ decision: string; owner: string | null; ts: number }>;
+  topics?: Array<{ topic: string; ts?: number; notes?: string }>;
+  numbers?: Array<{ metric: string; value: string; ts?: number }>;
+  pain_points?: Array<{ statement: string; ts?: number }>;
+  explicit_asks?: Array<{ statement: string; ts?: number }>;
+  decisions?: Array<{ decision: string; owner?: string | null; ts?: number }>;
+}
+
+function seconds(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.max(0, v) : null;
 }
 
 export interface Chapter {
@@ -36,10 +45,14 @@ export interface Highlight {
 /** Topics in time order. */
 export function chaptersOf(facts: PublicFacts | null | undefined): Chapter[] {
   if (!facts || !Array.isArray(facts.topics)) return [];
-  return [...facts.topics]
-    .filter((t) => t && typeof t.topic === 'string' && t.topic.trim())
-    .sort((a, b) => a.ts - b.ts)
-    .map((t) => ({ topic: t.topic.trim(), ts: t.ts, notes: (t.notes ?? '').trim() }));
+  return facts.topics
+    .flatMap((t) => {
+      const ts = t ? seconds(t.ts) : null;
+      return t && typeof t.topic === 'string' && t.topic.trim() && ts !== null
+        ? [{ topic: t.topic.trim(), ts, notes: (t.notes ?? '').trim() }]
+        : [];
+    })
+    .sort((a, b) => a.ts - b.ts);
 }
 
 /** Digits and % only: "₹2,500" and "2500" are the same number. */
@@ -73,7 +86,10 @@ export function highlightsOf(keyPoints: unknown, facts: PublicFacts | null | und
     ? keyPoints.filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
     : [];
   const numbers = (facts?.numbers ?? [])
-    .map((n) => ({ tokens: numberTokens(`${n.metric} ${n.value}`), ts: n.ts }))
+    .flatMap((n) => {
+      const ts = seconds(n.ts);
+      return ts === null ? [] : [{ tokens: numberTokens(`${n.metric} ${n.value}`), ts }];
+    })
     .filter((n) => n.tokens.length > 0)
     .sort((a, b) => a.ts - b.ts);
 
