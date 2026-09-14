@@ -74,6 +74,7 @@ const GROUPS: Group[] = [
     items: [
       { id: 'delivery', name: 'Email summaries' },
       { id: 'slack', name: 'Slack' },
+      { id: 'clickup', name: 'ClickUp' },
       { id: 'zoho', name: 'Zoho CRM' },
       { id: 'sharing', name: 'Sharing a meeting' },
       { id: 'digests', name: 'Scheduled digests' },
@@ -862,6 +863,35 @@ export default function Docs() {
                 <p>
                   Each meeting posts once. Regenerating a meeting's insights does not re-post it.
                   Disconnecting removes EchoBrief's access to the workspace immediately.
+                </p>
+              </section>
+
+              <section className="space-y-4">
+                <SectionHeading id="clickup">ClickUp</SectionHeading>
+                <p>
+                  Connect ClickUp under{' '}
+                  <strong className="text-foreground">Settings → Integrations → ClickUp</strong>{' '}
+                  and EchoBrief posts each finished meeting to a ClickUp Chat channel — the same
+                  message Slack gets: the summary, one highlight, the decisions, the action items
+                  and the next steps, with a link back to the full report. Sections a meeting does
+                  not have are left out.
+                </p>
+                <p>
+                  ClickUp asks which workspaces to grant when you connect; the channel picker lists
+                  the Chat channels in every workspace you ticked (direct messages are never
+                  offered). Nothing is posted until you pick one. If you change which workspaces the
+                  grant covers, reconnect and pick the channel again.
+                </p>
+                <Callout title="The transcript never goes to ClickUp">
+                  Exactly the Slack boundary: only the meeting-zone summary, decisions and action
+                  items are posted. Coaching notes, the underlying quotes and attendee email
+                  addresses are never sent.
+                </Callout>
+                <p>
+                  Each meeting posts once; regenerating insights does not re-post it. Disconnecting
+                  removes the connection from EchoBrief. ClickUp keeps its own record of authorised
+                  apps — to revoke on that side too, remove EchoBrief under{' '}
+                  <strong className="text-foreground">ClickUp → Settings → Apps</strong>.
                 </p>
               </section>
 

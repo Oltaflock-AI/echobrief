@@ -46,7 +46,7 @@ export function Avatar({
  * meet + zoom come from simple-icons — not yet wired, see Phase 2.
  * There is no Gmail or WhatsApp mark: email delivery is Resend (use <EmailTile/>).
  */
-export type BrandMark = "gcal" | "outlook" | "slack" | "zoho";
+export type BrandMark = "gcal" | "outlook" | "slack" | "clickup" | "zoho";
 
 export function BrandTile({
   brand,

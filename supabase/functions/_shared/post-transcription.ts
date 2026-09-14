@@ -10,7 +10,7 @@
  * Persistence stays at the call sites (they differ: insert vs update), but the
  * `meetingPatch` helper builds the meetings-row update for all of them, and
  * `afterInsightsSaved` runs the shared hooks (contacts, observers, workspace
- * auto-share, automation webhook, Slack, Zoho).
+ * auto-share, automation webhook, Slack, ClickUp, Zoho).
  */
 import OpenAI from "https://esm.sh/openai@4.20.1";
 import { generateInsights, SpeakerSegment, formatLabeledTranscript } from "./insights.ts";
@@ -28,6 +28,7 @@ import { grantMeetingObservers } from "./observers.ts";
 import { autoShareToOrg } from "./org-share.ts";
 import { notifyInsightsReady } from "./webhooks.ts";
 import { deliverToSlack } from "./slack-delivery.ts";
+import { deliverToClickUp } from "./clickup-delivery.ts";
 import { deliverToZoho } from "./zoho-delivery.ts";
 import { recordRecordedSeconds } from "./entitlements.ts";
 import type { SpeakerTimelineEntry } from "./recall-pipeline.ts";
@@ -240,6 +241,9 @@ export async function afterInsightsSaved(
   // throws — the insights are already saved and a Slack outage must not undo
   // that.
   await deliverToSlack(supabase, meeting, insights);
+  // ClickUp Chat is the same contract as Slack — claim in clickup_deliveries
+  // first, never throws — for the teams that moved their room there.
+  await deliverToClickUp(supabase, meeting, insights);
   // Zoho writes ONE note per matched CRM record, claimed in zoho_deliveries
   // first for the same reason as Slack — and a sharper one: a Contact carrying
   // four identical notes discredits every other thing the product writes.

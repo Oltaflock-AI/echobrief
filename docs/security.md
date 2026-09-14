@@ -170,6 +170,8 @@ bearer). Functions then fall into three shapes:
   - `slack-oauth-redirect` — the same shape again for the Slack install; the bot
     token is sealed by `_shared/oauth-tokens.ts` before it lands in
     `slack_connections`,
+  - `clickup-oauth-redirect` — the same shape for ClickUp Chat; the
+    never-expiring token is sealed before it lands in `clickup_connections`,
   - `zoho-oauth-redirect` — the same shape for Zoho CRM; the access and refresh
     tokens are sealed before they land in `zoho_connections`, next to the
     datacentre domain they are only valid in,

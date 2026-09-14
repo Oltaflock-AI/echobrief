@@ -242,6 +242,18 @@ def seed(user: dict) -> dict:
             "meeting_id": mid, "user_id": user["id"],
             "channel_id": "C-SECRET", "message_ts": "1.1",
         },
+        "clickup_connections": {
+            "user_id": user["id"],
+            "access_token": "v1.SECRET-CLICKUP-TOKEN.DO-NOT-LEAK",
+            "authed_email": "SECRET-CLICKUP-DO-NOT-LEAK@example.com",
+            "workspaces": [{"id": "9001", "name": "SECRET-CLICKUP-WS"}],
+            "workspace_id": "9001", "workspace_name": "SECRET-CLICKUP-WS",
+            "channel_id": "CU-SECRET", "channel_name": "secret-channel",
+        },
+        "clickup_deliveries": {
+            "meeting_id": mid, "user_id": user["id"],
+            "channel_id": "CU-SECRET", "message_id": "msg-1",
+        },
         "zoho_connections": {
             "user_id": user["id"], "api_domain": "https://www.zohoapis.in",
             "location": "in", "org_name": "SECRET-ZOHO-DO-NOT-LEAK",

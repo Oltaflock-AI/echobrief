@@ -39,6 +39,9 @@ verify_jwt = true
 [functions.slack-oauth-start]
 verify_jwt = true
 
+[functions.clickup-oauth-start]
+verify_jwt = true
+
 [functions.zoho-oauth-start]
 verify_jwt = true
 
@@ -51,6 +54,11 @@ verify_jwt = false
 # single-use google_oauth_states row created by slack-oauth-start is the
 # authentication.
 [functions.slack-oauth-redirect]
+verify_jwt = false
+
+# Browser navigation back from ClickUp; the single-use google_oauth_states row
+# created by clickup-oauth-start is the authentication.
+[functions.clickup-oauth-redirect]
 verify_jwt = false
 
 # Browser navigation back from Zoho; the single-use google_oauth_states row is
@@ -132,6 +140,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.manage-slack]
+verify_jwt = true
+
+[functions.manage-clickup]
 verify_jwt = true
 
 [functions.manage-zoho]

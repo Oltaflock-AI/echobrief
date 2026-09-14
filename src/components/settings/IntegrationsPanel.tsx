@@ -12,7 +12,7 @@
  *    listed only active calendars and offered a one-way X, so turning a calendar
  *    back on was impossible from the UI. This lists all of them and writes both
  *    directions.
- *  - Slack and Zoho are rows inside Delivery and CRM rather than cards of their
+ *  - Slack, ClickUp and Zoho are rows inside Delivery and CRM rather than cards of their
  *    own, because a card inside a card is the one thing DESIGN_SPEC §5 forbids.
  *
  * Below md the page follows mockup 13: an Accounts group above Calendars, and
@@ -52,6 +52,17 @@ type SlackStatus = {
   needs_reconnect?: boolean;
 };
 
+type ClickUpStatus = {
+  connected: boolean;
+  authed_email?: string | null;
+  workspaces?: Array<{ id: string; name: string }>;
+  workspace_name?: string | null;
+  channel_id?: string | null;
+  channel_name?: string | null;
+  needs_reconnect?: boolean;
+};
+type ClickUpChannel = { id: string; name: string; is_private: boolean; workspace_id: string; workspace_name: string };
+
 type ZohoStatus = { connected: boolean; needs_reconnect?: boolean };
 
 export function IntegrationsPanel({ profile, setProfile }: PanelProps) {
@@ -68,6 +79,10 @@ export function IntegrationsPanel({ profile, setProfile }: PanelProps) {
   const [slack, setSlack] = useState<SlackStatus | null>(null);
   const [slackChannels, setSlackChannels] = useState<Array<{ id: string; name: string; is_private: boolean }> | null>(null);
   const [connectingSlack, setConnectingSlack] = useState(false);
+
+  const [clickup, setClickUp] = useState<ClickUpStatus | null>(null);
+  const [clickupChannels, setClickUpChannels] = useState<ClickUpChannel[] | null>(null);
+  const [connectingClickUp, setConnectingClickUp] = useState(false);
 
   const [zoho, setZoho] = useState<ZohoStatus | null>(null);
   const [connectingZoho, setConnectingZoho] = useState(false);
@@ -245,6 +260,34 @@ export function IntegrationsPanel({ profile, setProfile }: PanelProps) {
     }
   }, [callSlack, loadSlack, toast]);
 
+  const callClickUp = useCallback(async (body: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke("manage-clickup", { body });
+    if (error) {
+      const detail = (data as { error?: string } | null)?.error;
+      throw new Error(detail || error.message);
+    }
+    if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
+    return data as Record<string, string>;
+  }, []);
+
+  const loadClickUp = useCallback(async () => {
+    try {
+      setClickUp((await callClickUp({ action: "status" })) as unknown as ClickUpStatus);
+    } catch {
+      setClickUp({ connected: false });
+    }
+  }, [callClickUp]);
+
+  const loadClickUpChannels = useCallback(async () => {
+    try {
+      const data = await callClickUp({ action: "channels" });
+      setClickUpChannels((data as unknown as { channels: ClickUpChannel[] }).channels ?? []);
+    } catch (error) {
+      toast({ title: "Could not list channels", description: (error as Error).message, variant: "destructive" });
+      void loadClickUp();
+    }
+  }, [callClickUp, loadClickUp, toast]);
+
   const callZoho = useCallback(async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke("manage-zoho", { body });
     if (error) throw new Error((data as { error?: string } | null)?.error || error.message);
@@ -262,8 +305,9 @@ export function IntegrationsPanel({ profile, setProfile }: PanelProps) {
 
   useEffect(() => {
     void loadSlack();
+    void loadClickUp();
     void loadZoho();
-  }, [loadSlack, loadZoho]);
+  }, [loadSlack, loadClickUp, loadZoho]);
 
   // The Slack redirect lands with slack_connected=1: the workspace is connected
   // but no channel is chosen, and until one is, nothing posts.
@@ -274,6 +318,28 @@ export function IntegrationsPanel({ profile, setProfile }: PanelProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Same shape as the Slack landing: connected, but nothing posts until a
+  // channel is chosen.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("clickup_connected") === "1") {
+      toast({ title: "ClickUp connected", description: "Pick the Chat channel summaries should go to." });
+      void loadClickUpChannels();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const disconnectClickUp = () => {
+    void callClickUp({ action: "disconnect" })
+      .then(() => {
+        setClickUp({ connected: false });
+        setClickUpChannels(null);
+        toast({ title: "ClickUp disconnected" });
+      })
+      .catch((error: Error) =>
+        toast({ title: "Could not disconnect", description: error.message, variant: "destructive" }),
+      );
+  };
 
   const disconnectSlack = () => {
     void callSlack({ action: "disconnect" })
@@ -580,6 +646,101 @@ export function IntegrationsPanel({ profile, setProfile }: PanelProps) {
                 ) : (
                   <Button size="sm" className="hidden md:inline-flex" onClick={loadSlackChannels}>
                     {slack.channel_name ? "Change channel" : "Choose a channel"}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-eb-divider px-5 py-3">
+            <div className="flex items-center gap-3">
+              <BrandTile brand="clickup" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-dmsans text-sm font-medium">ClickUp</span>
+                  {clickup?.connected && (
+                    <Badge tone={clickup.needs_reconnect ? "amber" : "green"} dot>
+                      {clickup.needs_reconnect ? "Needs reconnect" : "Connected"}
+                    </Badge>
+                  )}
+                </div>
+                <div className="truncate font-dmsans text-[12.5px] text-eb-secondary">
+                  {clickup?.connected
+                    ? clickup.channel_name
+                      ? `${clickup.workspace_name ?? "Workspace"} · #${clickup.channel_name}`
+                      : `${clickup.authed_email ?? "Connected"} · no channel chosen — nothing is posted`
+                    : "Not connected"}
+                </div>
+              </div>
+              <div className="hidden flex-none items-center gap-2 md:flex">
+                {clickup?.connected && (
+                  <Button size="sm" onClick={disconnectClickUp}>
+                    Disconnect
+                  </Button>
+                )}
+                <Button
+                  variant={clickup?.connected ? "secondary" : "primary"}
+                  size="sm"
+                  disabled={connectingClickUp}
+                  onClick={() => startOAuth("clickup-oauth-start", setConnectingClickUp, "ClickUp")}
+                >
+                  {connectingClickUp && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {clickup?.connected ? "Reconnect" : "Connect"}
+                </Button>
+              </div>
+            </div>
+
+            {clickup?.connected && (
+              <div className="mt-2.5 flex flex-wrap gap-2 pl-[48px] md:hidden">
+                <ChipButton onClick={loadClickUpChannels}>
+                  {clickup.channel_name ? "Change channel" : "Choose a channel"}
+                </ChipButton>
+                <ChipButton danger onClick={disconnectClickUp}>
+                  Disconnect
+                </ChipButton>
+              </div>
+            )}
+
+            {clickup?.connected && (
+              <div className="mt-3 flex items-center gap-2 pl-[48px]">
+                {clickupChannels ? (
+                  <Select
+                    value={clickup.channel_id ?? ""}
+                    onChange={(e) => {
+                      const channelId = e.target.value;
+                      if (!channelId) return;
+                      void callClickUp({ action: "set_channel", channel_id: channelId })
+                        .then((data) => {
+                          setClickUp((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  channel_id: data.channel_id,
+                                  channel_name: data.channel_name,
+                                  workspace_name: data.workspace_name,
+                                }
+                              : prev,
+                          );
+                          toast({ title: "Channel saved", description: `Summaries will post to #${data.channel_name}.` });
+                        })
+                        .catch((error: Error) =>
+                          toast({ title: "Could not save the channel", description: error.message, variant: "destructive" }),
+                        );
+                    }}
+                    className="max-w-[320px]"
+                  >
+                    <option value="">Choose a channel…</option>
+                    {clickupChannels.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.is_private ? "🔒 " : "# "}
+                        {c.name}
+                        {(clickup.workspaces?.length ?? 0) > 1 ? ` (${c.workspace_name})` : ""}
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <Button size="sm" className="hidden md:inline-flex" onClick={loadClickUpChannels}>
+                    {clickup.channel_name ? "Change channel" : "Choose a channel"}
                   </Button>
                 )}
               </div>

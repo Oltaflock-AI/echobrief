@@ -184,6 +184,21 @@ channel and cannot be unsent. `message_ts` is null until the post succeeds, so a
 claimed-but-failed row is distinguishable from a sent one, and `error` records why.
 Service-write, user-read.
 
+### `clickup_connections`
+One ClickUp OAuth grant per user (UNIQUE on `user_id`). Same shape and RLS as
+`slack_connections`, with two ClickUp facts baked in: the token **never expires** and
+has no refresh token (`refresh_token` / `token_expiry` are always null, kept only so
+`_shared/oauth-tokens.ts` applies unchanged), and one grant can cover **several
+workspaces** (the consent screen lets the user tick them) — `workspaces` holds
+`[{id, name}]`, and because Chat channels are workspace-scoped in the v3 API the chosen
+`channel_id` stores its `workspace_id` alongside. ClickUp has no revoke endpoint, so
+Disconnect is our row only. RLS: **SELECT own row only**; writes go through
+`manage-clickup` / `clickup-oauth-redirect` with the service role.
+
+### `clickup_deliveries`
+Claim-before-send ledger, UNIQUE on `(meeting_id, channel_id)` — `slack_deliveries` for
+ClickUp Chat, with `message_id` (ClickUp's) in place of `message_ts`. Same reasoning:
+one post per meeting per channel, even when insights are regenerated.
 
 ### `zoho_connections`
 One Zoho CRM org per user (UNIQUE on `user_id`). Access and refresh tokens are sealed
@@ -298,6 +313,7 @@ in filename order. The ones that carry non-obvious history:
 | `20260831130000_production_quality.sql` | `meetings.languages` / `boundaries`, `meeting_insights.facts` / `coaching`, `profiles.custom_vocabulary` — the columns behind language mix, privacy trim, two-pass insights and coaching |
 | `20260831160000_production_quality_2.sql` | `contacts` + `meeting_contacts` (CRM v1), `webhook_events` + `profiles.webhook_url` / `webhook_secret` (automation), `meeting_insights.followup_draft` |
 | `20260908090000_slack_connections.sql` | `slack_connections` (sealed per-user bot token, one row per user) + `slack_deliveries` (claim-before-send). Slack's second attempt, on a schema where the three failures that got it removed in August cannot recur |
+| `20260914120000_clickup_connections.sql` | `clickup_connections` (sealed per-user OAuth grant, its authorised workspaces, one chosen Chat channel) + `clickup_deliveries` (claim-before-send). The Slack shape for the team that moved its room to ClickUp |
 | `20260908160000_zoho_connections.sql` | `zoho_connections` (sealed tokens **plus the datacentre domain they are valid in**) + `zoho_deliveries` (one note per meeting per CRM record) |
 | `20260908180000_team_seats.sql` | `profiles.subscription_quantity` — the paid seat count behind per-seat Teams pricing. NULL on every flat-priced plan; `seatsForProfile` reads NULL as 1 so a misconfigured account degrades to one seat rather than to unlimited |
 | `20260909140000_meeting_observers.sql` | `meeting_observers` + `summary_recipient_allowlist.dashboard_access` — an allowlisted reviewer on the invite sees the meeting in their own dashboard, not just in their inbox |
