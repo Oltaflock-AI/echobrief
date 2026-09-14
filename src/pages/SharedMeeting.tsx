@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Card, ChipGroup } from '@/ui';
+import { ChipGroup } from '@/ui';
 import { RecordingPlayer } from '@/components/meeting/RecordingPlayer';
 import {
   PrivacyNote,
@@ -10,11 +10,14 @@ import {
   ShareSkeleton,
 } from '@/components/share/ShareChrome';
 import { MeetingHero } from '@/components/share/MeetingHero';
-import { SummaryPanel } from '@/components/share/SummaryPanel';
-import { ActionItemsPanel } from '@/components/share/ActionItemsPanel';
+import { NotesColumn } from '@/components/share/NotesColumn';
 import { TranscriptPanel } from '@/components/share/TranscriptPanel';
-import { JumpProvider, useJump, type ShareTab } from '@/components/share/jump';
-import { speakersOf, type SharedPayload } from '@/components/share/types';
+import { AskPanel } from '@/components/share/AskPanel';
+import { ShareRail } from '@/components/share/ShareRail';
+import { JumpProvider, useJump } from '@/components/share/jump';
+import { chaptersOf, highlightsOf } from '@/components/share/notes';
+import { scrollToSection, type Section, type SectionId } from '@/components/share/sections';
+import { decisionText, followUpText, speakersOf, type SharedPayload } from '@/components/share/types';
 
 /**
  * A shared meeting, read by somebody who may have no account.
@@ -23,22 +26,20 @@ import { speakersOf, type SharedPayload } from '@/components/share/types';
  * most common way a stranger meets the product, so it carries the brand and a
  * way in, not the app chrome. It renders exactly what `get-shared-meeting`
  * returns and asks for nothing the payload has not already offered: the
- * summary, decisions, key points and action items always; the transcript and
- * the recording only when the link that was sent carries them.
+ * summary, highlights, chapters, decisions, next steps and action items
+ * always; the transcript and the recording only when the link carries them.
  *
- * It is drawn in the **Console** palette, in the same tabs-over-cards shape as
- * the owner's meeting page — a reader who is sent a link and later signs up
- * should recognise the product. The `bg-eb-bg` class on the root is
- * load-bearing: it is what `:root:has(.bg-eb-bg)` in index.css keys the
- * light-lock off (see the note there).
+ * It is a reading desk, not a tabbed app: on a laptop the whole width is used
+ * — a rail on the left (where you are on the page, the chapters as a
+ * clickable table of contents, who was in the room), the notes in the middle
+ * on one scroll, and the transcript on the right, sticky, full height, with
+ * the "ask this meeting" box docked under it. On a phone the same blocks
+ * stack, with a chip row that scrolls to each. Every timestamp on the page
+ * seeks the player and scrolls the transcript at once (`JumpProvider`).
  *
- * The tab set is built from what the payload actually contains, so a
- * summary-only link shows one tab rather than three empty ones.
- *
- * Every timestamp on the page goes through `JumpProvider`: with a recording
- * it seeks the player, with only a transcript it scrolls to the turn, and
- * with neither it is plain text. The active tab lives there too, since a jump
- * is what changes it most often.
+ * The `bg-eb-bg` class on the root is load-bearing: it is what
+ * `:root:has(.bg-eb-bg)` in index.css keys the light-lock off (see the note
+ * there).
  */
 
 const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-shared-meeting`;
@@ -91,106 +92,151 @@ export default function SharedMeeting() {
 
   return (
     <div className="min-h-screen bg-eb-bg font-dmsans text-eb-text" data-clarity-mask="true">
-      <ShareHeader />
+      <ShareHeader title={data?.meeting?.title} />
 
-      <main className="mx-auto max-w-[1080px] px-4 py-8 sm:px-6 sm:py-10">
-        {loading ? (
+      {loading ? (
+        <main className="mx-auto max-w-[1080px] px-4 py-8 sm:px-6 sm:py-10">
           <ShareSkeleton />
-        ) : error ? (
+        </main>
+      ) : error ? (
+        <main className="mx-auto max-w-[1080px] px-4 py-8 sm:px-6 sm:py-10">
           <ShareError message={error} />
-        ) : data ? (
-          <JumpProvider
-            hasRecording={data.has_recording}
-            hasTranscript={!!transcript && transcript.length > 0}
-          >
-            <SharedMeetingBody data={data} token={token ?? ''} />
-          </JumpProvider>
-        ) : null}
-      </main>
+        </main>
+      ) : data ? (
+        <JumpProvider
+          hasRecording={data.has_recording}
+          hasTranscript={!!transcript && transcript.length > 0}
+        >
+          <SharedMeetingBody data={data} token={token ?? ''} />
+        </JumpProvider>
+      ) : null}
     </div>
   );
 }
 
+/**
+ * The sticky columns: they start under the header plus the page's top padding
+ * (57 + 28 px) and end one padding above the viewport bottom, so the docked
+ * "ask" box is never cut off.
+ */
+const STICKY_COLUMN = 'sticky top-[85px] lg:h-[calc(100dvh-113px)]';
+
 function SharedMeetingBody({ data, token }: { data: SharedPayload; token: string }) {
-  const { tab, setTab, seekSeconds, seekNonce } = useJump();
+  const { seekSeconds, seekNonce } = useJump();
   const transcript = data.transcript ?? null;
+  const hasTranscript = !!transcript && transcript.length > 0;
   const speakers = useMemo(() => speakersOf(transcript), [transcript]);
+  const chapters = useMemo(() => chaptersOf(data.facts), [data.facts]);
+  const highlights = useMemo(
+    () => highlightsOf(data.insights?.key_points, data.facts),
+    [data.insights?.key_points, data.facts],
+  );
   const actionItems = data.insights?.action_items ?? [];
+  const decisions = (data.insights?.decisions ?? []).filter((d) => decisionText(d));
+  const followUps = (data.insights?.follow_ups ?? []).filter((f) => followUpText(f));
+  const canAsk = Boolean(data.viewer_can_ask);
 
-  const tabs = useMemo(() => {
-    const options: Array<{ value: ShareTab; label: string }> = [{ value: 'summary', label: 'Summary' }];
-    if (actionItems.length > 0) {
-      options.push({ value: 'actions', label: `Actions (${actionItems.length})` });
-    }
-    if (data.has_recording) options.push({ value: 'recording', label: 'Recording' });
-    if (transcript && transcript.length > 0) options.push({ value: 'transcript', label: 'Transcript' });
-    return options;
-  }, [data.has_recording, actionItems.length, transcript]);
+  // Only sections that exist on this page — a summary-only link does not
+  // offer a "Transcript" entry that scrolls nowhere.
+  const sections = useMemo(() => {
+    const list: Section[] = [{ id: 'summary', label: 'Summary' }];
+    if (highlights.length) list.push({ id: 'highlights', label: 'Highlights', count: highlights.length });
+    if (chapters.length) list.push({ id: 'chapters', label: 'Chapters', count: chapters.length });
+    if (decisions.length) list.push({ id: 'decisions', label: 'Decisions', count: decisions.length });
+    if (followUps.length) list.push({ id: 'next-steps', label: 'Next steps', count: followUps.length });
+    if (actionItems.length) list.push({ id: 'actions', label: 'Action items', count: actionItems.length });
+    if (hasTranscript) list.push({ id: 'transcript', label: 'Transcript' });
+    return list;
+  }, [highlights.length, chapters.length, decisions.length, followUps.length, actionItems.length, hasTranscript]);
 
-  // A link that stops carrying the recording must not strand the reader on a
-  // tab that no longer exists.
-  const activeTab: ShareTab = tabs.some((option) => option.value === tab) ? tab : 'summary';
+  // The rail lists chapters itself, and the transcript is beside the notes on
+  // any screen wide enough to have a rail — neither needs a "jump to" entry.
+  const railSections = sections.filter((s) => s.id !== 'chapters' && s.id !== 'transcript');
 
-  // The player mounts the first time the tab is opened (the playback URL is a
-  // separate, audited request — not worth making for a reader who never
-  // watches) and then stays mounted, hidden, so a jump from the notes does not
-  // reload the media each time.
-  const [recordingOpened, setRecordingOpened] = useState(false);
+  // A seek from the notes brings the player back into view — it sits at the
+  // top of the column and the reader may be a screen below it.
   useEffect(() => {
-    if (activeTab === 'recording') setRecordingOpened(true);
-  }, [activeTab]);
+    if (seekSeconds == null) return;
+    document.getElementById('share-player')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [seekSeconds, seekNonce]);
 
   return (
-    <article>
-      <MeetingHero meeting={data.meeting} speakers={speakers} />
+    <main className="mx-auto max-w-[1760px] px-4 py-6 sm:px-6 lg:py-7">
+      <div
+        className={
+          hasTranscript
+            ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(360px,38%)] lg:items-start xl:grid-cols-[224px_minmax(0,1fr)_minmax(400px,36%)]'
+            : 'grid gap-6 lg:items-start xl:grid-cols-[224px_minmax(0,1fr)]'
+        }
+      >
+        {/* Left rail — desktop only */}
+        <aside className={`hidden xl:block ${STICKY_COLUMN} overflow-y-auto pr-1 pt-1`}>
+          <ShareRail sections={railSections} chapters={chapters} speakers={speakers} />
+        </aside>
 
-      {tabs.length > 1 && (
-        <div className="scroll-x sticky top-[57px] z-10 -mx-4 mt-7 bg-eb-bg px-4 py-2.5 sm:-mx-6 sm:px-6">
-          <ChipGroup
-            ariaLabel="Meeting sections"
-            value={activeTab}
-            onChange={(value) => setTab(value as ShareTab)}
-            options={tabs}
-            className="flex-nowrap"
-          />
-        </div>
-      )}
+        {/* Middle — the notes */}
+        <div className="min-w-0">
+          <MeetingHero meeting={data.meeting} speakers={speakers} />
 
-      <div className={tabs.length > 1 ? 'mt-4' : 'mt-7'}>
-        {activeTab === 'summary' && (
-          <SummaryPanel
-            insights={data.insights}
-            facts={data.facts ?? null}
-            speakers={speakers}
-            hasRecording={data.has_recording}
-            canAsk={Boolean(data.viewer_can_ask)}
-            token={token}
-            onOpenTab={setTab}
-          />
-        )}
+          {/* Phones and laptops without the rail: a chip row that scrolls to a section */}
+          <div className="scroll-x sticky top-[57px] z-10 -mx-4 mt-5 bg-eb-bg px-4 py-2 sm:-mx-6 sm:px-6 xl:hidden">
+            <ChipGroup
+              ariaLabel="Jump to section"
+              value=""
+              onChange={(value) => scrollToSection(value as SectionId)}
+              options={sections.map((s) => ({
+                value: s.id,
+                label: s.count != null ? `${s.label} (${s.count})` : s.label,
+              }))}
+              className="flex-nowrap"
+            />
+          </div>
 
-        {activeTab === 'actions' && <ActionItemsPanel items={actionItems} />}
-
-        {data.has_recording && recordingOpened && (
-          <div hidden={activeTab !== 'recording'}>
-            <Card padded={false} className="overflow-hidden border-0 bg-transparent shadow-none">
+          {data.has_recording && (
+            <div id="share-player" className="mt-5 scroll-mt-16 overflow-hidden rounded-card">
               <RecordingPlayer
                 meetingId="shared"
                 shareToken={token}
                 seekSeconds={seekSeconds}
                 seekNonce={seekNonce}
               />
-            </Card>
-          </div>
-        )}
+            </div>
+          )}
 
-        {activeTab === 'transcript' && transcript && (
-          <TranscriptPanel segments={transcript} speakers={speakers} />
+          <div className="mt-5">
+            <NotesColumn
+              insights={data.insights}
+              facts={data.facts ?? null}
+              chapters={chapters}
+              highlights={highlights}
+            />
+          </div>
+
+          {/* Phones: transcript + ask below the notes */}
+          {hasTranscript && (
+            <div id="s-transcript" className="mt-4 flex scroll-mt-20 flex-col gap-4 lg:hidden">
+              <TranscriptPanel segments={transcript!} speakers={speakers} />
+              {canAsk && <AskPanel token={token} />}
+            </div>
+          )}
+
+          <PrivacyNote hasTranscript={hasTranscript} />
+          <ShareFooter />
+        </div>
+
+        {/* Right — the transcript, sticky and full height */}
+        {hasTranscript && (
+          <aside
+            id="s-transcript-desktop"
+            className={`hidden lg:flex ${STICKY_COLUMN} min-h-0 flex-col gap-3`}
+          >
+            <div className="min-h-0 flex-1">
+              <TranscriptPanel segments={transcript!} speakers={speakers} fill />
+            </div>
+            {canAsk && <AskPanel token={token} docked />}
+          </aside>
         )}
       </div>
-
-      <PrivacyNote hasTranscript={!!transcript && transcript.length > 0} />
-      <ShareFooter />
-    </article>
+    </main>
   );
 }

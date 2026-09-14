@@ -58,9 +58,12 @@ function highlight(text: string, query: string) {
 export function TranscriptPanel({
   segments,
   speakers,
+  fill = false,
 }: {
   segments: TranscriptSegment[];
   speakers: string[];
+  /** Fill the parent's height (the sticky desktop column) instead of capping at 72dvh. */
+  fill?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const [speaker, setSpeaker] = useState<string | null>(null);
@@ -91,7 +94,17 @@ export function TranscriptPanel({
     }
     // Wait a frame so the unfiltered list is in the DOM before measuring.
     const frame = requestAnimationFrame(() => {
-      rows.current.get(target)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      const row = rows.current.get(target);
+      const scroller = row?.parentElement;
+      if (row && scroller) {
+        // Scroll the transcript's own box, not the page — on desktop the page
+        // is meant to stay where the reader was.
+        scroller.scrollTo({
+          // The scroller is `relative`, so offsetTop is measured from it.
+          top: row.offsetTop - scroller.clientHeight / 2 + row.clientHeight / 2,
+          behavior: 'smooth',
+        });
+      }
       setFlash(target);
     });
     const timer = setTimeout(() => setFlash(null), 1600);
@@ -102,7 +115,7 @@ export function TranscriptPanel({
   }, [scrollTo, scrollNonce, turns]);
 
   return (
-    <Card padded={false}>
+    <Card padded={false} className={fill ? 'flex h-full min-h-0 flex-col' : ''}>
       <CardHeader
         title="Transcript"
         count={turns.length}
@@ -161,7 +174,7 @@ export function TranscriptPanel({
           Nothing in this transcript matches that.
         </p>
       ) : (
-        <div className="max-h-[72dvh] overflow-y-auto px-[18px] py-4">
+        <div className={`relative overflow-y-auto px-[18px] py-4 ${fill ? 'min-h-0 flex-1' : 'max-h-[72dvh]'}`}>
           {visible.map((turn) => {
             const index = turns.indexOf(turn);
             return (
@@ -191,7 +204,7 @@ export function TranscriptPanel({
         </div>
       )}
 
-      <p className="border-t border-eb-divider px-[18px] py-2.5 font-dmsans text-[12px] text-eb-secondary">
+      <p className="m-0 border-t border-eb-divider px-[18px] py-2 font-dmsans text-[11.5px] text-eb-secondary">
         Anything said before the meeting started or after it ended is left out.
       </p>
     </Card>

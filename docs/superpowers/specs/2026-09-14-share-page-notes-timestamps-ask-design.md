@@ -30,9 +30,9 @@ zone stripping, and never force a sign-in.
   note, which nobody could read. `summary_detailed` moves behind a "Read full
   summary" disclosure. Meetings without facts (pre-2026-08-31) fall back to
   today's prose card.
-- **Timestamp click order:** recording on the link → Recording tab + seek;
-  else transcript on the link → Transcript tab + scroll/flash that turn; else
-  plain text.
+- **Timestamp click:** seeks the player (when the link carries the recording)
+  and scrolls the transcript to that turn (when it carries the transcript),
+  both at once; plain text when neither.
 - **"Ask this meeting" is login-gated, never forced.** Shown only when the
   link carries the transcript. Signed-out readers see a one-line invitation to
   sign in; the page itself never blocks.
@@ -56,13 +56,10 @@ Adds to the `meeting` response, all optional-by-history:
   by a `useJump()` context provided by `SharedMeeting` — owns the active tab,
   `seekSeconds`/`seekNonce` for `RecordingPlayer`, and a `scrollTo` seconds
   value the transcript panel watches.
-- **Summary tab:** lead → Highlights (`highlightsOf`) → Chapters
-  (`chaptersOf`) → Decisions (`<Ts>` from `facts.decisions` matched by text) →
-  Next steps (`follow_ups`) → "Read full summary" → Ask this meeting. Rail
-  unchanged, action items gain `<Ts>`.
-- **Actions tab:** `<Ts>` per item.
-- **Transcript tab:** turn timestamp becomes the `<Ts>` chip; on `scrollTo`
-  the nearest turn at-or-before that second scrolls into view and flashes.
+- Decisions carry `<Ts>` from `facts.decisions` matched by text; action items
+  carry `source_timestamp`; transcript turns carry the `<Ts>` chip and on
+  `scrollTo` the turn at-or-before that second scrolls (its own box, not the
+  page) into view and flashes.
 - `document.title` = meeting title.
 
 ## Ask this meeting

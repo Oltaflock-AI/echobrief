@@ -4,18 +4,15 @@ import { timestamp } from './types';
 /**
  * One place that knows what a timestamp click means on the share page.
  *
- * The order is fixed by what the link carries: a recording → open the
- * Recording tab and seek; no recording but a transcript → open the Transcript
- * tab and scroll to that turn; neither → the chip is inert text. Panels render
+ * With everything on one screen a click does both things at once: the player
+ * (when the link carries the recording) seeks and is scrolled into view, and
+ * the transcript column (when the link carries it) scrolls to the turn that
+ * was open at that second. With neither the chip is inert text. Panels render
  * `<Ts>` and never decide any of this themselves, so a link that stops
- * carrying the recording changes one flag here and every timestamp on the page
- * degrades together.
+ * carrying the recording changes one flag here and every timestamp on the
+ * page degrades together.
  */
-export type ShareTab = 'summary' | 'actions' | 'recording' | 'transcript';
-
 interface JumpState {
-  tab: ShareTab;
-  setTab: (tab: ShareTab) => void;
   /** Where the recording player should be, and a nonce so repeats still fire. */
   seekSeconds: number | null;
   seekNonce: number;
@@ -38,7 +35,6 @@ export function JumpProvider({
   hasTranscript: boolean;
   children: React.ReactNode;
 }) {
-  const [tab, setTab] = useState<ShareTab>('summary');
   const [seekSeconds, setSeekSeconds] = useState<number | null>(null);
   const [seekNonce, setSeekNonce] = useState(0);
   const [scrollTo, setScrollTo] = useState<number | null>(null);
@@ -47,11 +43,10 @@ export function JumpProvider({
   const jump = useCallback(
     (seconds: number) => {
       if (hasRecording) {
-        setTab('recording');
         setSeekSeconds(seconds);
         setSeekNonce((n) => n + 1);
-      } else if (hasTranscript) {
-        setTab('transcript');
+      }
+      if (hasTranscript) {
         setScrollTo(seconds);
         setScrollNonce((n) => n + 1);
       }
@@ -61,8 +56,6 @@ export function JumpProvider({
 
   const value = useMemo<JumpState>(
     () => ({
-      tab,
-      setTab,
       seekSeconds,
       seekNonce,
       scrollTo,
@@ -70,7 +63,7 @@ export function JumpProvider({
       canJump: hasRecording || hasTranscript,
       jump,
     }),
-    [tab, seekSeconds, seekNonce, scrollTo, scrollNonce, hasRecording, hasTranscript, jump],
+    [seekSeconds, seekNonce, scrollTo, scrollNonce, hasRecording, hasTranscript, jump],
   );
 
   return <JumpContext.Provider value={value}>{children}</JumpContext.Provider>;

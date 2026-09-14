@@ -21,7 +21,7 @@ interface Turn {
   citation?: number | null;
 }
 
-export function AskPanel({ token }: { token: string }) {
+export function AskPanel({ token, docked = false }: { token: string; docked?: boolean }) {
   const { user } = useAuth();
   const location = useLocation();
   const [question, setQuestion] = useState('');
@@ -55,7 +55,7 @@ export function AskPanel({ token }: { token: string }) {
   };
 
   return (
-    <Card padded={false}>
+    <Card padded={false} className={docked ? 'flex max-h-[42dvh] flex-col' : ''}>
       <CardHeader title="Ask this meeting" />
       {!user ? (
         <div className="flex flex-col gap-3 px-[18px] py-4 sm:flex-row sm:items-center">
@@ -63,8 +63,8 @@ export function AskPanel({ token }: { token: string }) {
             <MessageCircleQuestion size={16} strokeWidth={1.75} />
           </span>
           <p className="m-0 flex-1 font-dmsans text-[13.5px] leading-[1.55] text-eb-prose">
-            Ask anything about what was said — “what did they agree on pricing?” — and get the answer
-            with the moment in the call. Free with an EchoBrief account.
+            Ask anything about what was said and get the answer with the moment in the call. Free
+            with an EchoBrief account.
           </p>
           <Link
             to="/auth"
@@ -75,9 +75,9 @@ export function AskPanel({ token }: { token: string }) {
           </Link>
         </div>
       ) : (
-        <div className="px-[18px] py-4">
+        <div className={`px-[18px] py-4 ${docked ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
           {turns.length > 0 && (
-            <div className="mb-4 flex flex-col gap-3">
+            <div className={`mb-4 flex flex-col gap-3 ${docked ? 'min-h-0 flex-1 overflow-y-auto' : ''}`}>
               {turns.map((turn, i) => (
                 <div
                   key={i}

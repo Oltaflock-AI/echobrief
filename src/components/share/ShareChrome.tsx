@@ -12,12 +12,25 @@ import { Button } from '@/ui';
  * after the reader has got what they came for.
  */
 
-export function ShareHeader() {
+/** Header height, which the sticky columns below it subtract from the viewport. */
+export const SHARE_HEADER_PX = 57;
+
+export function ShareHeader({ title }: { title?: string }) {
   return (
     <header className="sticky top-0 z-20 border-b border-eb-border bg-eb-bg/90 backdrop-blur-md">
-      <div className="mx-auto flex max-w-[1080px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <Logo size="sm" linkTo="/" variant="console" />
-        <div className="flex items-center gap-2">
+      <div className="flex h-[57px] items-center justify-between gap-4 px-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <Logo size="sm" linkTo="/" variant="console" />
+          {title && (
+            <>
+              <span className="hidden h-4 w-px bg-eb-border md:block" aria-hidden />
+              <span className="hidden min-w-0 truncate font-dmsans text-[13px] text-eb-secondary md:block">
+                {title}
+              </span>
+            </>
+          )}
+        </div>
+        <div className="flex flex-none items-center gap-2">
           <Link
             to="/"
             className="hidden font-dmsans text-[13px] font-medium text-eb-secondary no-underline hover:text-eb-text sm:inline"
@@ -37,7 +50,7 @@ export function ShareHeader() {
 
 export function ShareFooter() {
   return (
-    <footer className="mt-12 rounded-card border border-eb-border bg-eb-card p-6 text-center shadow-eb-card sm:p-8">
+    <footer className="mt-8 rounded-card border border-eb-border bg-eb-card p-6 text-center shadow-eb-card sm:p-8">
       <p className="font-outfit text-[17px] font-semibold tracking-[-.01em] text-eb-text">
         This summary was written by EchoBrief
       </p>
