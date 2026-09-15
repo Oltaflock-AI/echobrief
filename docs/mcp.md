@@ -143,6 +143,7 @@ Check the deployed server with `npm run test:oauth:contract`.
 | Tool | Arguments | Returns |
 |---|---|---|
 | `list_meetings` | `status?`, `from?`, `to?`, `query?`, `limit` (≤100) | Metadata rows. No bodies. Cancelled meetings are excluded unless `status` is passed. |
+| `list_calendar_events` | `from?` (default now), `to?`, `limit` (≤100) | Synced calendar events, soonest first, with attendees and description. For preparing before a call is recorded. |
 | `get_meeting` | `meeting_id` | Metadata, `summary_short`, counts |
 | `get_meeting_insights` | `meeting_id` | Full analysis and metrics |
 | `search_meetings` | `query`, `limit` (≤25) | Ranked snippets with `meeting_id` |

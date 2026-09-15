@@ -1171,6 +1171,13 @@ export default function Docs() {
                       'Metadata rows, newest first. No transcript or summary text. Cancelled meetings are left out unless you ask for that status.',
                     ],
                     [
+                      <Mono>list_calendar_events</Mono>,
+                      <>
+                        <Mono>from?</Mono> (default now), <Mono>to?</Mono>, <Mono>limit</Mono> ≤ 100
+                      </>,
+                      'Events from your synced calendars, soonest first, with attendees and the invite description. For preparing before a call.',
+                    ],
+                    [
                       <Mono>get_meeting</Mono>,
                       <Mono>meeting_id</Mono>,
                       'Metadata, the short summary, and counts of decisions, action items and segments.',
