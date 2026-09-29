@@ -159,7 +159,7 @@ def admin(method, path, body=None):
 
 def make_user(label: str) -> dict:
     email = f"rls-{label}-{int(time.time())}-{secrets.token_hex(3)}@echobrief.in"
-    password = f"Rls-{secrets.token_urlsafe(14)}"
+    password = f"Rls-{secrets.token_urlsafe(14)}9"  # policy: lower + upper + digit
     status, data = admin("POST", "/auth/v1/admin/users",
                          {"email": email, "password": password, "email_confirm": True})
     if status >= 300:
