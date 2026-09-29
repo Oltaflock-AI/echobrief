@@ -155,6 +155,10 @@ export function WindowedPlayer({
       clampToWindow();
       report();
     },
+    // `seeking` fires the moment the position changes; `seeked` only once the
+    // data for it has loaded, which on a remote mp4 can be seconds later — long
+    // enough to show a frame from before the guest joined.
+    onSeeking: clampToWindow,
     onSeeked: () => {
       clampToWindow();
       report();
