@@ -24,7 +24,9 @@ import { useEffect, useState } from 'react';
 import { Building2, Check, Copy, Link2, Loader2, RefreshCw, Share2, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useMeetingShares } from '@/hooks/useMeetingShares';
+import { clockLabel } from '@/lib/playbackWindow';
 import { formatIST } from '@/lib/time';
+import type { MeetingBoundaries } from '@/types/meeting';
 import { Button, ChipGroup, Dialog, DialogNote, Toggle } from '@/ui';
 
 const EXPIRY: readonly { value: string; label: string }[] = [
@@ -43,14 +45,31 @@ function expiryChipFor(expiresAt: string | null): string {
   return '30';
 }
 
+/**
+ * What the recording switch actually shares. A share link plays only the
+ * guest's join → leave (WindowedPlayer), and the owner should know before they
+ * send it whether that window exists — "no guest detected" means the whole call.
+ */
+function recordingHint(boundaries: MeetingBoundaries | null | undefined): string {
+  const start = boundaries?.first_external_join_ts;
+  const end = boundaries?.last_external_leave_ts;
+  if (boundaries && !boundaries.internal_only && start != null && end != null && end > start) {
+    return `Plays only from when your guest joined (${clockLabel(start)}) to when they left (${clockLabel(end)}). The file behind the player is still the full call.`;
+  }
+  return 'No guest detected, so the whole call is shared, including anything said while the bot was waiting.';
+}
+
 export function ShareLinkDialog({
   meetingId,
   open,
   onOpenChange,
+  boundaries,
 }: {
   meetingId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** meetings.boundaries — decides what the recording switch promises. */
+  boundaries?: MeetingBoundaries | null;
 }) {
   const { toast } = useToast();
   const shares = useMeetingShares(meetingId, open);
@@ -240,7 +259,7 @@ export function ShareLinkDialog({
             />
             <SwitchRow
               title="Include the recording"
-              hint="The full, unedited call, including anything said while the bot was waiting."
+              hint={recordingHint(boundaries)}
               on={link.include_recording}
               disabled={shares.working}
               onChange={(v) => patchLink({ include_recording: v })}
@@ -347,7 +366,7 @@ export function ShareLinkDialog({
             />
             <SwitchRow
               title="Include the recording"
-              hint="The full, unedited call, including anything said while the bot was waiting."
+              hint={recordingHint(boundaries)}
               on={includeRecording}
               onChange={setIncludeRecording}
             />

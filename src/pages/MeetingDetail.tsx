@@ -849,7 +849,12 @@ function MeetingDetailBody() {
         attendees={attendees}
         onSend={handleSendEmail}
       />
-      <ShareLinkDialog meetingId={meeting.id} open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
+      <ShareLinkDialog
+        meetingId={meeting.id}
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        boundaries={meeting.boundaries}
+      />
 
       {/* Mockup 00g. Dark button, not red: this replaces generated text and is
           repeatable — red is reserved for the delete that is not. */}

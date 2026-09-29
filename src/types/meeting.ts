@@ -245,11 +245,11 @@ export interface CoachingReport {
   summary?: string;
 }
 
-/** Speech-estimated privacy-trim window (meetings.boundaries). */
+/** Privacy-trim window (meetings.boundaries): guest join → leave, observed or estimated. */
 export interface MeetingBoundaries {
   first_external_join_ts: number | null;
   last_external_leave_ts: number | null;
-  source: 'speech_estimated' | 'llm_estimated' | 'none';
+  source: 'presence' | 'speech_estimated' | 'llm_estimated' | 'none';
   internal_only: boolean;
 }
 
