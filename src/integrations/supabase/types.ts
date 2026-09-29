@@ -1250,6 +1250,7 @@ export type Database = {
       meetings: {
         Row: {
           attendees: Json | null
+          attention_dismissed_at: string | null
           audio_url: string | null
           bot_job_id: string | null
           boundaries: Json | null
@@ -1281,6 +1282,7 @@ export type Database = {
         }
         Insert: {
           attendees?: Json | null
+          attention_dismissed_at?: string | null
           audio_url?: string | null
           bot_job_id?: string | null
           boundaries?: Json | null
@@ -1312,6 +1314,7 @@ export type Database = {
         }
         Update: {
           attendees?: Json | null
+          attention_dismissed_at?: string | null
           audio_url?: string | null
           bot_job_id?: string | null
           boundaries?: Json | null

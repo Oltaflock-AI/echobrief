@@ -1007,8 +1007,9 @@ export default function Docs() {
                 <p>
                   The <strong className="text-foreground">Meetings</strong> dashboard lists your
                   recordings and meetings shared with you. Filter by the last seven days,
-                  external attendees, or action items. Recent failed and cancelled meetings
-                  appear separately under Needs attention. Old Recordings links open the dashboard.
+                  external attendees, or action items. Meetings that failed to process in the last
+                  week appear separately under Needs attention; dismissing one (or all) hides it
+                  without deleting it. Old Recordings links open the dashboard.
                 </p>
                 <p>
                   Use the search button or Cmd/Ctrl+K to find meeting titles, transcript passages,

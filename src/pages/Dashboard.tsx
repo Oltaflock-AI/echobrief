@@ -3,8 +3,13 @@
  *
  * The data layer is Dashboard.tsx's, unchanged: the same onboarding gate, the
  * same meetings query with HIDDEN_STATUSES, the same needs-attention query and
- * dismissal path, and the same realtime subscription that patches the cache in
- * place rather than refetching.
+ * the same realtime subscription that patches the cache in place rather than
+ * refetching.
+ *
+ * Needs attention lists FAILED meetings only. A cancelled one (the bot was never
+ * admitted) captured no audio, so there is nothing to retry — listing those
+ * buried the rows that could still be recovered. Dismissing stamps
+ * `attention_dismissed_at` rather than deleting, so "Dismiss all" is safe.
  *
  * What is new is the right rail the mockup calls for, and it reads only tables
  * that already exist — today's calendar_events, action items due this week from
@@ -36,17 +41,6 @@ import {
   Avatar, Badge, Button, Card, CardHeader, Chip, DarkPanel, Divider, PageHeader, StatTile, TwoColumn,
 } from "@/ui";
 import { cn } from "@/lib/utils";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 
 /** Same rule as V1: a meeting that produced no content is not listed here. */
 const HIDDEN_STATUSES = new Set<string>(["cancelled", "failed"]);
@@ -180,7 +174,8 @@ export default function Dashboard() {
         .from("meetings")
         .select("*")
         .eq("user_id", user!.id)
-        .in("status", ["failed", "cancelled"])
+        .eq("status", "failed")
+        .is("attention_dismissed_at", null)
         .gte("start_time", since)
         .order("start_time", { ascending: false });
       if (error) throw error;
@@ -188,32 +183,32 @@ export default function Dashboard() {
     },
   });
 
-  const [dismissingId, setDismissingId] = useState<string | null>(null);
+  const [dismissing, setDismissing] = useState(false);
 
-  // Same delete path as the meeting page: children first, then the meeting row
-  // scoped to the owner.
-  const handleDismissAttention = async (meeting: Meeting) => {
-    if (!user) return;
-    setDismissingId(meeting.id);
+  // Hides meetings from the card without touching them — the meeting, its
+  // audio and any partial transcript stay for a retry. Deleting lives on the
+  // meeting page.
+  const handleDismissAttention = async (ids: string[]) => {
+    if (!user || ids.length === 0) return;
+    setDismissing(true);
     try {
-      await supabase.from("meeting_insights").delete().eq("meeting_id", meeting.id);
-      await supabase.from("transcripts").delete().eq("meeting_id", meeting.id);
-      if (meeting.audio_url) {
-        await supabase.storage.from("recordings").remove([meeting.audio_url]);
-      }
-      const { error } = await supabase.from("meetings").delete().eq("id", meeting.id).eq("user_id", user.id);
+      const { error } = await supabase
+        .from("meetings")
+        .update({ attention_dismissed_at: new Date().toISOString() })
+        .in("id", ids)
+        .eq("user_id", user.id);
       if (error) throw error;
       queryClient.setQueryData<Meeting[]>(["meetings-attention", user.id], (prev = []) =>
-        prev.filter((m) => m.id !== meeting.id),
+        prev.filter((m) => !ids.includes(m.id)),
       );
     } catch (err) {
       toast({
         title: "Error",
-        description: err instanceof Error ? err.message : "Failed to remove meeting",
+        description: err instanceof Error ? err.message : "Could not dismiss",
         variant: "destructive",
       });
     } finally {
-      setDismissingId(null);
+      setDismissing(false);
     }
   };
 
@@ -500,55 +495,42 @@ export default function Dashboard() {
         <div className="flex flex-col gap-4">
           {attentionMeetings.length > 0 && (
             <Card padded={false}>
-              <CardHeader title="Needs attention" count={attentionMeetings.length} />
+              <CardHeader
+                title="Needs attention"
+                count={attentionMeetings.length}
+                right={
+                  <Button
+                    size="sm"
+                    disabled={dismissing}
+                    onClick={() => void handleDismissAttention(attentionMeetings.map((m) => m.id))}
+                  >
+                    Dismiss all
+                  </Button>
+                }
+              />
               {attentionMeetings.map((meeting) => (
                 <div key={meeting.id} className="flex items-center gap-3 border-b border-eb-divider px-[18px] py-3 last:border-0">
                   <div className="min-w-0 flex-1">
                     <Link to={`/meeting/${meeting.id}`} className="block truncate font-dmsans text-sm font-medium text-eb-text no-underline hover:underline">
                       {meeting.title || "Untitled meeting"}
                     </Link>
-                    <div className="font-dmsans text-[12.5px] text-eb-secondary">
-                      {meeting.status === "cancelled" ? "The bot was never admitted" : "Processing failed"}
+                    <div className="truncate font-dmsans text-[12.5px] text-eb-secondary">
+                      Processing failed
                       {" · "}
                       {formatIST(new Date(meeting.start_time), "MMM d")}
                     </div>
                   </div>
-                  <Badge tone={meeting.status === "cancelled" ? "neutral" : "red"} dot>
-                    {meeting.status === "cancelled" ? "Cancelled" : "Failed"}
-                  </Badge>
-                  {/* This removes the meeting for good — transcript, insights and
-                      archived audio included — so it asks first. */}
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <button
-                        type="button"
-                        disabled={dismissingId === meeting.id}
-                        aria-label={`Delete ${meeting.title || "meeting"}`}
-                        title="Delete this meeting"
-                        className="flex-none text-eb-muted hover:text-eb-red disabled:opacity-50"
-                      >
-                        <X size={16} strokeWidth={1.75} />
-                      </button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="bg-eb-bg border-eb-border text-eb-text">
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete this meeting?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Removes “{meeting.title || "Untitled meeting"}” along with its
-                          transcript, insights and archived audio. This cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleDismissAttention(meeting)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        >
-                          Delete
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                  <Badge tone="red" dot>Failed</Badge>
+                  <button
+                    type="button"
+                    disabled={dismissing}
+                    onClick={() => void handleDismissAttention([meeting.id])}
+                    aria-label={`Dismiss ${meeting.title || "meeting"}`}
+                    title="Dismiss — the meeting is kept"
+                    className="flex-none text-eb-muted hover:text-eb-text disabled:opacity-50"
+                  >
+                    <X size={16} strokeWidth={1.75} />
+                  </button>
                 </div>
               ))}
             </Card>
