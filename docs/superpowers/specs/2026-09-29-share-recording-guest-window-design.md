@@ -81,10 +81,10 @@ available for bots whose media is still inside Recall's 7-day retention.
 - A new pure function
   `boundariesFromPresence(events, internalNames, attendees, recordingSeconds): Boundaries | null`
   applies the rule above and returns null when it cannot decide.
-- `internalNamesFor(supabase, meeting)` reads the owner's profile and workspace
-  members. On a read error it returns `[]`. With an empty internal list every
-  participant looks external, so the window opens at the first join, which is
-  0: nothing is cut, and that is the safe failure.
+- `internalNamesFor(supabase, userId)` reads the owner's profile and workspace
+  members. On a read error it returns `[]`. With no internal identities at all
+  (no names and no owner-domain attendees), presence returns null and today's
+  chain runs.
 - Order in `post-transcription.ts`: presence, then `computeBoundaries` (speech
   estimate), then the LLM fallback.
 - `guardBoundaries` still applies to the two *estimated* sources and **skips
@@ -155,7 +155,7 @@ to that span, but the file behind it still holds the full call.
 | Events download fails or is empty | Falls through to today's chain |
 | Teammate joins under an unmatched name | They count as external, the window opens at their join (usually 0), and less is trimmed. Safe. |
 | Guest's display name matches a teammate | The guest counts as internal, so that guest is missed. Unlikely. If they are the only guest, there is no window and today's chain runs. |
-| Profile or org read fails | Every participant looks external, the window opens at the first join (0), and nothing is cut |
+| Profile or org read fails | No internal identities, so presence returns null and today's chain runs |
 | Window set but the transcript has older zones | Cannot happen: zones and window both come from the same `boundaries` write |
 
 ## Testing
