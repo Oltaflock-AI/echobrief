@@ -29,6 +29,12 @@ export async function deliverToSlack(
   supabase: any,
   meeting: Record<string, any>,
   insights: Record<string, any>,
+  /**
+   * `manual` is the owner pressing "Post" on the meeting page. It is the one
+   * caller allowed past `auto_post = false`; the claim below still applies, so
+   * a manual post of an already-posted meeting is `already_posted`.
+   */
+  opts: { manual?: boolean } = {},
 ): Promise<{ posted: boolean; reason?: string }> {
   try {
     const { data: rawConn } = await supabase
@@ -38,6 +44,9 @@ export async function deliverToSlack(
       .maybeSingle();
 
     if (!rawConn) return { posted: false, reason: "not_connected" };
+    // "Only when I choose": the pipeline skips this channel entirely, and the
+    // meeting reaches it only if the owner posts it from the meeting page.
+    if (rawConn.auto_post === false && !opts.manual) return { posted: false, reason: "manual_mode" };
     // A channel is chosen separately from connecting the workspace. Until one
     // is picked there is no safe default — posting to #general uninvited is
     // exactly the kind of surprise that gets an app removed.

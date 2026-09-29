@@ -21,6 +21,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { EmailReportDialog } from '@/components/meeting/EmailReportDialog';
 import { MeetingMetrics } from '@/components/meeting/MeetingMetrics';
 import { ShareLinkDialog } from '@/components/meeting/ShareLinkDialog';
+import { ChannelPostButtons } from '@/components/meeting/ChannelPostButtons';
 import { InsightSection, InsightItem } from '@/components/meeting/InsightSection';
 import { RecordingPlayer } from '@/components/meeting/RecordingPlayer';
 import { PlayerPanel } from '@/components/meeting/PlayerPanel';
@@ -795,6 +796,7 @@ function MeetingDetailBody() {
             <EbButton size="sm" onClick={() => setShareDialogOpen(true)} icon={<Link2 size={14} strokeWidth={1.75} />}>
               Share
             </EbButton>
+            {meeting.status === 'completed' && <ChannelPostButtons meetingId={meeting.id} />}
             {facts && (
               <EbButton size="sm" onClick={() => handleDraft(false)} icon={<PenLine size={14} strokeWidth={1.75} />}>
                 Draft follow-up

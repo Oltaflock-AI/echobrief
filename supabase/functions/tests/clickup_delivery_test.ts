@@ -146,3 +146,24 @@ Deno.test("clickup delivery: a database failure is swallowed, never thrown", asy
   const exploding = { from: () => { throw new Error("connection terminated"); } } as any;
   assertEquals(await deliverToClickUp(exploding, meeting, insights), { posted: false, reason: "error" });
 });
+
+Deno.test("clickup delivery: 'only when I choose' skips the pipeline, and never claims", async () => {
+  const db = fakeSupabase({ ...connected, auto_post: false });
+  const cu = mockClickUp({ id: "msg-1" });
+  try {
+    assertEquals(await deliverToClickUp(db.client, meeting, insights), { posted: false, reason: "manual_mode" });
+    assertEquals(cu.calls.length, 0);
+    assertEquals(db.ops.length, 0);
+  } finally { cu.restore(); }
+});
+
+Deno.test("clickup delivery: a manual post goes through when auto-post is off, via the same claim", async () => {
+  const db = fakeSupabase({ ...connected, auto_post: false });
+  const cu = mockClickUp({ id: "msg-2" });
+  try {
+    assertEquals(await deliverToClickUp(db.client, meeting, insights, { manual: true }), { posted: true });
+    assertEquals(db.ops[0].op, "insert");
+    assertEquals(db.ops[0].table, "clickup_deliveries");
+    assertEquals(cu.calls.length, 1);
+  } finally { cu.restore(); }
+});

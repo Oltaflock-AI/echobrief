@@ -160,3 +160,37 @@ Deno.test("slack delivery: a database failure is swallowed, never thrown", async
   const result = await deliverToSlack(exploding, meeting, insights);
   assertEquals(result, { posted: false, reason: "error" });
 });
+
+Deno.test("slack delivery: 'only when I choose' skips the pipeline, and never claims", async () => {
+  // Not claiming matters: a claim here would make the owner's later "Post"
+  // press read as already posted.
+  const db = fakeSupabase({ ...connected, auto_post: false });
+  const slack = mockSlack({ ok: true, ts: "1.1" });
+  try {
+    assertEquals(await deliverToSlack(db.client, meeting, insights), { posted: false, reason: "manual_mode" });
+    assertEquals(slack.calls.length, 0);
+    assertEquals(db.ops.length, 0);
+  } finally { slack.restore(); }
+});
+
+Deno.test("slack delivery: a manual post goes through when auto-post is off, via the same claim", async () => {
+  const db = fakeSupabase({ ...connected, auto_post: false });
+  const slack = mockSlack({ ok: true, ts: "1.2" });
+  try {
+    assertEquals(await deliverToSlack(db.client, meeting, insights, { manual: true }), { posted: true });
+    assertEquals(db.ops[0].op, "insert");
+    assertEquals(db.ops[0].table, "slack_deliveries");
+    assertEquals(slack.calls.length, 1);
+  } finally { slack.restore(); }
+});
+
+Deno.test("slack delivery: a connection without the column still auto-posts", async () => {
+  // Rows read before the migration lands have no auto_post key at all; only an
+  // explicit false opts out.
+  const { auto_post: _, ...legacy } = { ...connected, auto_post: undefined };
+  const db = fakeSupabase(legacy);
+  const slack = mockSlack({ ok: true, ts: "1.3" });
+  try {
+    assertEquals(await deliverToSlack(db.client, meeting, insights), { posted: true });
+  } finally { slack.restore(); }
+});

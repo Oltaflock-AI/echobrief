@@ -862,6 +862,14 @@ export default function Docs() {
                   attendee email addresses are never sent.
                 </Callout>
                 <p>
+                  To choose which meetings reach the channel, turn off{' '}
+                  <strong className="text-foreground">Post every meeting automatically</strong>{' '}
+                  under the channel picker. Nothing is posted after that until you press{' '}
+                  <strong className="text-foreground">Post to Slack</strong> on a meeting's page.
+                  That button also works with automatic posting on, for a meeting that finished
+                  before you picked a channel.
+                </p>
+                <p>
                   Each meeting posts once. Regenerating a meeting's insights does not re-post it.
                   Disconnecting removes EchoBrief's access to the workspace immediately.
                 </p>
@@ -888,6 +896,13 @@ export default function Docs() {
                   items are posted. Coaching notes, the underlying quotes and attendee email
                   addresses are never sent.
                 </Callout>
+                <p>
+                  The same choice as Slack: turn off{' '}
+                  <strong className="text-foreground">Post every meeting automatically</strong> and
+                  only meetings you send with{' '}
+                  <strong className="text-foreground">Post to ClickUp</strong> on their page are
+                  posted.
+                </p>
                 <p>
                   Each meeting posts once; regenerating insights does not re-post it. Disconnecting
                   removes the connection from EchoBrief. ClickUp keeps its own record of authorised

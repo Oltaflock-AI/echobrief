@@ -5,6 +5,9 @@
  *   channels    → the Chat channels this grant can post to, across its workspaces
  *   set_channel → choose the destination (validated against `channels`)
  *   disconnect  → delete the row
+ *   set_auto_post → post every completed meeting, or only the ones sent by hand
+ *   post        → send one meeting's summary now (the meeting page's button)
+ *   status + meeting_id → also says whether that meeting reached the channel
  *
  * Service-role client behind a user JWT: `clickup_connections` has SELECT-only
  * RLS for `authenticated`, because a browser must never be able to UPDATE a
@@ -26,6 +29,8 @@ import { authenticate } from "../_shared/auth.ts";
 import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from "../_shared/rate-limit.ts";
 import { openConnectionTokens } from "../_shared/oauth-tokens.ts";
 import { ClickUpError, isFatal, listChannels, type ClickUpWorkspace } from "../_shared/clickup.ts";
+import { deliverToClickUp } from "../_shared/clickup-delivery.ts";
+import { clearFailedClaim, deliveryState, describeReason, loadMeetingForPost } from "../_shared/manual-post.ts";
 
 serve(async (req) => {
   const corsResponse = handleCorsPrelight(req);
@@ -72,14 +77,51 @@ serve(async (req) => {
             channel_id: r.channel_id,
             channel_name: r.channel_name,
             needs_reconnect: !!r.needs_reconnect,
+            auto_post: r.auto_post !== false,
             last_posted_at: r.last_posted_at,
             connected_at: r.created_at,
           }
         : { connected: false };
 
-    if (action === "status") return json(publicView(row));
+    const meetingId = typeof body.meeting_id === "string" ? body.meeting_id : "";
+
+    if (action === "status") {
+      if (!meetingId || !row) return json(publicView(row));
+      return json({
+        ...publicView(row),
+        meeting_delivery: await deliveryState(supabase, "clickup_deliveries", meetingId, userId, row.channel_id ?? null),
+      });
+    }
 
     if (!row) return json({ error: "ClickUp is not connected" }, 404);
+
+    if (action === "set_auto_post") {
+      if (typeof body.auto_post !== "boolean") return json({ error: "auto_post must be true or false" }, 400);
+      const { error: updateError } = await supabase
+        .from("clickup_connections")
+        .update({ auto_post: body.auto_post, updated_at: new Date().toISOString() })
+        .eq("id", row.id)
+        .eq("user_id", userId);
+      if (updateError) {
+        console.error("[manage-clickup] auto_post update failed:", updateError);
+        return json({ error: "Could not save the setting. Try again." }, 500);
+      }
+      return json({ auto_post: body.auto_post });
+    }
+
+    if (action === "post") {
+      if (!meetingId) return json({ error: "meeting_id is required" }, 400);
+      const loaded = await loadMeetingForPost(supabase, userId, meetingId);
+      if (loaded.error) return json({ error: loaded.error }, loaded.status);
+      if (row.channel_id) await clearFailedClaim(supabase, "clickup_deliveries", meetingId, row.channel_id);
+
+      const result = await deliverToClickUp(supabase, loaded.meeting!, loaded.insights!, { manual: true });
+      const delivery = await deliveryState(supabase, "clickup_deliveries", meetingId, userId, row.channel_id ?? null);
+      if (result.posted || result.reason === "already_posted") {
+        return json({ posted: true, already: !result.posted, meeting_delivery: delivery });
+      }
+      return json({ error: describeReason(result.reason, "ClickUp"), meeting_delivery: delivery }, 409);
+    }
 
     if (action === "disconnect") {
       const { error: delError } = await supabase

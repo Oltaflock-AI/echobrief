@@ -50,6 +50,7 @@ type SlackStatus = {
   channel_id?: string | null;
   channel_name?: string | null;
   needs_reconnect?: boolean;
+  auto_post?: boolean;
 };
 
 type ClickUpStatus = {
@@ -60,6 +61,7 @@ type ClickUpStatus = {
   channel_id?: string | null;
   channel_name?: string | null;
   needs_reconnect?: boolean;
+  auto_post?: boolean;
 };
 type ClickUpChannel = { id: string; name: string; is_private: boolean; workspace_id: string; workspace_name: string };
 
@@ -650,6 +652,19 @@ export function IntegrationsPanel({ profile, setProfile }: PanelProps) {
                 )}
               </div>
             )}
+
+            {slack?.connected && slack.channel_id && (
+              <AutoPostRow
+                on={slack.auto_post !== false}
+                onChange={(on) =>
+                  void callSlack({ action: "set_auto_post", auto_post: on })
+                    .then(() => setSlack((prev) => (prev ? { ...prev, auto_post: on } : prev)))
+                    .catch((error: Error) =>
+                      toast({ title: "Could not save the setting", description: error.message, variant: "destructive" }),
+                    )
+                }
+              />
+            )}
           </div>
 
           <div className="border-t border-eb-divider px-5 py-3">
@@ -744,6 +759,19 @@ export function IntegrationsPanel({ profile, setProfile }: PanelProps) {
                   </Button>
                 )}
               </div>
+            )}
+
+            {clickup?.connected && clickup.channel_id && (
+              <AutoPostRow
+                on={clickup.auto_post !== false}
+                onChange={(on) =>
+                  void callClickUp({ action: "set_auto_post", auto_post: on })
+                    .then(() => setClickUp((prev) => (prev ? { ...prev, auto_post: on } : prev)))
+                    .catch((error: Error) =>
+                      toast({ title: "Could not save the setting", description: error.message, variant: "destructive" }),
+                    )
+                }
+              />
             )}
           </div>
         </div>
@@ -865,6 +893,26 @@ export function IntegrationsPanel({ profile, setProfile }: PanelProps) {
  * the account they act on: three full-width buttons stacked inside a list row
  * read as three separate settings rather than as one account's options.
  */
+/**
+ * "Post every meeting" vs "only the ones I send". Off, nothing reaches the
+ * channel until the owner presses Post on a meeting's page.
+ */
+function AutoPostRow({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <div className="mt-3 flex items-center gap-3 pl-[48px]">
+      <div className="min-w-0 flex-1">
+        <div className="font-dmsans text-[13px] font-medium">Post every meeting automatically</div>
+        <div className="font-dmsans text-[12.5px] text-eb-secondary">
+          {on
+            ? "Each summary is posted when the meeting finishes."
+            : "Nothing is posted until you press Post on a meeting's page."}
+        </div>
+      </div>
+      <Toggle on={on} onChange={onChange} label="Post every meeting automatically" />
+    </div>
+  );
+}
+
 function ChipButton({
   children,
   onClick,
