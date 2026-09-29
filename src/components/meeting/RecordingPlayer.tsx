@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, RefreshCw, Video } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { WindowedPlayer } from './WindowedPlayer';
 
 /**
  * Plays back one meeting's recording.
@@ -19,6 +20,11 @@ interface RecordingMedia {
   source?: string;
   url?: string;
   video_status?: string;
+  /**
+   * Share links only: the guest's join → leave in recording seconds. When set,
+   * the page plays that span and nothing either side of it (WindowedPlayer).
+   */
+  window?: { start: number; end: number } | null;
 }
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -132,6 +138,33 @@ export function RecordingPlayer({
           <RefreshCw size={12} strokeWidth={1.75} /> Try again
         </button>
       </Placeholder>
+    );
+  }
+
+  const guestWindow = shareToken && data?.window && data.window.end > data.window.start ? data.window : null;
+
+  if (guestWindow && data?.url && (data.kind === 'video' || data.kind === 'audio')) {
+    const player = (
+      <WindowedPlayer
+        kind={data.kind}
+        url={data.url}
+        window={guestWindow}
+        seekSeconds={seekSeconds}
+        seekNonce={seekNonce}
+        onTime={onTime}
+        className={data.kind === 'video' ? className : 'w-full overflow-hidden rounded-card'}
+      />
+    );
+    if (data.kind === 'video') return player;
+    return (
+      <div className="rounded-card border border-eb-border bg-eb-card p-5">
+        <p className="mb-3 font-dmsans text-[13px] text-eb-prose">
+          {data.source === 'archive'
+            ? 'The video expired after 7 days — playing the saved audio. Timestamps still jump.'
+            : 'No video for this meeting — playing the archived audio.'}
+        </p>
+        {player}
+      </div>
     );
   }
 
