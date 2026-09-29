@@ -82,7 +82,7 @@ export async function fetchUsageMeter(userId: string): Promise<UsageMeter | null
     ratio = seconds / limits.includedSeconds;
     label = `${formatHours(seconds)} / ${formatHours(limits.includedSeconds)}`;
   } else {
-    label = formatHours(seconds);
+    label = `${formatHours(seconds)}h used`;
   }
 
   return {
@@ -95,5 +95,6 @@ export async function fetchUsageMeter(userId: string): Promise<UsageMeter | null
 }
 
 export function planLabel(plan: PlanKey): string {
+  if (plan === "admin") return "Super admin";
   return plan === "free" ? "Free plan" : `${plan[0].toUpperCase()}${plan.slice(1)} plan`;
 }

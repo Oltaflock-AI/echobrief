@@ -325,6 +325,25 @@ Deno.test("no subscription: a usage read error still refuses, it does not fail o
   assertEquals(decision.code, "meeting_limit");
 });
 
+Deno.test("admin override: unmetered, still allowed far past every paid ceiling", async () => {
+  const decision = await checkRecordingAllowed(
+    stubSupabase({ plan_override: "admin" }, [
+      { kind: "meeting_started", seconds: 0 },
+      { kind: "meeting_recorded", seconds: 500 * 3600 },
+    ]),
+    "u1",
+  );
+  assert(decision.allowed);
+  assertEquals(decision.plan, "admin");
+  assertEquals(decision.limits.includedSeconds, null);
+  assertEquals(decision.limits.meetingsPerPeriod, null);
+});
+
+Deno.test("admin is never sellable", () => {
+  assert(!SELLABLE_PLANS.includes("admin"));
+  assertEquals(productForPlan("admin", "monthly", billingEnv), null);
+});
+
 Deno.test("plan_override still lets an internal account record", async () => {
   const decision = await checkRecordingAllowed(
     stubSupabase({ plan_override: "pro" }, []),

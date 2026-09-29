@@ -212,14 +212,20 @@ export function BillingCard() {
   const isActive = status === 'active';
   const currentPlan = serverPlan ?? planForProfile(profile);
   const limits = PLANS[currentPlan];
+  // Internal accounts: nothing to meter against and nothing to sell them.
+  const isAdmin = currentPlan === 'admin';
   // Count-metered plans (only the no-subscription state today) vs hour-metered
   // paid plans. A zero allowance must not divide by zero.
-  const usedFraction = limits.meetingsPerPeriod !== null
+  const usedFraction = isAdmin
+    ? 0
+    : limits.meetingsPerPeriod !== null
     ? (limits.meetingsPerPeriod > 0
         ? (usage?.meetings ?? 0) / limits.meetingsPerPeriod
         : 1)
     : (usage?.seconds ?? 0) / (limits.includedSeconds || 1);
-  const allowanceLabel = limits.meetingsPerPeriod !== null
+  const allowanceLabel = isAdmin
+    ? `${formatHours(usage?.seconds ?? 0)} hours used`
+    : limits.meetingsPerPeriod !== null
     ? (limits.meetingsPerPeriod > 0
         ? `${usage?.meetings ?? 0} of ${limits.meetingsPerPeriod} meetings`
         : 'No meetings included — choose a plan to start recording')
@@ -245,7 +251,7 @@ export function BillingCard() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-dmsans text-sm font-medium">
-                    {STATUS_LABELS[status] ?? status}
+                    {isAdmin ? 'Super admin' : (STATUS_LABELS[status] ?? status)}
                   </span>
                   {isActive && <Badge tone="green" dot>Active</Badge>}
                   {status === 'on_hold' && <Badge tone="amber" dot>Payment failed</Badge>}
@@ -273,10 +279,11 @@ export function BillingCard() {
               <div className="mt-5 border-t border-eb-divider pt-5">
                 <div className="mb-2 flex items-baseline justify-between gap-3">
                   <span className="font-dmsans text-[13px] font-medium">
-                    {limits.label} plan — this month
+                    {isAdmin ? limits.label : `${limits.label} plan`} — this month
                   </span>
                   <span className="font-mono text-[12px] text-eb-secondary">{allowanceLabel}</span>
                 </div>
+                {!isAdmin && (
                 <div
                   className="h-1.5 w-full overflow-hidden rounded-pill bg-eb-chip"
                   role="progressbar"
@@ -290,17 +297,24 @@ export function BillingCard() {
                     style={{ width: `${Math.min(100, usedFraction * 100)}%` }}
                   />
                 </div>
+                )}
+                {isAdmin ? (
+                <p className="mt-2 font-dmsans text-[12.5px] text-eb-secondary">
+                  No hour limit. Meetings are capped at {Math.round(limits.maxMeetingSeconds / 60)} minutes each.
+                </p>
+                ) : (
                 <p className="mt-2 font-dmsans text-[12.5px] text-eb-secondary">
                   Meetings are capped at {Math.round(limits.maxMeetingSeconds / 60)} minutes each, and
                   content is kept for {limits.retentionDays} days.
                 </p>
+                )}
               </div>
             )}
           </>
         )}
       </Section>
 
-      {!loading && (
+      {!loading && !isAdmin && (
         <Section
           title={isActive ? 'Your plan' : 'Choose a plan'}
           description={
@@ -401,7 +415,7 @@ export function BillingCard() {
         </Section>
       )}
 
-      {!loading && (
+      {!loading && !isAdmin && (
         <Section
           title="Early access code"
           description={

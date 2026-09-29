@@ -13,7 +13,7 @@
  * sold, it is the no-subscription state, and it grants nothing.
  */
 
-export type PlanKey = "free" | "trial" | "starter" | "pro" | "teams";
+export type PlanKey = "free" | "trial" | "starter" | "pro" | "teams" | "admin";
 
 export interface PlanLimits {
   label: string;
@@ -94,6 +94,21 @@ export const PLANS: Record<PlanKey, PlanLimits> = {
     overageSeconds: TEAM_SEAT_HOUR_ALLOWANCE * HOUR,
     maxMeetingSeconds: 6 * HOUR,
     retentionDays: 365,
+  },
+  // Internal super-admin accounts. Never sold and never reachable through
+  // checkout or an access code — only a service-role write to
+  // `profiles.plan_override` grants it, and `protect_profile_billing_columns`
+  // stops a user from writing that column themselves. No hour or meeting
+  // ceiling: both nulls fall through `checkRecordingAllowed` to allowed. The
+  // per-meeting cap stays, because a bot left in an empty room is a bill
+  // whoever owns it.
+  admin: {
+    label: "Super admin",
+    meetingsPerPeriod: null,
+    includedSeconds: null,
+    overageSeconds: 0,
+    maxMeetingSeconds: 6 * HOUR,
+    retentionDays: 3650,
   },
 };
 

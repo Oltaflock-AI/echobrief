@@ -8,7 +8,7 @@
  * together or none of them do.
  */
 
-export type PlanKey = 'free' | 'trial' | 'starter' | 'pro' | 'teams';
+export type PlanKey = 'free' | 'trial' | 'starter' | 'pro' | 'teams' | 'admin';
 
 export interface PlanLimits {
   label: string;
@@ -71,6 +71,16 @@ export const PLANS: Record<PlanKey, PlanLimits> = {
     overageSeconds: TEAM_SEAT_HOURS * HOUR,
     maxMeetingSeconds: 6 * HOUR,
     retentionDays: 365,
+  },
+  // Mirrors entitlements.ts: internal super-admin accounts, granted only by a
+  // service-role write to plan_override. Unmetered.
+  admin: {
+    label: 'Super admin',
+    meetingsPerPeriod: null,
+    includedSeconds: null,
+    overageSeconds: 0,
+    maxMeetingSeconds: 6 * HOUR,
+    retentionDays: 3650,
   },
 };
 

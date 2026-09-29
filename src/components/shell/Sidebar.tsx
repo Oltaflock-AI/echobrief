@@ -111,12 +111,14 @@ function PlanCard() {
           />
         </div>
       )}
-      <div className="mt-2 text-[11.5px] text-eb-on-dark">
-        {renews && <>Renews {renews} · </>}
-        <Link to="/settings?tab=billing" className="text-eb-accent-sidebar no-underline hover:underline">
-          Upgrade
-        </Link>
-      </div>
+      {meter.plan !== "admin" && (
+        <div className="mt-2 text-[11.5px] text-eb-on-dark">
+          {renews && <>Renews {renews} · </>}
+          <Link to="/settings?tab=billing" className="text-eb-accent-sidebar no-underline hover:underline">
+            Upgrade
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
