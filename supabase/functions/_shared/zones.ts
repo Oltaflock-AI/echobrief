@@ -7,12 +7,16 @@
  * splits a meeting into pre / meeting / post zones so insights, email and the
  * MCP surface can default to the external-facing window only.
  *
- * "External" = any calendar attendee whose email domain differs from the
- * owner's. Recall participants carry names only (no join/leave events on the
- * path we use), so boundaries are estimated from when external participants
- * actually SPEAK in the Recall speaker timeline, padded outward — and marked
- * `source: "speech_estimated"` so nothing downstream mistakes them for
- * platform join events.
+ * First choice is `boundariesFromPresence`: Recall's participant_events carry
+ * real join/leave times, so the window is "first guest joined → last guest
+ * left", with guests being anyone who is not the owner, a workspace member or
+ * an owner-domain attendee (`source: "presence"`). That needs no attendee list,
+ * so it covers bots started by hand.
+ *
+ * When there are no events (Recall media past retention, a download failure),
+ * `computeBoundaries` estimates the window from when external calendar
+ * attendees (email domain ≠ owner's) actually SPEAK in the Recall speaker
+ * timeline, padded outward — `source: "speech_estimated"`.
  *
  * Pure and synchronous. Unit-tested in tests/zones_test.ts.
  */
@@ -32,8 +36,16 @@ export interface Boundaries {
   /** Seconds into the recording. Null when the whole recording is `meeting`. */
   first_external_join_ts: number | null;
   last_external_leave_ts: number | null;
-  source: "speech_estimated" | "llm_estimated" | "none";
+  source: "presence" | "speech_estimated" | "llm_estimated" | "none";
   internal_only: boolean;
+}
+
+/** One participant join or leave from Recall's participant_events (the bot is not in it). */
+export interface PresenceEvent {
+  action: "join" | "leave";
+  name: string;
+  /** Seconds into the recording. */
+  ts: number;
 }
 
 /** Speech this many seconds before the first external utterance still counts as greeting. */
@@ -158,6 +170,68 @@ export function computeBoundaries(
   };
 }
 
+/**
+ * The window from when the guest actually JOINED to when they LEFT, read from
+ * Recall's participant join/leave events rather than guessed from speech.
+ *
+ * Internal = a name that matches the owner or a workspace member
+ * (`internalNames`), or a calendar attendee on the owner's domain. Everyone
+ * else is a guest. The window opens at the first guest join and closes at the
+ * last guest leave; a guest who drops and rejoins does not split it, and one
+ * still present when the recording stops closes it at the end.
+ *
+ * Returns null — and the speech estimate runs instead — when there are no
+ * events, no guest, or no way to tell who is internal: a failed profile read
+ * must not turn the owner into a guest who "joined at 0".
+ */
+export function boundariesFromPresence(
+  events: PresenceEvent[] | null | undefined,
+  internalNames: string[],
+  attendees: Attendee[] | null | undefined,
+  recordingSeconds: number,
+): Boundaries | null {
+  const list = (Array.isArray(events) ? events : []).filter(
+    (e) =>
+      e && (e.action === "join" || e.action === "leave") &&
+      typeof e.name === "string" && e.name.trim() !== "" && Number.isFinite(e.ts),
+  );
+  if (list.length === 0) return null;
+
+  const domain = ownerDomain(attendees);
+  const internalAttendees: Attendee[] = [
+    ...internalNames.filter((n) => typeof n === "string" && n.trim()).map((n) => ({ displayName: n })),
+    ...(Array.isArray(attendees) ? attendees : []).filter((a) => domain !== null && domainOf(a.email) === domain),
+  ];
+  if (internalAttendees.length === 0) return null;
+  const isInternal = (name: string) => internalAttendees.some((a) => speakerMatchesAttendee(name, a));
+
+  let firstJoin = Infinity;
+  let lastJoin = -Infinity;
+  let lastLeave = -Infinity;
+  let lastEvent = 0;
+  for (const e of list) {
+    lastEvent = Math.max(lastEvent, e.ts);
+    if (isInternal(e.name)) continue;
+    if (e.action === "join") {
+      firstJoin = Math.min(firstJoin, e.ts);
+      lastJoin = Math.max(lastJoin, e.ts);
+    } else {
+      lastLeave = Math.max(lastLeave, e.ts);
+    }
+  }
+  if (!Number.isFinite(firstJoin)) return null;
+
+  const stillPresent = lastJoin > lastLeave;
+  const recordingEnd = recordingSeconds > 0 ? recordingSeconds : lastEvent;
+  const end = stillPresent ? Math.max(recordingEnd, lastJoin) : lastLeave;
+  return {
+    first_external_join_ts: Math.max(0, Math.round(firstJoin)),
+    last_external_leave_ts: Math.round(end),
+    source: "presence",
+    internal_only: false,
+  };
+}
+
 export function zoneOf(startSeconds: number, boundaries: Boundaries): Zone {
   if (
     boundaries.internal_only ||
@@ -233,6 +307,9 @@ export function guardBoundaries(
   boundaries: Boundaries,
   segments: SpeakerSegment[],
 ): Boundaries {
+  // A join/leave event is observed, not estimated: a long real pre-roll must
+  // not be "corrected" back to the whole recording.
+  if (boundaries.source === "presence") return boundaries;
   if (boundaries.internal_only || boundaries.first_external_join_ts === null || boundaries.last_external_leave_ts === null) {
     return boundaries;
   }

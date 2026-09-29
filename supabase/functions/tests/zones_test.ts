@@ -168,3 +168,105 @@ Deno.test("guardBoundaries rejects a window that keeps under half the speech", (
   const none = { first_external_join_ts: null, last_external_leave_ts: null, source: "none" as const, internal_only: true };
   assertEquals(guardBoundaries(none, segments), none);
 });
+
+// ---- presence (Recall join/leave events) ------------------------------------
+// Real event sets measured 2026-09-29 (seconds into the recording). Internal
+// names are the owner and their workspace, exactly what internalNamesFor reads.
+
+import { boundariesFromPresence, type PresenceEvent } from "../_shared/zones.ts";
+
+const TEAM = ["Khush Mutha", "Vineet Patel"];
+const ev = (action: "join" | "leave", name: string, ts: number): PresenceEvent => ({ action, name, ts });
+
+Deno.test("presence: YDSM — pre-chatter before the guest joins is outside the window", () => {
+  const b = boundariesFromPresence([
+    ev("join", "Vineet Patel", 0),
+    ev("join", "Khush Mutha", 266),
+    ev("join", "Mathew Ryan", 559),
+    ev("join", "Mathew Ryan", 620),
+    ev("leave", "Mathew Ryan", 1477),
+    ev("leave", "Mathew Ryan", 1479),
+  ], TEAM, [], 1845);
+  assertEquals(b, { first_external_join_ts: 559, last_external_leave_ts: 1479, source: "presence", internal_only: false });
+});
+
+Deno.test("presence: Travelux — manual bot, everyone at 0, debrief after the guest leaves", () => {
+  const b = boundariesFromPresence([
+    ev("join", "Vineet Patel", 0), ev("join", "Khush Mutha", 0), ev("join", "Grant Williams", 0),
+    ev("leave", "Grant Williams", 3940), ev("leave", "Khush Mutha", 4192), ev("leave", "Vineet Patel", 4192),
+  ], TEAM, [], 4196);
+  assertEquals(b?.first_external_join_ts, 0);
+  assertEquals(b?.last_external_leave_ts, 3940);
+});
+
+Deno.test("presence: Lisa — guest leaves first", () => {
+  const b = boundariesFromPresence([
+    ev("join", "Lisa Watson", 0), ev("join", "Khush Mutha", 0), ev("join", "Vineet Patel", 0),
+    ev("leave", "Lisa Watson", 2995), ev("leave", "Khush Mutha", 3057), ev("leave", "Vineet Patel", 3058),
+  ], TEAM, [], 3061);
+  assertEquals([b?.first_external_join_ts, b?.last_external_leave_ts], [0, 2995]);
+});
+
+Deno.test("presence: Matthew — guests drop and rejoin; the gap stays in", () => {
+  const b = boundariesFromPresence([
+    ev("join", "Khush Mutha", 0), ev("join", "Deepak Namdev", 0), ev("join", "Neeraj Chouhan", 0), ev("join", "Vineet Patel", 0),
+    ev("leave", "Neeraj Chouhan", 1184), ev("leave", "Deepak Namdev", 1184),
+    ev("join", "Deepak Namdev", 1556), ev("join", "Neeraj Chouhan", 1698), ev("join", "Mathew Ryan", 2760),
+    ev("leave", "Deepak Namdev", 4073), ev("join", "Deepak Namdev", 4125),
+    ev("leave", "Deepak Namdev", 4811), ev("leave", "Neeraj Chouhan", 4816), ev("leave", "Mathew Ryan", 4891),
+    ev("leave", "Khush Mutha", 5151), ev("leave", "Vineet Patel", 5152),
+  ], TEAM, [], 5155);
+  assertEquals([b?.first_external_join_ts, b?.last_external_leave_ts], [0, 4891]);
+});
+
+Deno.test("presence: a teammate joining as '(Guest)' is still internal", () => {
+  const b = boundariesFromPresence([
+    ev("join", "Khush Mutha (Guest)", 0), ev("join", "Asha Rao", 120), ev("leave", "Asha Rao", 900),
+  ], TEAM, [], 1000);
+  assertEquals([b?.first_external_join_ts, b?.last_external_leave_ts], [120, 900]);
+});
+
+Deno.test("presence: owner-domain calendar attendees count as internal", () => {
+  const b = boundariesFromPresence([
+    ev("join", "Priya Shah", 0), ev("join", "Asha Rao", 300), ev("leave", "Asha Rao", 900),
+  ], [], [{ email: "priya@oltaflock.ai", self: true }, { email: "asha@client.com" }], 1000);
+  assertEquals([b?.first_external_join_ts, b?.last_external_leave_ts], [300, 900]);
+});
+
+Deno.test("presence: guest still present when the recording ends → window closes at the end", () => {
+  const b = boundariesFromPresence([
+    ev("join", "Khush Mutha", 0), ev("join", "Asha Rao", 200),
+  ], TEAM, [], 1500);
+  assertEquals([b?.first_external_join_ts, b?.last_external_leave_ts], [200, 1500]);
+});
+
+Deno.test("presence: negative control — an internal-only call yields no window", () => {
+  assertEquals(boundariesFromPresence([
+    ev("join", "Khush Mutha", 0), ev("join", "Vineet Patel", 10), ev("leave", "Vineet Patel", 900),
+  ], TEAM, [], 1000), null);
+});
+
+Deno.test("presence: no known team identity → null (a failed profile read must not make everyone a guest)", () => {
+  assertEquals(boundariesFromPresence([
+    ev("join", "Khush Mutha", 0), ev("join", "Asha Rao", 200), ev("leave", "Asha Rao", 900),
+  ], [], [], 1000), null);
+});
+
+Deno.test("presence: no events → null", () => {
+  assertEquals(boundariesFromPresence([], TEAM, [], 1000), null);
+  assertEquals(boundariesFromPresence(undefined, TEAM, [], 1000), null);
+});
+
+Deno.test("guardBoundaries leaves an observed presence window alone", () => {
+  // Most speech sits outside the window (a long internal pre-roll) — the guard
+  // would reject an ESTIMATE shaped like this, but a join event is a fact.
+  const presence = { first_external_join_ts: 559, last_external_leave_ts: 700, source: "presence" as const, internal_only: false };
+  const segs = [
+    { speaker: "Khush", text: "a", start: 0, end: 550 },
+    { speaker: "Mathew", text: "b", start: 560, end: 690 },
+  ];
+  assertEquals(guardBoundaries(presence, segs as any), presence);
+  // Negative control: the same window as an estimate IS rejected.
+  const estimate = { ...presence, source: "speech_estimated" as const };
+  assertEquals(guardBoundaries(estimate, segs as any).source, "none");
+});
