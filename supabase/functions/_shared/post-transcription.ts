@@ -3,7 +3,8 @@
  * and regenerate-insights so the three cannot drift:
  *
  *   speaker overrides → language tags + mix → leaked-Devanagari translation →
- *   entity correction → boundary zones (speech-estimated, LLM fallback) →
+ *   entity correction → boundary zones (Recall join/leave events, then
+ *   speech-estimated, then LLM fallback) →
  *   two-pass insights on the meeting zone → metrics (zone-shifted) →
  *   validation ∥ coaching
  *
@@ -16,7 +17,18 @@ import OpenAI from "https://esm.sh/openai@4.20.1";
 import { generateInsights, SpeakerSegment, formatLabeledTranscript } from "./insights.ts";
 import { validateInsights } from "./facts.ts";
 import { computeConversationMetrics, mergeMeetingMetrics } from "./metrics.ts";
-import { annotateZones, Boundaries, computeBoundaries, externalAttendees, guardBoundaries, meetingZone, ownerDomain } from "./zones.ts";
+import {
+  annotateZones,
+  Boundaries,
+  boundariesFromPresence,
+  computeBoundaries,
+  externalAttendees,
+  guardBoundaries,
+  meetingZone,
+  ownerDomain,
+  type PresenceEvent,
+} from "./zones.ts";
+import { fetchParticipantEvents, internalNamesFor, parseParticipantEvents } from "./presence.ts";
 import { annotateLanguages, languageMix } from "./language.ts";
 import { translateLeakedSegments } from "./translate-leaks.ts";
 import { buildVocabulary, correctEntities, EntityCorrection } from "./vocab.ts";
@@ -56,6 +68,8 @@ export interface PostTranscriptionResult {
   correctedTranscript: string;
   languages: Record<string, number>;
   boundaries: Boundaries;
+  /** Recall join/leave events used for the window; persisted by `meetingPatch`. */
+  participantEvents: PresenceEvent[];
   entityCorrections: EntityCorrection[];
   insights: Record<string, any>;
 }
@@ -102,9 +116,25 @@ export async function runPostTranscription(
     );
   }
 
-  // 3. Boundary zones — speech-estimated from the Recall timeline, LLM fallback
-  //    when guests exist but never matched the timeline.
-  let boundaries = computeBoundaries(meeting.attendees ?? [], input.recallTimeline);
+  // 3. Boundary zones. First choice: when the guest actually joined and left,
+  //    from Recall's participant events (stored after the first fetch, so a
+  //    regeneration past Recall's retention still has them). Otherwise
+  //    speech-estimated from the Recall timeline, then the LLM when guests
+  //    exist but never matched the timeline.
+  let participantEvents = parseParticipantEvents(config.recall_participant_events);
+  const botId = meeting.recall_bot_id ?? config.recall_bot_id;
+  if (participantEvents.length === 0 && botId) {
+    participantEvents = await fetchParticipantEvents(String(botId));
+  }
+  const presence = participantEvents.length > 0
+    ? boundariesFromPresence(
+      participantEvents,
+      await internalNamesFor(supabase, meeting.user_id),
+      meeting.attendees ?? [],
+      durationSeconds,
+    )
+    : null;
+  let boundaries = presence ?? computeBoundaries(meeting.attendees ?? [], input.recallTimeline);
   if (boundaries.source === "none" && !boundaries.internal_only && corrected.length > 0) {
     const guests = externalAttendees(meeting.attendees ?? [], ownerDomain(meeting.attendees ?? []))
       .map((a) => a.displayName || a.email)
@@ -187,7 +217,7 @@ export async function runPostTranscription(
     regenerated: input.regenerated === true,
   });
 
-  return { zonedSegments, correctedTranscript, languages, boundaries, entityCorrections, insights };
+  return { zonedSegments, correctedTranscript, languages, boundaries, participantEvents, entityCorrections, insights };
 }
 
 /** The meetings-row patch every call site writes after the passes. */
@@ -202,6 +232,9 @@ export function meetingPatch(
     processing_config: {
       ...baseConfig,
       ...extraConfig,
+      ...(result.participantEvents.length > 0
+        ? { recall_participant_events: result.participantEvents }
+        : {}),
       ...(result.entityCorrections.length > 0
         ? { entity_corrections: result.entityCorrections.slice(0, 50) }
         : {}),
