@@ -671,8 +671,9 @@ export default function Docs() {
                 </p>
                 <Callout title="Your pre-call and post-call chatter stays private">
                   The bot joins before your guests and keeps recording after they leave. EchoBrief
-                  works out when the first external participant arrived and when the last one left,
-                  and treats speech outside that window as internal. Internal segments are excluded
+                  reads when your first guest joined the call and when the last one left, where a
+                  guest is anyone who is not you or a member of your workspace, and treats speech
+                  outside that window as internal. Internal segments are excluded
                   from the summary, the email and anything an AI tool reads through the connector;
                   you can reveal them on the transcript with <em>Show internal audio</em>, where
                   they are marked <em>Internal — not shared</em>. Meetings with only your own team
@@ -949,10 +950,13 @@ export default function Docs() {
                     (the video is kept for 7 days; after that the reader hears the saved audio instead).
                   </li>
                 </ul>
-                <Callout tone="warn" title="The recording is the whole call">
-                  Unlike the transcript, a recording cannot be trimmed. It contains everything the
-                  notetaker captured, including anything said before your guests joined or after
-                  they left. Turn it on when you mean to share the room, not just the notes.
+                <Callout tone="warn" title="The recording plays from your guest's arrival">
+                  On a shared link the recording starts when your guest joined and stops when they
+                  left, and the page's clock starts at 0:00 from their arrival. The Share dialog
+                  shows those times before you send the link, or tells you no guest was detected,
+                  in which case the whole call is shared. The player keeps the reader inside that
+                  window, but the file behind it is the full call, so share the recording only with
+                  people you would trust with all of it.
                 </Callout>
                 <p>
                   Both switches are off unless you turn them on, and you can change them later on

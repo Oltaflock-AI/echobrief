@@ -230,11 +230,17 @@ Between speaker attribution and insight generation, both `sarvam-webhook` and
    local parts, domain-root company names) plus `profiles.custom_vocabulary`; tight
    Levenshtein budgets fix near-misses ("AltaFlock" → "Oltaflock") and every change is
    logged to `processing_config.entity_corrections`. Never rewrites content.
-4. **Boundary zones** (`zones.ts`) — external attendee = email domain different from the
-   owner's. The window is estimated from when externals speak in Recall's timeline
-   (45 s pad before, 20 s after) and stored in `meetings.boundaries` with
-   `source: "speech_estimated"`; segments carry `zone: pre|meeting|post`. Internal-only
-   meetings trim nothing. **Everything downstream — insights, metrics (timestamps shifted
+4. **Boundary zones** (`zones.ts`) — first choice is `boundariesFromPresence`: Recall's
+   `participant_events` (join/leave with exact seconds, `presence.ts`) give the window
+   first guest join → last guest leave, where a guest is anyone who is not the owner, a
+   workspace member or an owner-domain calendar attendee (`source: "presence"`, never
+   passed through `guardBoundaries` — it is observed, not estimated). The events are
+   stored in `processing_config.recall_participant_events`. No events or no guest → the
+   window is estimated from when external calendar attendees speak in Recall's timeline
+   (45 s pad before, 20 s after, `source: "speech_estimated"`), then the LLM. Stored in
+   `meetings.boundaries`; segments carry `zone: pre|meeting|post`. Internal-only
+   meetings trim nothing. A share link plays only this window (`get-shared-meeting` →
+   `WindowedPlayer`). **Everything downstream — insights, metrics (timestamps shifted
    to the window), coaching, the email, the MCP surface — sees the meeting zone only.**
    The full transcript is still stored; the UI shows the internal zones behind an
    owner-only toggle.
