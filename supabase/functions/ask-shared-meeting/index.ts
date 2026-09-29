@@ -20,7 +20,7 @@ import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
 import { authenticate } from "../_shared/auth.ts";
 import { checkRateLimit, createRateLimitResponse, RATE_LIMITS } from "../_shared/rate-limit.ts";
 import { hashShareToken, looksLikeShareToken } from "../_shared/share-token.ts";
-import { publicSegments, type PublicSegment } from "../_shared/share-view.ts";
+import { publicSegments, shareWindow, shiftSegments, type PublicSegment } from "../_shared/share-view.ts";
 import { locateQuoteInSegments } from "../_shared/quote-locate.ts";
 import { meterOpenAI, newCostMeter, saveCosts } from "../_shared/cost.ts";
 import { recordAudit } from "../_shared/audit.ts";
@@ -84,7 +84,7 @@ serve(withObservability("ask-shared-meeting", async (req) => {
 
     const { data: meeting } = await supabase
       .from("meetings")
-      .select("id, title, content_pruned_at")
+      .select("id, title, content_pruned_at, boundaries")
       .eq("id", share.meeting_id)
       .maybeSingle();
     if (!meeting || meeting.content_pruned_at) {
@@ -96,7 +96,9 @@ serve(withObservability("ask-shared-meeting", async (req) => {
       .select("speakers")
       .eq("meeting_id", share.meeting_id)
       .maybeSingle();
-    const segments = publicSegments(row?.speakers);
+    // Page time, like the share page itself: the clock in the prompt and the
+    // cited second both start at the guest's join.
+    const segments = shiftSegments(publicSegments(row?.speakers), shareWindow(meeting.boundaries)?.start ?? 0);
     if (segments.length === 0) return json({ error: "This meeting has no transcript to ask." }, 404);
 
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");

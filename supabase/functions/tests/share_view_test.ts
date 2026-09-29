@@ -7,7 +7,13 @@
  * chatter to a URL anyone can forward, silently.
  */
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { publicSegments } from "../_shared/share-view.ts";
+import {
+  publicSegments,
+  shareWindow,
+  shiftPublicFacts,
+  shiftSegments,
+  shiftSharedInsights,
+} from "../_shared/share-view.ts";
 
 Deno.test("publicSegments keeps only meeting-zone speech", () => {
   const out = publicSegments([
@@ -106,4 +112,70 @@ Deno.test("publicFacts drops rows with no text or a bad timestamp", () => {
   assertEquals(out!.topics, [{ topic: "A", ts: 0, notes: "" }]);
   assertEquals(out!.numbers, []);
   assertEquals(out!.decisions, [{ decision: "D", owner: null, ts: 0 }]);
+});
+
+// ---- the guest window: page time starts when the guest joined ---------------
+
+Deno.test("shareWindow reads a trimmed meeting's boundaries", () => {
+  assertEquals(
+    shareWindow({ first_external_join_ts: 559, last_external_leave_ts: 1479, source: "presence", internal_only: false }),
+    { start: 559, end: 1479 },
+  );
+});
+
+Deno.test("shareWindow: nothing to trim → null", () => {
+  assertEquals(shareWindow(null), null);
+  assertEquals(shareWindow({ first_external_join_ts: null, last_external_leave_ts: null, source: "none", internal_only: true }), null);
+  assertEquals(shareWindow({ first_external_join_ts: 100, last_external_leave_ts: null, internal_only: false }), null);
+  assertEquals(shareWindow({ first_external_join_ts: 900, last_external_leave_ts: 900, internal_only: false }), null);
+  assertEquals(shareWindow({ first_external_join_ts: 10, last_external_leave_ts: 900, internal_only: true }), null);
+});
+
+Deno.test("shiftSegments moves every start back by the offset, clamped at 0", () => {
+  assertEquals(
+    shiftSegments([
+      { speaker: "A", text: "x", start: 559 },
+      { speaker: "B", text: "y", start: 557 },
+      { speaker: "C", text: "z", start: null },
+    ], 559),
+    [
+      { speaker: "A", text: "x", start: 0 },
+      { speaker: "B", text: "y", start: 0 },
+      { speaker: "C", text: "z", start: null },
+    ],
+  );
+});
+
+Deno.test("shiftSegments: offset 0 is the identity", () => {
+  const segs = [{ speaker: "A", text: "x", start: 12 }];
+  assertEquals(shiftSegments(segs, 0), segs);
+});
+
+Deno.test("shiftPublicFacts shifts every ts", () => {
+  const out = shiftPublicFacts({
+    topics: [{ topic: "Pricing", ts: 700, notes: "" }],
+    numbers: [{ metric: "Budget", value: "5L", ts: 800 }],
+    pain_points: [{ statement: "slow", ts: 600 }],
+    explicit_asks: [{ statement: "send deck", ts: 1400 }],
+    decisions: [{ decision: "pilot", owner: null, ts: 1000 }],
+  }, 559);
+  assertEquals(out?.topics[0].ts, 141);
+  assertEquals(out?.numbers[0].ts, 241);
+  assertEquals(out?.pain_points[0].ts, 41);
+  assertEquals(out?.explicit_asks[0].ts, 841);
+  assertEquals(out?.decisions[0].ts, 441);
+  assertEquals(shiftPublicFacts(null, 559), null);
+});
+
+Deno.test("shiftSharedInsights shifts action items and chapters, leaves the rest alone", () => {
+  const out = shiftSharedInsights({
+    summary_short: "s",
+    action_items: [{ task: "a", source_timestamp: 900 }, { task: "b" }, "legacy string"],
+    timeline_entries: [{ content: "Intro", timestamp: 560 }, { content: "x", timestamp: "12" }],
+    follow_ups: ["call back"],
+  }, 559);
+  assertEquals(out.action_items, [{ task: "a", source_timestamp: 341 }, { task: "b" }, "legacy string"]);
+  assertEquals(out.timeline_entries, [{ content: "Intro", timestamp: 1 }, { content: "x", timestamp: "12" }]);
+  assertEquals(out.summary_short, "s");
+  assertEquals(out.follow_ups, ["call back"]);
 });

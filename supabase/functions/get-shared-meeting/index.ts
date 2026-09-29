@@ -26,7 +26,15 @@ import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
 import { checkRateLimit, createRateLimitResponse, getClientIdentifier, RATE_LIMITS } from "../_shared/rate-limit.ts";
 import { hashShareToken, looksLikeShareToken } from "../_shared/share-token.ts";
 import { resolveRecordingMedia } from "../_shared/recording-media.ts";
-import { publicFacts, publicSegments, type PublicSegment } from "../_shared/share-view.ts";
+import {
+  publicFacts,
+  publicSegments,
+  shareWindow,
+  shiftPublicFacts,
+  shiftSegments,
+  shiftSharedInsights,
+  type PublicSegment,
+} from "../_shared/share-view.ts";
 import { recordAudit } from "../_shared/audit.ts";
 
 serve(async (req) => {
@@ -82,7 +90,7 @@ serve(async (req) => {
 
     const { data: meeting } = await supabase
       .from("meetings")
-      .select("id, title, start_time, duration_seconds, languages, content_pruned_at, recall_bot_id, audio_url")
+      .select("id, title, start_time, duration_seconds, languages, content_pruned_at, recall_bot_id, audio_url, boundaries")
       .eq("id", share.meeting_id)
       .maybeSingle();
     if (!meeting) return json({ error: "This meeting is no longer available." }, 404);
@@ -92,6 +100,12 @@ serve(async (req) => {
     if (meeting.content_pruned_at) {
       return json({ error: "This meeting's content has passed its retention window." }, 404);
     }
+
+    // The guest's join → leave. Everything below is returned in page time
+    // (0:00 = the guest joined), and the player is told where that sits in the
+    // recording so it never plays the chatter either side.
+    const guestWindow = shareWindow(meeting.boundaries);
+    const offset = guestWindow?.start ?? 0;
 
     // ---- the recording ----------------------------------------------------
     if (resource === "recording") {
@@ -119,7 +133,7 @@ serve(async (req) => {
         resourceId: share.meeting_id,
         metadata: { share_id: share.id },
       }, req);
-      return json(media);
+      return json({ ...media, window: guestWindow });
     }
 
     const { data: insights } = await supabase
@@ -137,7 +151,7 @@ serve(async (req) => {
         .select("speakers")
         .eq("meeting_id", share.meeting_id)
         .maybeSingle();
-      transcript = publicSegments(row?.speakers);
+      transcript = shiftSegments(publicSegments(row?.speakers), offset);
     }
 
     // Best-effort view accounting; a failure here must not cost the reader the
@@ -169,10 +183,10 @@ serve(async (req) => {
       meeting: {
         title: meeting.title,
         start_time: meeting.start_time,
-        duration_seconds: meeting.duration_seconds,
+        duration_seconds: guestWindow ? Math.round(guestWindow.end - guestWindow.start) : meeting.duration_seconds,
         languages: meeting.languages ?? null,
       },
-      insights: {
+      insights: shiftSharedInsights({
         summary_short: insights?.summary_short ?? null,
         summary_detailed: insights?.summary_detailed ?? null,
         key_points: insights?.key_points ?? [],
@@ -180,11 +194,11 @@ serve(async (req) => {
         decisions: insights?.decisions ?? [],
         follow_ups: Array.isArray(insights?.follow_ups) ? insights.follow_ups : [],
         timeline_entries: Array.isArray(insights?.timeline_entries) ? insights.timeline_entries : [],
-      },
+      }, offset),
       // Topic headings and the timestamped rows the page groups under them.
       // Null for meetings that predate the facts pass; the page then falls
       // back to the prose summary.
-      facts: publicFacts(insights?.facts),
+      facts: shiftPublicFacts(publicFacts(insights?.facts), offset),
       transcript,
       // "Ask this meeting" needs the transcript the model would answer from —
       // a summary-only link offers nothing to ask.
