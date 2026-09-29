@@ -11,6 +11,11 @@
 //   * older rows     → `meetings.attendees` NULL (written before auto-join stored them)
 //   * calendar sync  → `calendar_events.attendees`, jsonb OR a JSON *string*
 //                      (sync-calendar-events JSON.stringify()s it)
+//
+// "On the invite" is not the only way to be on the call. A bot started by hand
+// has no attendee list at all, and someone can join without being invited, so
+// an allowlisted reviewer whose profile name is among the people Recall saw
+// join (`processing_config.recall_participant_events`) counts too.
 
 export interface AllowlistedRecipient {
   email: string;
@@ -66,7 +71,86 @@ export async function resolveMeetingAttendeeEmails(
     attendeeEmails = extractAttendeeEmails(event?.attendees);
   }
 
-  return attendeeEmails;
+  const present = await presentAllowlistedEmails(supabase, meeting);
+  return [...new Set([...attendeeEmails, ...present])];
+}
+
+/** Case- and whitespace-insensitive, so "vineet  patel" is "Vineet Patel". */
+function nameKey(name: unknown): string {
+  return typeof name === "string" ? name.trim().replace(/\s+/g, " ").toLowerCase() : "";
+}
+
+/**
+ * Names Recall saw on the call. The stored events are the parsed
+ * `{ name, action, ts }` shape (`presence.ts`); Recall's raw
+ * `{ participant: { name } }` is read too, so either source works.
+ */
+export function participantNames(events: unknown): Set<string> {
+  const names = new Set<string>();
+  if (!Array.isArray(events)) return names;
+  for (const e of events) {
+    const key = nameKey((e as any)?.name ?? (e as any)?.participant?.name);
+    if (key) names.add(key);
+  }
+  return names;
+}
+
+/**
+ * Allowlisted addresses whose profile's full name is exactly a participant
+ * name. Exact on purpose: the fuzzy speaker matcher the zones use would mail
+ * vineet@ a copy of any call with a prospect who happens to be called Vineet.
+ * Pure, so the matching rule is unit-tested without a database.
+ */
+export function matchPresentReviewers(
+  events: unknown,
+  reviewers: Array<{ email: string; full_name?: string | null }>,
+): string[] {
+  const present = participantNames(events);
+  if (present.size === 0) return [];
+  return [
+    ...new Set(
+      reviewers
+        .filter((r) => typeof r.email === "string" && present.has(nameKey(r.full_name)))
+        .map((r) => r.email.trim().toLowerCase()),
+    ),
+  ];
+}
+
+async function presentAllowlistedEmails(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  meeting: Record<string, any>,
+): Promise<string[]> {
+  try {
+    // The in-memory row can predate the events: post-transcription fetches
+    // them from Recall and writes them back after this meeting was read.
+    let events = meeting.processing_config?.recall_participant_events;
+    if (!Array.isArray(events) || events.length === 0) {
+      const { data } = await supabase
+        .from("meetings")
+        .select("events:processing_config->recall_participant_events")
+        .eq("id", meeting.id)
+        .maybeSingle();
+      events = data?.events;
+    }
+    if (!Array.isArray(events) || events.length === 0) return [];
+
+    const { data: allowed } = await supabase
+      .from("summary_recipient_allowlist")
+      .select("email")
+      .eq("active", true);
+    const emails = (allowed ?? []).map((r: AllowlistedRecipient) => r.email.trim().toLowerCase());
+    if (emails.length === 0) return [];
+
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("email, full_name")
+      .in("email", emails);
+    return matchPresentReviewers(events, profiles ?? []);
+  } catch (err) {
+    console.warn(`[summary-recipients] presence lookup failed for ${meeting.id}:`, err);
+    return [];
+  }
 }
 
 /**

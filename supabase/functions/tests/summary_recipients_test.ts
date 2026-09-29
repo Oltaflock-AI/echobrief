@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
   extractAttendeeEmails,
+  matchPresentReviewers,
   resolveAllowlistedRecipients,
 } from "../_shared/summary-recipients.ts";
 
@@ -13,6 +14,7 @@ function fakeSupabase(opts: {
   allowlist?: Array<{ email: string }>;
   allowlistError?: { message: string };
   calendarEvent?: { attendees: unknown } | null;
+  profiles?: Array<{ email: string; full_name: string | null }>;
 }) {
   return {
     from(table: string) {
@@ -36,6 +38,17 @@ function fakeSupabase(opts: {
                   Promise.resolve({ data: opts.calendarEvent ?? null, error: null }),
               }),
             }),
+          }),
+        };
+      }
+      if (table === "profiles") {
+        return {
+          select: () => ({
+            in: (_col: string, emails: string[]) =>
+              Promise.resolve({
+                data: (opts.profiles ?? []).filter((p) => emails.includes(p.email)),
+                error: null,
+              }),
           }),
         };
       }
@@ -152,4 +165,67 @@ Deno.test("duplicate allowlist rows collapse to one send", async () => {
     "owner@company.com",
   );
   assertEquals(recipients, ["vineet@oltaflock.ai"]);
+});
+
+// ── Present on the call, not on the invite ────────────────────────────────
+// A bot started by hand has no attendee list. Recall still records who joined,
+// and a reviewer whose profile name is among them gets the copy.
+
+// The shape actually stored in processing_config (checked against a prod row).
+const joined = (...names: string[]) => names.map((name, i) => ({ ts: i * 10, name, action: "join" }));
+
+const PROFILES = [
+  { email: "vineet@oltaflock.ai", full_name: "Vineet Patel" },
+  { email: "admin@oltaflock.ai", full_name: "admin" },
+];
+
+Deno.test("presence: a hand-started call with Vineet on it copies Vineet", async () => {
+  const supabase = fakeSupabase({ allowlist: ALLOWLIST, profiles: PROFILES });
+  const meeting = {
+    id: "m1",
+    user_id: "u1",
+    attendees: null,
+    processing_config: { recall_participant_events: joined("Khush Mutha", "Vineet Patel", "Grant Williams") },
+  };
+  assertEquals(await resolveAllowlistedRecipients(supabase, meeting, "khush@oltaflock.ai"), ["vineet@oltaflock.ai"]);
+});
+
+Deno.test("presence: a call Vineet was not on copies nobody", async () => {
+  const supabase = fakeSupabase({ allowlist: ALLOWLIST, profiles: PROFILES });
+  const meeting = {
+    id: "m2",
+    user_id: "u1",
+    attendees: null,
+    processing_config: { recall_participant_events: joined("Khush Mutha", "Grant Williams") },
+  };
+  assertEquals(await resolveAllowlistedRecipients(supabase, meeting, "khush@oltaflock.ai"), []);
+});
+
+Deno.test("presence: joining uninvited still counts, alongside the invite", async () => {
+  const supabase = fakeSupabase({ allowlist: ALLOWLIST, profiles: PROFILES });
+  const meeting = {
+    id: "m3",
+    user_id: "u1",
+    attendees: [{ email: "admin@oltaflock.ai" }, { email: "client@acme.com" }],
+    processing_config: { recall_participant_events: joined("Vineet Patel", "Client") },
+  };
+  const got = await resolveAllowlistedRecipients(supabase, meeting, "khush@oltaflock.ai");
+  assertEquals(got.sort(), ["admin@oltaflock.ai", "vineet@oltaflock.ai"]);
+});
+
+Deno.test("presence: the name must match exactly, not by first name", () => {
+  // A prospect called Vineet must not send vineet@ a copy of the call.
+  assertEquals(matchPresentReviewers(joined("Vineet Sharma", "Vineet"), PROFILES), []);
+  assertEquals(matchPresentReviewers(joined("  vineet   PATEL "), PROFILES), ["vineet@oltaflock.ai"]);
+});
+
+Deno.test("presence: Recall's raw participant shape is read too", () => {
+  const raw = [{ action: "join", participant: { name: "Vineet Patel" }, timestamp: { relative: 3 } }];
+  assertEquals(matchPresentReviewers(raw, PROFILES), ["vineet@oltaflock.ai"]);
+});
+
+Deno.test("presence: junk events and missing names match nobody", () => {
+  assertEquals(matchPresentReviewers(null, PROFILES), []);
+  assertEquals(matchPresentReviewers([{}, { participant: {} }, "x"], PROFILES), []);
+  assertEquals(matchPresentReviewers(joined("Vineet Patel"), [{ email: "a@b.c", full_name: null }]), []);
 });
